@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ja</string>
+	<key>CFBundleIdentifier</key>
+	<string>jp.pictors.minutes</string>
+	<key>CFBundleName</key>
+	<string>Minutes</string>
+	<key>CFBundleDisplayName</key>
+	<string>Minutes</string>
+	<key>CFBundleExecutable</key>
+	<string>Minutes</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Pictors Inc.</string>
+	<!-- 自動更新（Sparkle）。開発用のビルドでは scripts/build-app.sh が SUFeedURL を外す -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/pictors/minutes/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>gcoJU2sDiYJR+0R3UymQhYpaA1FQf++QGDnBNP117AQ=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>会議中の自分の声を録音して文字起こしするためにマイクを使用します。</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>会議アプリ（ブラウザ / Teams）の音声を録音して文字起こしするためにシステム音声を取得します。</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>今の会議の候補と参加者を取得するためにカレンダーを読み取ります。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>録音した音声を端末上で文字起こしします。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>jp.pictors.minutes.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>minutes</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

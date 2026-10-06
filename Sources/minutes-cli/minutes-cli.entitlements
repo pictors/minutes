@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 固定 ID 署名（scripts/build-cli.sh）は Hardened Runtime を有効にするため、マイクの entitlement が必要 -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

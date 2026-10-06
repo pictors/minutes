@@ -1,0 +1,24 @@
+{
+  "language_code": "jpn",
+  "language_probability": 0.98,
+  "text": "おはようございます。今日の議題は新機能のリリース日です。 はい、来週の金曜日でお願いします。",
+  "transcription_id": "tx_test_0001",
+  "audio_duration_secs": 9.5,
+  "words": [
+    {"text": "おはようございます", "type": "word", "logprob": -0.05, "start": 0.20, "end": 1.10, "speaker_id": "speaker_0"},
+    {"text": "。", "type": "word", "logprob": -0.01, "start": 1.10, "end": 1.20, "speaker_id": "speaker_0"},
+    {"text": "今日の", "type": "word", "logprob": -0.10, "start": 1.60, "end": 2.00, "speaker_id": "speaker_0"},
+    {"text": "議題は", "type": "word", "logprob": -0.20, "start": 2.00, "end": 2.50, "speaker_id": "speaker_0"},
+    {"text": "新機能の", "type": "word", "logprob": -0.30, "start": 2.50, "end": 3.10, "speaker_id": "speaker_0"},
+    {"text": "リリース日です", "type": "word", "logprob": -0.15, "start": 3.10, "end": 3.90, "speaker_id": "speaker_0"},
+    {"text": "。", "type": "word", "logprob": -0.01, "start": 3.90, "end": 4.00, "speaker_id": "speaker_0"},
+    {"text": "(laughter)", "type": "audio_event", "logprob": 0.0, "start": 4.00, "end": 4.60, "speaker_id": "speaker_1"},
+    {"text": " ", "type": "spacing", "logprob": 0.0, "start": 4.60, "end": 4.60, "speaker_id": "speaker_1"},
+    {"text": "はい", "type": "word", "logprob": -0.08, "start": 5.20, "end": 5.60, "speaker_id": "speaker_1"},
+    {"text": "、", "type": "word", "logprob": -0.01, "start": 5.60, "end": 5.65, "speaker_id": "speaker_1"},
+    {"text": "来週の", "type": "word", "logprob": -0.12, "start": 5.70, "end": 6.20, "speaker_id": "speaker_1"},
+    {"text": "金曜日で", "type": "word", "logprob": -0.09, "start": 6.20, "end": 6.90, "speaker_id": "speaker_1"},
+    {"text": "お願いします", "type": "word", "logprob": -0.07, "start": 6.90, "end": 7.80, "speaker_id": "speaker_1"},
+    {"text": "。", "type": "word", "logprob": -0.01, "start": 7.80, "end": 7.90, "speaker_id": "speaker_1"}
+  ]
+}

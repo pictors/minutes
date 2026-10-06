@@ -1,0 +1,27 @@
+{
+  "id": "msg_01TestSummary",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01Abc",
+      "name": "record_minutes",
+      "input": {
+        "summary_md": "新機能のリリース日を来週金曜日に決定した。\n- リリースノートは佐々木が担当\n- 顧客案内メールは自分が木曜までに用意",
+        "decisions": [{"text": "リリースは来週の金曜日", "evidence": [5, 6]}],
+        "action_items": [
+          {"text": "顧客への案内メールを用意する", "owner": "me", "kind": "own_commitment", "due": "2026-09-24", "evidence": [8]},
+          {"text": "リリースノートの下書き", "owner": "佐々木", "kind": "their_task", "due": null, "evidence": [7]},
+          {"text": "請求書の再発行日を経理に確認する", "owner": "agent", "kind": "delegable", "due": null, "evidence": [10]}
+        ],
+        "open_questions": [{"text": "旧システムから移った顧客の重複の扱い", "evidence": [12]}],
+        "keyterms_learned": ["Nimbus", "サポート窓口"]
+      }
+    }
+  ],
+  "usage": {"input_tokens": 1200, "output_tokens": 300}
+}

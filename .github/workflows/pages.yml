@@ -1,0 +1,45 @@
+# 公開ページ（site/）を GitHub Pages に出す。CSS は Tailwind CSS で作る（site/package.json）。
+# 独自ドメインはリポジトリの設定（Settings > Pages）で決める。
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      # 公開するワークフローなので依存のキャッシュは使わない（毎回 package-lock.json どおりに入れる）
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: CSS を作る
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+      - name: 公開するファイルだけを集める
+        run: rsync -a --exclude node_modules --exclude src --exclude 'package*.json' site/ _site/
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,11 @@
+{
+  "task": "transcribe",
+  "duration": 9.5,
+  "text": "おはようございます。今日の議題は新機能のリリース日です。 はい、来週の金曜日でお願いします。",
+  "segments": [
+    {"id": "seg_001", "type": "transcript.text.segment", "start": 0.2, "end": 4.0, "text": "おはようございます。今日の議題は新機能のリリース日です。", "speaker": "A"},
+    {"id": "seg_002", "type": "transcript.text.segment", "start": 5.2, "end": 7.9, "text": " はい、来週の金曜日でお願いします。", "speaker": "B"},
+    {"id": "seg_003", "type": "transcript.text.segment", "start": 8.0, "end": 9.5, "text": "了解です。", "speaker": "tanaka"}
+  ],
+  "usage": {"type": "duration", "seconds": 10}
+}

@@ -1,0 +1,14 @@
+{
+  "name": "minutes-site",
+  "private": true,
+  "description": "Minutes の公開ページ（GitHub Pages）。CSS は Tailwind CSS で作る。",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tailwindcss -i src/site.css -o assets/site.css --minify",
+    "dev": "tailwindcss -i src/site.css -o assets/site.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3"
+  }
+}

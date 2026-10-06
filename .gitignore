@@ -1,0 +1,34 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+Package.resolved.bak
+
+# Secrets（API キーはコードにもリポジトリにも入れない）
+.env
+.env.*
+!.env.example
+
+# 録音・評価データ（実会議の音声は入れない）
+recordings/
+*.wav
+*.m4a
+*.aiff
+!fixtures/**/*.txt
+Tests/**/*.wav
+
+# macOS
+.DS_Store
+
+# fixture から生成される文字起こし
+fixtures/**/transcript.*
+
+# 非公開の文書（別の git）と、Claude Code の非公開のメモ
+private/
+CLAUDE.local.md
+
+# 公開ページ（site/）: 依存と、npm run build で作る CSS
+site/node_modules/
+site/assets/site.css

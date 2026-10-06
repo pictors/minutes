@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ja" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minutes — Mac の議事録アプリ</title>
+<meta name="description" content="Mac で会議を録音し、話者付きの文字起こし・要約・決定事項・アクションまでまとめる議事録アプリ。録音とライブ字幕はこの Mac の中で。無料・オープンソース。">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="alternate" hreflang="ja" href="https://minutes.tools/">
+<link rel="alternate" hreflang="en" href="https://minutes.tools/en/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Minutes — 会議は、話すことに集中しよう。">
+<meta property="og:description" content="Mac で会議を録音し、話者付きの文字起こしと要約から議事録を作るアプリ。無料・オープンソース。">
+<meta property="og:url" content="https://minutes.tools/">
+<meta property="og:image" content="https://minutes.tools/assets/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.classList.replace("no-js", "js")</script>
+</head>
+<body class="overflow-x-clip">
+<svg aria-hidden="true" width="0" height="0" class="absolute">
+  <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v9"/><path d="m6.5 9 3.5 3.5L13.5 9"/><path d="M4 14.5v.75A1.75 1.75 0 0 0 5.75 17h8.5A1.75 1.75 0 0 0 16 15.25v-.75"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25"/><path d="m7 10.2 2.1 2.05L13.2 8"/></g></symbol>
+</svg>
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-ink focus:px-4 focus:py-2 focus:text-sm focus:text-canvas">本文へ</a>
+
+<header class="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:pt-4">
+  <nav aria-label="ページ内" class="glass mx-auto flex max-w-5xl items-center gap-0.5 rounded-full py-1.5 pl-4 pr-1.5 shadow-none! sm:pl-5">
+    <a href="./" class="mr-auto flex shrink-0 items-center py-1" aria-label="Minutes">
+      <picture>
+        <source srcset="assets/minutes-logo-dark.svg" media="(prefers-color-scheme: dark)">
+        <img src="assets/minutes-logo-light.svg" alt="Minutes" width="100" height="20" class="h-[18px] w-auto sm:h-5">
+      </picture>
+    </a>
+    <a class="hidden rounded-full px-3 py-1.5 text-sm text-ink-2 transition-colors hover:text-ink md:inline-flex" href="#features">できること</a>
+    <a class="hidden rounded-full px-3 py-1.5 text-sm text-ink-2 transition-colors hover:text-ink md:inline-flex" href="#screens">画面</a>
+    <a class="hidden rounded-full px-3 py-1.5 text-sm text-ink-2 transition-colors hover:text-ink md:inline-flex" href="#privacy">送信先</a>
+    <a class="hidden rounded-full px-3 py-1.5 text-sm text-ink-2 transition-colors hover:text-ink lg:inline-flex" href="#waitlist">待機リスト</a>
+    <a class="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:text-ink" href="https://github.com/pictors/minutes" aria-label="GitHub のリポジトリ">
+      <svg aria-hidden="true" class="size-[18px]"><use href="#i-github"/></svg>
+    </a>
+    <a class="rounded-full px-2.5 py-1.5 text-sm font-medium text-ink-2 transition-colors hover:text-ink" href="en/" hreflang="en" lang="en">EN</a>
+    <a class="ml-1 inline-flex h-9 items-center rounded-full bg-ink px-4 text-sm font-semibold text-canvas transition-opacity hover:opacity-85" href="https://github.com/pictors/minutes/releases/latest/download/Minutes.dmg">ダウンロード</a>
+  </nav>
+</header>
+
+<main id="main">
+  <!-- 最初の画面 -->
+  <section class="relative px-4 pt-32 sm:px-6 sm:pt-44" aria-labelledby="hero-title">
+    <div class="mx-auto max-w-5xl text-center">
+      <p class="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-ink-2 motion-safe:animate-rise">
+        <span class="relative flex size-2" aria-hidden="true"><span class="absolute inset-0 rounded-full bg-rec opacity-60 motion-safe:animate-ping"></span><span class="relative size-2 rounded-full bg-rec"></span></span>
+        Mac の議事録アプリ
+      </p>
+      <h1 id="hero-title" class="display mt-7 motion-safe:animate-rise motion-safe:[animation-delay:80ms]">
+        <span class="inline-block">会議は、</span><br class="max-sm:hidden"><span class="inline-block"><span class="bg-linear-to-r from-accent to-violet bg-clip-text text-transparent">話すこと</span>に</span><span class="inline-block">集中しよう。</span>
+      </h1>
+      <p class="lead mx-auto mt-7 max-w-2xl motion-safe:animate-rise motion-safe:[animation-delay:160ms]">Minutes は、Mac で会議を録音して、話者付きの文字起こし・要約・決定事項・アクションまでまとめる議事録アプリです。録音とライブ字幕は、この Mac の中で行います。</p>
+      <div class="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row motion-safe:animate-rise motion-safe:[animation-delay:240ms]">
+        <a class="btn btn-primary max-sm:w-full max-sm:max-w-80" href="https://github.com/pictors/minutes/releases/latest/download/Minutes.dmg">
+          <svg aria-hidden="true" class="size-[18px]"><use href="#i-download"/></svg>
+          Mac 用をダウンロード
+        </a>
+        <a class="btn btn-secondary max-sm:w-full max-sm:max-w-80" href="https://github.com/pictors/minutes">
+          <svg aria-hidden="true" class="size-[18px]"><use href="#i-github"/></svg>
+          ソースコード
+        </a>
+      </div>
+      <p class="phrase mt-5 text-[13px] text-ink-3 motion-safe:animate-rise motion-safe:[animation-delay:300ms]">無料・オープンソース ・ macOS 26 以降 ・ Apple Silicon</p>
+    </div>
+
+    <div class="relative mx-auto mt-16 max-w-6xl sm:mt-24 motion-safe:animate-rise motion-safe:[animation-delay:380ms]">
+      <div aria-hidden="true" class="hero-glow pointer-events-none absolute -inset-x-[10%] -inset-y-[15%] -z-10"></div>
+      <!-- 議事録ができたときの通知（飾り） -->
+      <div aria-hidden="true" class="relative z-10 mx-auto mb-[-1.75rem] w-[min(21rem,88%)] md:absolute md:-top-7 md:right-[-1.5%] md:mb-0 md:w-[21rem]">
+        <div class="glass rounded-[1.35rem] p-3.5 text-left motion-safe:animate-float motion-safe:[animation-delay:-3s]">
+          <div class="flex items-center gap-3">
+            <img src="assets/apple-touch-icon.png" alt="" width="40" height="40" class="size-10 shrink-0 rounded-[0.6rem]">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline justify-between gap-2">
+                <p class="truncate text-[13px] font-semibold">議事録ができました</p>
+                <span class="shrink-0 text-[12px] text-ink-3">今</span>
+              </div>
+              <p class="mt-0.5 truncate text-[13px] text-ink-2">プロダクト定例</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <picture>
+        <source srcset="assets/screen-window-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp">
+        <img src="assets/screen-window-light.webp" width="2000" height="1258" fetchpriority="high" class="shot relative h-auto w-full" alt="Minutes のウィンドウ。左に会議の一覧、右に要約・決定事項・アクション・話者付きの文字起こし。">
+      </picture>
+      <!-- 録音中のパネル（飾り） -->
+      <div aria-hidden="true" class="absolute left-[-2.5%] top-[34%] z-10 hidden w-[18.5rem] md:block lg:left-[-4%]">
+        <div class="glass rounded-[1.35rem] p-4 text-left motion-safe:animate-float">
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold text-rec"><span class="size-2 rounded-full bg-rec motion-safe:animate-pulse"></span>録音中</span>
+            <span class="font-mono text-[12px] tabular-nums text-ink-2">24:33</span>
+          </div>
+          <div class="mt-3 space-y-1.5">
+            <div class="flex items-center gap-3"><span class="w-7 text-[11px] font-semibold text-accent">相手</span><div class="meter h-6! flex-1 text-accent"><i style="--h:0.45;--d:0.0"></i><i style="--h:0.76;--d:0.37"></i><i style="--h:0.53;--d:0.74"></i><i style="--h:0.84;--d:0.11"></i><i style="--h:0.62;--d:0.48"></i><i style="--h:0.77;--d:0.85"></i><i style="--h:0.63;--d:0.22"></i><i style="--h:0.64;--d:0.59"></i><i style="--h:0.55;--d:0.96"></i><i style="--h:0.55;--d:0.33"></i><i style="--h:0.47;--d:0.7"></i><i style="--h:0.53;--d:0.07"></i><i style="--h:0.49;--d:0.44"></i><i style="--h:0.55;--d:0.81"></i><i style="--h:0.60;--d:0.18"></i><i style="--h:0.65;--d:0.55"></i><i style="--h:0.68;--d:0.92"></i><i style="--h:0.78;--d:0.29"></i><i style="--h:0.64;--d:0.66"></i><i style="--h:0.84;--d:0.03"></i><i style="--h:0.50;--d:0.4"></i><i style="--h:0.78;--d:0.77"></i><i style="--h:0.38;--d:0.14"></i><i style="--h:0.68;--d:0.51"></i><i style="--h:0.33;--d:0.88"></i><i style="--h:0.66;--d:0.25"></i></div></div>
+            <div class="flex items-center gap-3"><span class="w-7 text-[11px] font-semibold text-me">自分</span><div class="meter h-6! flex-1 text-me"><i style="--h:0.12;--d:0.0"></i><i style="--h:0.16;--d:0.37"></i><i style="--h:0.18;--d:0.74"></i><i style="--h:0.15;--d:0.11"></i><i style="--h:0.13;--d:0.48"></i><i style="--h:0.17;--d:0.85"></i><i style="--h:0.18;--d:0.22"></i><i style="--h:0.14;--d:0.59"></i><i style="--h:0.15;--d:0.96"></i><i style="--h:0.18;--d:0.33"></i><i style="--h:0.17;--d:0.7"></i><i style="--h:0.13;--d:0.07"></i><i style="--h:0.16;--d:0.44"></i><i style="--h:0.18;--d:0.81"></i><i style="--h:0.18;--d:0.18"></i><i style="--h:0.21;--d:0.55"></i><i style="--h:0.34;--d:0.92"></i><i style="--h:0.35;--d:0.29"></i><i style="--h:0.49;--d:0.66"></i><i style="--h:0.46;--d:0.03"></i><i style="--h:0.63;--d:0.4"></i><i style="--h:0.72;--d:0.77"></i><i style="--h:0.63;--d:0.14"></i><i style="--h:0.89;--d:0.51"></i><i style="--h:0.75;--d:0.88"></i><i style="--h:1.00;--d:0.25"></i></div></div>
+          </div>
+          <div class="mt-3 rounded-xl bg-ink/5 px-3 py-2.5">
+            <p class="text-[11px] font-semibold text-accent">ライブ字幕</p>
+            <p class="mt-1 text-[13px] leading-snug">では、リリース日を決めましょう<span class="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] bg-accent motion-safe:animate-caret"></span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 紹介映像 -->
+  <section id="film" class="px-4 pt-28 sm:px-6 sm:pt-40" aria-labelledby="film-title">
+    <div class="night mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] px-5 py-14 text-center sm:px-12 sm:py-20" data-reveal>
+      <p class="eyebrow text-[#a9adff]">15 秒の紹介</p>
+      <h2 id="film-title" class="section-title mt-3 text-white"><span class="inline-block">Mac で、</span><span class="inline-block">録音するだけ。</span></h2>
+      <figure class="mx-auto mt-10 max-w-4xl sm:mt-12">
+        <div class="overflow-hidden rounded-[1.25rem] shadow-2xl shadow-black/60 ring-1 ring-white/10 sm:rounded-[1.5rem]">
+          <video id="promo" class="block aspect-video w-full bg-black" muted loop playsinline preload="none" poster="assets/promo-poster.jpg" aria-label="Minutes の紹介映像（15 秒）">
+            <source src="assets/minutes-promo.mp4" type="video/mp4">
+            <track kind="captions" src="assets/promo-ja.vtt" srclang="ja" label="日本語">
+          </video>
+        </div>
+        <figcaption class="phrase mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-3 text-[13px] text-white/55">
+          <span>画面の会議と名前は架空です</span>
+          <button class="sound inline-flex h-8 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-white/16" type="button" aria-pressed="false" data-on="音を消す" data-off="音を出す">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M3.5 8v4h3l4 3.5v-11l-4 3.5Z"/><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.75 5.25a6.75 6.75 0 0 1 0 9.5"/></svg>
+            <span class="sound-label">音を出す</span>
+          </button>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- できること -->
+  <section id="features" class="px-4 pt-28 sm:px-6 sm:pt-40" aria-labelledby="features-title">
+    <div class="mx-auto max-w-6xl">
+      <div class="mx-auto max-w-3xl text-center" data-reveal>
+        <p class="eyebrow">できること</p>
+        <h2 id="features-title" class="section-title mt-3"><span class="inline-block">議事録は、</span><span class="inline-block">Minutes が書く。</span></h2>
+        <p class="lead mx-auto mt-5 max-w-2xl">会議アプリの音と自分の声を録り、会議が終わったら、選んだサービスで文字起こしと要約を作ります。メニューバーに常駐して、会議を待ちます。</p>
+      </div>
+
+      <div class="mt-14 grid gap-4 sm:mt-16 md:grid-cols-6">
+        <article class="card flex flex-col p-6 sm:p-8 md:col-span-3" data-reveal>
+          <div aria-hidden="true" class="mb-8 flex min-h-56 flex-1 flex-col justify-center gap-5 rounded-[1.25rem] bg-card-2 p-5 ring-1 ring-line">
+            <div>
+              <div class="flex items-center justify-between text-[12px]"><span class="font-semibold text-accent">相手</span><span class="text-ink-3">会議アプリ</span></div>
+              <div class="meter mt-2 text-accent"><i style="--h:0.45;--d:0.0"></i><i style="--h:0.76;--d:0.37"></i><i style="--h:0.53;--d:0.74"></i><i style="--h:0.84;--d:0.11"></i><i style="--h:0.62;--d:0.48"></i><i style="--h:0.77;--d:0.85"></i><i style="--h:0.63;--d:0.22"></i><i style="--h:0.64;--d:0.59"></i><i style="--h:0.55;--d:0.96"></i><i style="--h:0.55;--d:0.33"></i><i style="--h:0.47;--d:0.7"></i><i style="--h:0.53;--d:0.07"></i><i style="--h:0.49;--d:0.44"></i><i style="--h:0.55;--d:0.81"></i><i style="--h:0.60;--d:0.18"></i><i style="--h:0.65;--d:0.55"></i><i style="--h:0.68;--d:0.92"></i><i style="--h:0.78;--d:0.29"></i><i style="--h:0.64;--d:0.66"></i><i style="--h:0.84;--d:0.03"></i><i style="--h:0.50;--d:0.4"></i><i style="--h:0.78;--d:0.77"></i><i style="--h:0.38;--d:0.14"></i><i style="--h:0.68;--d:0.51"></i><i style="--h:0.33;--d:0.88"></i><i style="--h:0.66;--d:0.25"></i><i style="--h:0.34;--d:0.62"></i><i style="--h:0.75;--d:0.99"></i><i style="--h:0.42;--d:0.36"></i><i style="--h:0.85;--d:0.73"></i><i style="--h:0.55;--d:0.1"></i><i style="--h:0.85;--d:0.47"></i><i style="--h:0.63;--d:0.84"></i><i style="--h:0.75;--d:0.21"></i><i style="--h:0.59;--d:0.58"></i><i style="--h:0.64;--d:0.95"></i><i style="--h:0.46;--d:0.32"></i><i style="--h:0.61;--d:0.69"></i><i style="--h:0.38;--d:0.06"></i><i style="--h:0.63;--d:0.43"></i><i style="--h:0.41;--d:0.8"></i><i style="--h:0.70;--d:0.17"></i><i style="--h:0.49;--d:0.54"></i><i style="--h:0.83;--d:0.91"></i><i style="--h:0.51;--d:0.28"></i><i style="--h:0.95;--d:0.65"></i></div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]"><span class="font-semibold text-me">自分</span><span class="text-ink-3">マイク</span></div>
+              <div class="meter mt-2 text-me"><i style="--h:0.12;--d:0.0"></i><i style="--h:0.16;--d:0.37"></i><i style="--h:0.18;--d:0.74"></i><i style="--h:0.15;--d:0.11"></i><i style="--h:0.13;--d:0.48"></i><i style="--h:0.17;--d:0.85"></i><i style="--h:0.18;--d:0.22"></i><i style="--h:0.14;--d:0.59"></i><i style="--h:0.15;--d:0.96"></i><i style="--h:0.18;--d:0.33"></i><i style="--h:0.17;--d:0.7"></i><i style="--h:0.13;--d:0.07"></i><i style="--h:0.16;--d:0.44"></i><i style="--h:0.18;--d:0.81"></i><i style="--h:0.16;--d:0.18"></i><i style="--h:0.12;--d:0.55"></i><i style="--h:0.17;--d:0.92"></i><i style="--h:0.18;--d:0.29"></i><i style="--h:0.15;--d:0.66"></i><i style="--h:0.14;--d:0.03"></i><i style="--h:0.17;--d:0.4"></i><i style="--h:0.18;--d:0.77"></i><i style="--h:0.14;--d:0.14"></i><i style="--h:0.15;--d:0.51"></i><i style="--h:0.18;--d:0.88"></i><i style="--h:0.18;--d:0.25"></i><i style="--h:0.18;--d:0.62"></i><i style="--h:0.24;--d:0.99"></i><i style="--h:0.32;--d:0.36"></i><i style="--h:0.28;--d:0.73"></i><i style="--h:0.36;--d:0.1"></i><i style="--h:0.39;--d:0.47"></i><i style="--h:0.46;--d:0.84"></i><i style="--h:0.50;--d:0.21"></i><i style="--h:0.43;--d:0.58"></i><i style="--h:0.63;--d:0.95"></i><i style="--h:0.54;--d:0.32"></i><i style="--h:0.64;--d:0.69"></i><i style="--h:0.69;--d:0.06"></i><i style="--h:0.67;--d:0.43"></i><i style="--h:0.84;--d:0.8"></i><i style="--h:0.59;--d:0.17"></i><i style="--h:0.91;--d:0.54"></i><i style="--h:0.87;--d:0.91"></i><i style="--h:0.88;--d:0.28"></i><i style="--h:1.00;--d:0.65"></i></div>
+            </div>
+          </div>
+          <p class="card-text mt-auto"><strong>声を分けて録音。</strong>Meet・Teams・Zoom などの会議アプリの音と、マイクの自分の声を別々に録ります。誰が話したかを分けやすくなります。</p>
+        </article>
+
+        <article class="card flex flex-col p-6 sm:p-8 md:col-span-3" data-reveal style="--i:1">
+          <div aria-hidden="true" class="mb-8 flex min-h-56 flex-1 flex-col justify-center rounded-[1.25rem] bg-card-2 p-5 ring-1 ring-line">
+            <div class="flex items-center justify-between gap-3">
+              <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-2"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" class="size-4"><rect x="2.75" y="4.25" width="14.5" height="11.5" rx="2.5"/><path d="M6 11.75h2.5M10.75 11.75H14M6 8.5h8"/></svg>ライブ字幕</span>
+              <span class="rounded-full bg-mint/12 px-2.5 py-0.5 text-[11px] font-semibold text-mint">この Mac の中で</span>
+            </div>
+            <div class="mt-4 space-y-2.5 text-[14px] leading-relaxed">
+              <p class="flex gap-3"><span class="w-7 shrink-0 pt-px text-[11px] font-semibold text-accent">会議</span><span>それでは、今週の進み具合から確認していきましょう。</span></p>
+              <p class="flex gap-3"><span class="w-7 shrink-0 pt-px text-[11px] font-semibold text-me">自分</span><span>はい、デザインの見直しは昨日終わりました。</span></p>
+              <p class="flex gap-3"><span class="w-7 shrink-0 pt-px text-[11px] font-semibold text-accent">会議</span><span>ありがとうございます。次はリリースの日程ですね<span class="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] bg-accent motion-safe:animate-caret"></span></span></p>
+            </div>
+          </div>
+          <p class="card-text mt-auto"><strong>ライブ字幕。</strong>録音中の字幕は、この Mac の中（macOS の音声認識）で作ります。</p>
+        </article>
+
+        <article class="card grid items-center gap-10 p-6 sm:p-8 md:col-span-6 md:grid-cols-[1fr_1.1fr] md:gap-12 md:p-12 md:pb-0" data-reveal>
+          <div class="md:pb-12">
+            <h3 class="text-[1.75rem] font-bold leading-tight tracking-tight sm:text-[2.25rem]"><span class="inline-block">要約も、</span><span class="inline-block">決定事項も、</span><span class="inline-block">アクションも。</span></h3>
+            <p class="card-text mt-5"><strong>文字起こしと要約。</strong>会議が終わると、話者付きの文字起こし・要約・決定事項・アクション・未決の論点を作ります。どれも根拠の発言へ戻れます。</p>
+            <ul class="mt-7 flex flex-wrap gap-2 text-[13px] font-medium text-ink-2" aria-label="作るもの">
+              <li class="rounded-full bg-card-2 px-3 py-1.5 ring-1 ring-line">要約</li>
+              <li class="rounded-full bg-card-2 px-3 py-1.5 ring-1 ring-line">決定事項</li>
+              <li class="rounded-full bg-card-2 px-3 py-1.5 ring-1 ring-line">アクション</li>
+              <li class="rounded-full bg-card-2 px-3 py-1.5 ring-1 ring-line">未決の論点</li>
+              <li class="rounded-full bg-card-2 px-3 py-1.5 ring-1 ring-line">話者付きの文字起こし</li>
+            </ul>
+          </div>
+          <div class="-mx-6 -mb-6 max-h-[26rem] self-end overflow-hidden px-6 pt-2 sm:-mx-8 sm:-mb-8 sm:max-h-[30rem] sm:px-8 md:m-0 md:max-h-[31rem] md:p-0 md:pt-0">
+            <picture>
+              <source srcset="assets/screen-detail-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp">
+              <img src="assets/screen-detail-light.webp" width="1100" height="1259" loading="lazy" decoding="async" class="h-auto w-full rounded-t-[1.25rem] bg-card-2 ring-1 ring-line" alt="会議の詳細。要約、根拠の時刻と話者が付いた決定事項、担当と期限が付いたアクション。">
+            </picture>
+          </div>
+        </article>
+
+        <article class="card flex flex-col p-6 sm:p-8 md:col-span-2" data-reveal>
+          <div aria-hidden="true" class="mb-8 flex flex-1 flex-col justify-center gap-1 rounded-[1.25rem] bg-card-2 p-3 text-[14px] ring-1 ring-line">
+            <div class="flex items-center gap-3 rounded-xl px-2 py-1.5"><span class="grid size-7 place-items-center rounded-full bg-cyan text-[11px] font-bold text-white">田</span><span class="flex-1 font-medium">田中</span><span class="text-[12px] tabular-nums text-ink-3">14 分</span></div>
+            <div class="flex items-center gap-3 rounded-xl px-2 py-1.5"><span class="grid size-7 place-items-center rounded-full bg-accent text-[11px] font-bold text-white">佐</span><span class="flex-1 font-medium">佐々木</span><span class="text-[12px] tabular-nums text-ink-3">11 分</span></div>
+            <div class="flex items-center gap-3 rounded-xl px-2 py-1.5"><span class="grid size-7 place-items-center rounded-full bg-violet text-[11px] font-bold text-white">山</span><span class="flex-1 font-medium">山本</span><span class="text-[12px] tabular-nums text-ink-3">9 分</span></div>
+            <div class="flex items-center gap-3 rounded-xl bg-ink/[0.04] px-2 py-1.5"><span class="grid size-7 place-items-center rounded-full bg-ink/10 text-[11px] font-bold text-ink-3">4</span><span class="min-w-0 flex-1"><span class="block font-medium text-ink-3">話者 4</span><span class="block truncate text-[11px] text-ink-3">背景の声かもしれません</span></span><span class="rounded-full bg-ink/8 px-2.5 py-1 text-[11px] font-semibold text-ink-2">除外</span></div>
+          </div>
+          <p class="card-text mt-auto"><strong>話者の名前。</strong>一度選べば、同じ話者の発言すべてに名前が付きます。相手のマイクが拾った周りの会話は、話者ごとに外せます。</p>
+        </article>
+
+        <article class="card flex flex-col p-6 sm:p-8 md:col-span-2" data-reveal style="--i:1">
+          <div aria-hidden="true" class="mb-8 flex flex-1 flex-col justify-center rounded-[1.25rem] bg-card-2 p-4 ring-1 ring-line">
+            <div class="flex items-center gap-2 rounded-xl bg-ink/5 px-3 py-2 text-[14px]"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" class="size-4 text-ink-3"><circle cx="9" cy="9" r="5.5"/><path d="m13.25 13.25 3.5 3.5"/></svg>リリース</div>
+            <div class="mt-3 space-y-3 px-1 text-[13px] leading-snug">
+              <div><p class="font-semibold">プロダクト定例</p><p class="mt-0.5 text-ink-2">…<mark class="rounded bg-amber/25 px-0.5 text-ink">リリース</mark>日を 10 月 21 日に決めた。</p></div>
+              <div><p class="font-semibold">リリース計画</p><p class="mt-0.5 text-ink-2">10 月の<mark class="rounded bg-amber/25 px-0.5 text-ink">リリース</mark>の範囲を決め…</p></div>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-1.5 font-mono text-[11px] text-ink-2"><span class="rounded-md bg-ink/6 px-2 py-1">meeting.md</span><span class="rounded-md bg-ink/6 px-2 py-1">transcript.json</span></div>
+          </div>
+          <p class="card-text mt-auto"><strong>検索と書き出し。</strong>タイトル・参加者・本文・要約を全文検索。会議ごとに Markdown と JSON で書き出し、好きなフォルダへ。</p>
+        </article>
+
+        <article class="card flex flex-col p-6 sm:p-8 md:col-span-2" data-reveal style="--i:2">
+          <div aria-hidden="true" class="mb-8 flex flex-1 flex-col justify-center rounded-[1.25rem] bg-card-2 p-3.5 ring-1 ring-line">
+            <div class="flex items-start gap-3">
+              <img src="assets/apple-touch-icon.png" alt="" width="36" height="36" loading="lazy" class="size-9 shrink-0 rounded-[0.55rem]">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline justify-between gap-2"><p class="truncate text-[13px] font-semibold">会議の音声を検知しました</p><span class="shrink-0 text-[11px] text-ink-3">10:00</span></div>
+                <p class="mt-0.5 text-[13px] leading-snug text-ink-2">プロダクト定例 の録音を開始しますか？</p>
+              </div>
+            </div>
+            <div class="mt-3 rounded-lg bg-ink/6 py-1.5 text-center text-[13px] font-medium">録音を開始</div>
+          </div>
+          <p class="card-text mt-auto"><strong>予定の会議は自動で。</strong>カレンダーの予定の時刻に会議アプリから音がすると、録音するかを確かめてから始めます。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 画面 -->
+  <section id="screens" class="mt-28 bg-canvas-2 px-4 py-28 sm:mt-40 sm:px-6 sm:py-36" aria-labelledby="screens-title">
+    <div class="mx-auto max-w-6xl">
+      <div class="mx-auto max-w-3xl text-center" data-reveal>
+        <p class="eyebrow">画面</p>
+        <h2 id="screens-title" class="section-title mt-3"><span class="inline-block">メニューバーから、</span><span class="inline-block">議事録まで。</span></h2>
+        <p class="lead mx-auto mt-5 max-w-2xl">録音の開始・停止と今日の予定はメニューバーのパネルから。議事録はウィンドウで読み、編集し、探せます。</p>
+      </div>
+      <div class="mt-14 grid gap-4 sm:mt-16 md:grid-cols-2">
+        <figure class="card flex flex-col bg-card-2" data-reveal>
+          <div class="grid flex-1 place-items-center bg-linear-to-b from-accent/12 to-transparent px-8 pt-12 sm:pt-16">
+            <picture>
+              <source srcset="assets/screen-panel-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp">
+              <img src="assets/screen-panel-light.webp" width="360" height="613" loading="lazy" decoding="async" class="shot h-auto w-[min(17rem,100%)]" alt="メニューバーのパネル。録音ボタン、今日と今週の会議時間。">
+            </picture>
+          </div>
+          <figcaption class="card-text p-6 sm:p-8"><strong>メニューバーのパネル。</strong>録音の開始・停止と、今日の会議時間や予定をここから。</figcaption>
+        </figure>
+        <figure class="card flex flex-col bg-card-2" data-reveal style="--i:1">
+          <div class="grid flex-1 place-items-center bg-linear-to-b from-violet/12 to-transparent px-6 pt-12 sm:px-10 sm:pt-16">
+            <picture>
+              <source srcset="assets/screen-onboarding-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp">
+              <img src="assets/screen-onboarding-light.webp" width="640" height="692" loading="lazy" decoding="async" class="shot h-auto w-full max-w-[26rem]" alt="初回の案内の試しの録音。会議アプリの音と自分の声のメーター、ライブ字幕。">
+            </picture>
+          </div>
+          <figcaption class="card-text p-6 sm:p-8"><strong>初回の案内。</strong>試しの録音で、音と字幕が届くかを確かめます。</figcaption>
+        </figure>
+      </div>
+      <p class="phrase mt-8 text-center text-[13px] text-ink-3">画面の会議と名前は架空です。</p>
+    </div>
+  </section>
+
+  <!-- 送信先 -->
+  <section id="privacy" class="px-4 pt-28 sm:px-6 sm:pt-40" aria-labelledby="privacy-title">
+    <div class="mx-auto max-w-6xl">
+      <div class="mx-auto max-w-3xl text-center" data-reveal>
+        <p class="eyebrow">送信先</p>
+        <h2 id="privacy-title" class="section-title mt-3"><span class="inline-block">どこへ送るかは、</span><span class="inline-block">会議ごとに決める。</span></h2>
+        <p class="lead mx-auto mt-5 max-w-2xl">会議ごとに「クラウド OK」か「ローカルのみ」を選べます。音声と議事録は、この Mac に保存します。</p>
+      </div>
+      <div class="mt-14 grid gap-4 sm:mt-16 md:grid-cols-2">
+        <div class="card p-6 sm:p-10" data-reveal>
+          <div class="flex items-center gap-4">
+            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-accent/12 text-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" class="size-6"><path d="M7.25 18.5h9.5a4 4 0 0 0 .55-7.96 5.5 5.5 0 0 0-10.6 1.2A3.4 3.4 0 0 0 7.25 18.5Z"/></svg></span>
+            <div><h3 class="text-xl font-semibold tracking-tight">クラウド OK</h3><p class="text-[14px] text-ink-2">選んだサービスへ送る</p></div>
+          </div>
+          <dl class="mt-8 divide-y divide-line">
+            <div class="pb-5"><dt class="text-[13px] font-semibold text-ink-3">録音した音声</dt><dd class="mt-1.5 text-[15px] leading-relaxed">会議のあと、選んだ文字起こしのサービス（ElevenLabs / OpenAI）へ送ります。精度を上げるため、参加者の名前と用語も送ります。</dd></div>
+            <div class="py-5"><dt class="text-[13px] font-semibold text-ink-3">文字起こし・会議名・参加者</dt><dd class="mt-1.5 text-[15px] leading-relaxed">選んだ要約の手段へ送ります（Codex は OpenAI、Claude Code と Anthropic API は Anthropic）。</dd></div>
+            <div class="pt-5"><dt class="text-[13px] font-semibold text-ink-3">書き出し・同期</dt><dd class="mt-1.5 text-[15px] leading-relaxed">選んだフォルダへコピーします。</dd></div>
+          </dl>
+        </div>
+        <div class="card p-6 sm:p-10" data-reveal style="--i:1">
+          <div class="flex items-center gap-4">
+            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-mint/12 text-mint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-6"><rect x="4.5" y="5" width="15" height="10.5" rx="1.75"/><path d="M2.5 18.5h19"/></svg></span>
+            <div><h3 class="text-xl font-semibold tracking-tight">ローカルのみ</h3><p class="text-[14px] text-ink-2">この Mac から出さない</p></div>
+          </div>
+          <dl class="mt-8 divide-y divide-line">
+            <div class="pb-5"><dt class="text-[13px] font-semibold text-ink-3">録音した音声</dt><dd class="mt-1.5 text-[15px] leading-relaxed">送りません。この Mac の中で文字起こしします。</dd></div>
+            <div class="py-5"><dt class="text-[13px] font-semibold text-ink-3">文字起こし・会議名・参加者</dt><dd class="mt-1.5 text-[15px] leading-relaxed">送りません。要約は作りません。</dd></div>
+            <div class="pt-5"><dt class="text-[13px] font-semibold text-ink-3">書き出し・同期</dt><dd class="mt-1.5 text-[15px] leading-relaxed">しません。</dd></div>
+          </dl>
+        </div>
+      </div>
+      <ul class="mt-14 grid gap-x-10 gap-y-5 text-[15px] leading-relaxed text-ink-2 sm:grid-cols-2 lg:grid-cols-3" data-reveal>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>ライブ字幕は、いつもこの Mac の中で作ります。</span></li>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>利用状況の送信（テレメトリ）はしません。このページも解析のスクリプトを読み込みません。</span></li>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>API キーは Keychain に保存します。</span></li>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>新しい版の確認のため、1 日に 1 回 GitHub から更新の情報を読みます（設定で止められます）。</span></li>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>初めて使うときに、macOS の音声認識モデル（Apple）と、話者分離のモデル（Hugging Face）をダウンロードします。</span></li>
+        <li class="flex gap-3"><svg aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-mint"><use href="#i-check"/></svg><span>音声は既定で 30 日後に削除します（書き出しが済んだ会議だけ）。文字起こしと議事録は残ります。</span></li>
+      </ul>
+      <p class="mt-12 flex gap-3 rounded-3xl border border-line p-6 text-[15px] leading-relaxed text-ink-2 sm:p-7" data-reveal>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" class="mt-[3px] size-5 shrink-0 text-rec"><circle cx="10" cy="10" r="7.25"/><path d="M10 6.25v4.5M10 13.6v.01"/></svg>
+        <span>録音することを参加者に伝え、必要な同意を得るのは、Minutes を使う人の責任です。法律と、所属する組織のルールに従ってください。参加者に知らせる文面は、アプリからいつでもコピーできます。</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- 必要なもの -->
+  <section id="requirements" class="px-4 pt-28 sm:px-6 sm:pt-40" aria-labelledby="requirements-title">
+    <div class="mx-auto max-w-6xl">
+      <div class="mx-auto max-w-3xl text-center" data-reveal>
+        <p class="eyebrow">はじめる前に</p>
+        <h2 id="requirements-title" class="section-title mt-3">使うのに必要なもの</h2>
+      </div>
+      <div class="mt-14 grid gap-4 sm:mt-16 md:grid-cols-3">
+        <div class="card p-7 sm:p-9" data-reveal>
+          <span class="grid size-12 place-items-center rounded-2xl bg-card-2 text-ink ring-1 ring-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-6"><rect x="4.5" y="5" width="15" height="10.5" rx="1.75"/><path d="M2.5 18.5h19"/></svg></span>
+          <h3 class="mt-6 text-xl font-semibold tracking-tight">Mac</h3>
+          <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-ink-2">
+            <li>Apple Silicon の Mac</li>
+            <li>macOS 26 以降</li>
+            <li class="text-ink-3">アプリの画面は日本語です。</li>
+          </ul>
+        </div>
+        <div class="card p-7 sm:p-9" data-reveal style="--i:1">
+          <span class="grid size-12 place-items-center rounded-2xl bg-card-2 text-accent ring-1 ring-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" class="size-6"><path d="M4 10.5v3M7.5 8v8M11 5v14M14.5 8.5v7M18 10v4M21 11.25v1.5"/></svg></span>
+          <h3 class="mt-6 text-xl font-semibold tracking-tight">文字起こし（どれか 1 つ）</h3>
+          <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-ink-2">
+            <li>ElevenLabs Scribe v2（おすすめ・API キー）</li>
+            <li>OpenAI（API キー）</li>
+            <li>この Mac の中（キー不要・精度は下がる）</li>
+          </ul>
+        </div>
+        <div class="card p-7 sm:p-9" data-reveal style="--i:2">
+          <span class="grid size-12 place-items-center rounded-2xl bg-card-2 text-violet ring-1 ring-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true" class="size-6"><path d="M10.5 3.75 12.1 8.4l4.65 1.6-4.65 1.6-1.6 4.65-1.6-4.65L4.25 10l4.65-1.6Z"/><path d="m17.75 14.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z"/></svg></span>
+          <h3 class="mt-6 text-xl font-semibold tracking-tight">要約（どれか 1 つ）</h3>
+          <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-ink-2">
+            <li>Codex（ChatGPT のログイン）</li>
+            <li>Claude Code（Claude のログイン）</li>
+            <li>Anthropic API（API キー）</li>
+            <li>要約しない</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 待機リスト -->
+  <section id="waitlist" class="px-4 pt-28 sm:px-6 sm:pt-40" aria-labelledby="waitlist-title">
+    <div class="night mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] px-6 py-16 text-center sm:px-12 sm:py-24" data-reveal>
+      <p class="eyebrow text-[#a9adff]">待機リスト</p>
+      <h2 id="waitlist-title" class="section-title mt-3 text-white"><span class="inline-block">キーなしで使える版を、</span><span class="inline-block">準備しています。</span></h2>
+      <p class="lead mx-auto mt-5 max-w-2xl text-white/65">API キーやログインを用意しなくても、文字起こしと要約まで使える有料の版を考えています。関心があれば、待機リストに登録してください。準備ができたらお知らせします。</p>
+      <a class="btn btn-light mt-10" href="https://tally.so/r/VLkxNN" target="_blank" rel="noopener">
+        待機リストに登録する
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M6.5 13.5l7-7"/><path d="M7.5 6.5h6v6"/></svg>
+      </a>
+      <p class="phrase mx-auto mt-5 max-w-md text-[13px] leading-relaxed text-white/45">登録は外部のフォームで受け付けます。メールアドレスは、この版の案内のためだけに使います。</p>
+    </div>
+  </section>
+
+  <!-- ソースコード -->
+  <section id="oss" class="px-4 py-28 sm:px-6 sm:py-40" aria-labelledby="oss-title">
+    <div class="card mx-auto max-w-6xl px-6 py-14 text-center sm:px-12 sm:py-20" data-reveal>
+      <span class="mx-auto grid size-16 place-items-center rounded-[1.25rem] bg-ink text-canvas shadow-lg shadow-black/15">
+        <svg aria-hidden="true" class="size-9"><use href="#i-github"/></svg>
+      </span>
+      <h2 id="oss-title" class="section-title mt-8"><span class="inline-block">ソースコードは、</span><span class="inline-block">すべて公開しています。</span></h2>
+      <p class="lead mx-auto mt-5 max-w-2xl">アプリと CLI のソースコードは Apache License 2.0 で公開しています。不具合の報告や改善の提案は GitHub で受け付けます。</p>
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-3">
+        <a class="btn btn-primary" href="https://github.com/pictors/minutes">
+          <svg aria-hidden="true" class="size-[18px]"><use href="#i-github"/></svg>
+          GitHub で見る
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/pictors/minutes/releases">リリース</a>
+      </div>
+      <ul class="mx-auto mt-10 flex max-w-3xl flex-wrap justify-center gap-x-6 gap-y-3 text-[15px] text-ink-2">
+        <li><a class="underline-offset-4 transition-colors hover:text-ink hover:underline" href="https://github.com/pictors/minutes/blob/main/CONTRIBUTING.md">貢献の手順</a></li>
+        <li><a class="underline-offset-4 transition-colors hover:text-ink hover:underline" href="https://github.com/pictors/minutes/blob/main/SECURITY.md">セキュリティ</a></li>
+        <li><a class="underline-offset-4 transition-colors hover:text-ink hover:underline" href="https://github.com/pictors/minutes/blob/main/LICENSE">ライセンス</a></li>
+        <li><a class="underline-offset-4 transition-colors hover:text-ink hover:underline" href="https://github.com/pictors/minutes/blob/main/NOTICE">第三者の帰属表示</a></li>
+        <li><a class="underline-offset-4 transition-colors hover:text-ink hover:underline" href="https://github.com/pictors/minutes/blob/main/TRADEMARKS.md">名前とロゴ</a></li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-line px-4 py-10 sm:px-6">
+  <div class="mx-auto flex max-w-6xl flex-col gap-5 text-[13px] text-ink-2 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-4">
+      <picture>
+        <source srcset="assets/minutes-logo-dark.svg" media="(prefers-color-scheme: dark)">
+        <img src="assets/minutes-logo-light.svg" alt="Minutes" width="80" height="16" loading="lazy" class="h-4 w-auto">
+      </picture>
+      <span>© 2026 Pictors Inc.</span>
+    </div>
+    <nav class="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="フッター">
+      <a class="inline-flex items-center gap-1.5 transition-colors hover:text-ink" href="https://github.com/pictors/minutes">
+        <svg aria-hidden="true" class="size-4"><use href="#i-github"/></svg>
+        GitHub
+      </a>
+      <a class="transition-colors hover:text-ink" href="https://github.com/pictors/minutes/blob/main/LICENSE">ライセンス</a>
+      <a class="transition-colors hover:text-ink" href="https://github.com/pictors/minutes/blob/main/SECURITY.md">セキュリティ</a>
+      <a class="transition-colors hover:text-ink" href="en/" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  // 紹介映像は見えている間だけ音なしで流し、ボタンで音を出す。動きを減らす設定なら自動では流さない。
+  (() => {
+    const video = document.getElementById("promo");
+    const button = document.querySelector(".sound");
+    if (!video || !button) return;
+    const label = button.querySelector(".sound-label");
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches && "IntersectionObserver" in window) {
+      new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) video.play().catch(() => {});
+        else if (video.muted) video.pause();
+      }, { threshold: 0.35 }).observe(video);
+    }
+    button.addEventListener("click", () => {
+      video.muted = !video.muted;
+      if (!video.muted) {
+        video.currentTime = 0;
+        video.play();
+      }
+      button.setAttribute("aria-pressed", String(!video.muted));
+      label.textContent = video.muted ? button.dataset.off : button.dataset.on;
+    });
+  })();
+
+  // 見えてきた区画を浮かび上がらせる（動きを減らす設定では CSS が何もしない）
+  (() => {
+    const items = document.querySelectorAll("[data-reveal]");
+    if (!("IntersectionObserver" in window)) {
+      items.forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      }
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.1 });
+    items.forEach((el) => observer.observe(el));
+  })();
+</script>
+</body>
+</html>
