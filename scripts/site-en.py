@@ -176,6 +176,8 @@ rep('href="en/" hreflang="en" lang="en">English</a>', 'href="../" hreflang="ja" 
 # スクリプトのコメント
 rep('// 紹介映像は見えている間だけ音なしで流し、ボタンで音を出す。動きを減らす設定なら自動では流さない。', '// Plays the introduction muted while it is in view; the button turns the sound on. With reduced motion, it does not autoplay.')
 rep('// 見えてきた区画を浮かび上がらせる（動きを減らす設定では CSS が何もしない）', '// Fades sections in as they come into view (the CSS does nothing with reduced motion).')
+rep('<!-- 横にはみ出す飾り（最初の画面の光など）はここで切る。body で切ると指定がビューポートへ移るだけで、iPhone の Safari はページを横に動かせてしまう -->',
+    '<!-- Decorations that stick out sideways (such as the glow behind the hero) are clipped here. On body, the clip only moves to the viewport, and Safari on iPhone can still move the page sideways. -->')
 rep('<!-- 最初の画面 -->', '<!-- Hero -->')
 rep('<!-- 議事録ができたときの通知（飾り） -->', '<!-- Notification when the minutes are ready (decorative; the app UI is Japanese) -->')
 rep('<!-- 録音中のパネル（飾り） -->', '<!-- Recording panel (decorative) -->')
