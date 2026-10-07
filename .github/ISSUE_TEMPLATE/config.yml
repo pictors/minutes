@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 脆弱性の報告 / Report a security vulnerability
+    url: https://github.com/pictors/minutes/security/advisories/new
+    about: 公開の Issue ではなく、非公開で知らせてください（SECURITY.md）。 / Please report privately, not in a public issue (see SECURITY.md).

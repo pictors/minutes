@@ -1,0 +1,33 @@
+name: 要望 / Feature request
+description: あったらよいことを提案する / Suggest an improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提案ありがとうございます。Issue は公開されます。例を書くときは、実際の会議の内容ではなく架空の例にしてください。大きな変更は、作り始める前にここで相談してください。
+
+        Thanks for the suggestion. Issues are public. Use made-up examples instead of real meeting content. Please discuss large changes here before starting work on them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること / Problem
+      description: どんな場面で、何に困っていますか。 / What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 欲しいもの / Proposal
+      description: どう動くとよいですか。 / How should it work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: いまの回避策・ほかの案 / Workarounds and alternatives
+  - type: textarea
+    id: context
+    attributes:
+      label: 補足 / Additional context
+      description: 画面の写真などがあれば添えてください（会議の内容は写さないでください）。 / Screenshots are welcome (please hide meeting content).

@@ -1,0 +1,94 @@
+name: 不具合の報告 / Bug report
+description: 期待どおりに動かないことを知らせる / Report something that does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。Issue は公開されます。**会議の音声・文字起こし・要約・会議名・参加者の名前・API キーは書かないでください。**脆弱性は Issue ではなく、[非公開の報告](https://github.com/pictors/minutes/security/advisories/new)で知らせてください。
+
+        Thanks for the report. Issues are public. **Do not include meeting audio, transcripts, summaries, meeting titles, attendee names, or API keys.** Report security vulnerabilities [privately](https://github.com/pictors/minutes/security/advisories/new) instead.
+  - type: input
+    id: version
+    attributes:
+      label: Minutes の版 / Minutes version
+      description: 設定 > 情報 で確かめられます。 / Shown in Settings > 情報 (About).
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS の版と Mac / macOS version and Mac
+      placeholder: "macOS 26.1, MacBook Air (M3)"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: どこで起きたか / Where it happened
+      multiple: true
+      options:
+        - 録音・会議アプリの音・マイク / Recording, meeting audio, microphone
+        - ライブ字幕 / Live captions
+        - 文字起こし / Transcription
+        - 話者 / Speakers
+        - 要約・決定事項・アクション / Summary, decisions, action items
+        - 会議の言語（日本語・英語） / Meeting language (Japanese, English)
+        - 検索・書き出し・同期 / Search, export, sync
+        - カレンダー・自動録音 / Calendar, automatic recording
+        - 初回の案内・許可 / First-run guide, permissions
+        - アップデート / Updates
+        - その他 / Other
+  - type: dropdown
+    id: transcription
+    attributes:
+      label: 文字起こしの手段 / Transcription
+      options:
+        - ElevenLabs Scribe v2
+        - OpenAI
+        - この Mac の中 / On this Mac
+        - 分からない / Not sure
+  - type: dropdown
+    id: summary
+    attributes:
+      label: 要約の手段 / Summary
+      options:
+        - Codex
+        - Claude Code
+        - Anthropic API
+        - 要約しない / No summary
+        - 分からない / Not sure
+  - type: textarea
+    id: what
+    attributes:
+      label: 起きたこと / What happened
+      description: 画面に出たメッセージがあれば、そのまま書いてください。 / Include any message that appeared, word for word.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現の手順 / Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待したこと / What you expected
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 診断情報 / Diagnostics
+      description: |
+        設定 > 診断 の「診断情報を書き出す…」で作った JSON を、ここにドラッグしてください（添付できないときは zip にしてください）。版・OS・許可・プロバイダの状態・後処理の結果・録音の統計が入り、本文・音声・API キーは入りません。会議名は ID に置き換わります。添付する前に中身を確かめてください。
+        Drag the JSON exported from Settings > 診断 (Diagnostics) > 「診断情報を書き出す…」 (Export diagnostics) here (zip it if it cannot be attached). It contains versions, permissions, provider status, processing results, and recording statistics. It contains no transcripts, audio, or API keys, and meeting titles are replaced with IDs. Please review it before attaching.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 確認 / Confirmation
+      options:
+        - label: 会議の音声・文字起こし・要約・会議名・参加者の名前・API キーを含めていません。 / I have not included meeting audio, transcripts, summaries, meeting titles, attendee names, or API keys.
+          required: true
