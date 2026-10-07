@@ -178,8 +178,9 @@ enum ProviderCatalog {
 enum KeyStatus: Equatable {
     case keychain, environment, missing
 
+    /// 表示のための確認なので、Keychain の中身は読まない（読むと許可の確認のダイアログが出ることがある）。
     static func resolve(_ name: String) -> KeyStatus {
-        if let stored = try? KeychainStore.get(account: name), !stored.isEmpty { return .keychain }
+        if KeychainStore.exists(account: name) { return .keychain }
         if DotEnv.value(for: name) != nil { return .environment }
         return .missing
     }
