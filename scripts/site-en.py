@@ -26,6 +26,7 @@ rep('content="Minutes — 会議は、話すことに集中しよう。"', 'cont
 rep('content="Mac で会議を録音し、話者付きの文字起こしと要約から議事録を作るアプリ。無料・オープンソース。"',
     'content="A Mac app that records your meetings and writes the minutes from a transcript with speakers and a summary. Free and open source."')
 rep('<meta property="og:url" content="https://minutes.tools/">', '<meta property="og:url" content="https://minutes.tools/en/">')
+rep('https://minutes.tools/assets/og-image.jpg', 'https://minutes.tools/assets/og-image-en.jpg')
 for attr in ('href', 'src', 'srcset', 'poster'):
     s = s.replace(f'{attr}="assets/', f'{attr}="../assets/')
 rep('>本文へ</a>', '>Skip to content</a>')
