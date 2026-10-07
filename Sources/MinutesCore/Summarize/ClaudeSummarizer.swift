@@ -43,7 +43,7 @@ public struct ClaudeSummarizer: Summarizing {
             return try await summarizeInParts(input)
         }
         let user = prompt.userMessage(for: input, transcript: input.transcriptText(), partLabel: nil)
-        return try await callTool(system: prompt.system, user: user)
+        return try await callTool(system: prompt.systemMessage(for: input), user: user)
     }
 
     /// 長い会議: 時間で分割して部分要約し、部分要約の JSON をまとめて統合する。
@@ -67,14 +67,14 @@ public struct ClaudeSummarizer: Summarizing {
             partInput.segments = part
             let label = "パート \(index + 1)/\(parts.count)（\(TimeFormatting.hms(part.first?.tStart ?? 0))〜\(TimeFormatting.hms(part.last?.tEnd ?? 0))）"
             let user = prompt.userMessage(for: partInput, transcript: partInput.transcriptText(), partLabel: label)
-            partials.append(try await callTool(system: prompt.system, user: user))
+            partials.append(try await callTool(system: prompt.systemMessage(for: input), user: user))
         }
         let encoder = JSONCoding.encoder()
         let partialJSON = try partials.enumerated().map { index, partial -> String in
             "### パート \(index + 1)\n" + String(decoding: try encoder.encode(partial), as: UTF8.self)
         }.joined(separator: "\n\n")
         let mergeUser = prompt.mergeMessage(for: input, partialSummaries: partialJSON)
-        return try await callTool(system: prompt.system, user: mergeUser)
+        return try await callTool(system: prompt.systemMessage(for: input), user: mergeUser)
     }
 
     // MARK: - API

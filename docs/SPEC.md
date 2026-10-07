@@ -50,7 +50,7 @@ Google Meet・Microsoft Teams・Zoom などのオンライン会議を Mac 上�
 ## 2. 前提・制約
 
 - 録音する Mac: Apple Silicon、**macOS 26 以降**（SpeechAnalyzer 使用のため）。Xcode 26 以降。
-- 会議は日本語が主。英語混在は Phase 3 の課題。
+- 会議は日本語と英語（会議ごとに言語を持つ。§5.5）。1 つの会議の中で日本語と英語が入れ替わる会議は Phase 3 の課題。
 - 会議アプリ: Google Meet（ブラウザ）、Microsoft Teams（デスクトップ版またはブラウザ）、Zoom などのデスクトップアプリ。
 - 言語: Swift 6 / SwiftUI。UI 以外のロジックは `MinutesCore`（SwiftPM ライブラリ）に置き、CLI と App の両方から使う。
 - App Sandbox: 無効（Process Tap、外部 CLI の起動、柔軟なファイル書き出しのため）。配布は Developer ID 署名 + 公証（Phase 1.5）。
@@ -138,7 +138,7 @@ Google Meet・Microsoft Teams・Zoom などのオンライン会議を Mac 上�
 
 ### 5.1 二段構え
 
-- **Live**: SpeechAnalyzer + SpeechTranscriber（`ja-JP`）。mic と system で別々の transcriber を持ち、mic 側は `speaker = "me"` 固定。話者分離なし・語彙指定なし（SpeechTranscriber は contextual strings 非対応）。
+- **Live**: SpeechAnalyzer + SpeechTranscriber（会議の言語のロケール。`ja-JP` / `en-US`、§5.5）。mic と system で別々の transcriber を持ち、mic 側は `speaker = "me"` 固定。話者分離なし・語彙指定なし（SpeechTranscriber は contextual strings 非対応）。
 - **Final**: 会議終了後、system track を話者分離付きの BatchTranscriber に掛け、mic track は話者固定で文字起こしし、時刻でマージする。final が完成したら UI は final を表示。live は差分検証用に保持。
 
 ### 5.2 プロトコル
@@ -152,7 +152,7 @@ protocol BatchTranscriber {
 
 struct TranscriptionRequest {
     let audioURL: URL                   // 16 kHz mono
-    let language: String                // "ja"
+    let language: String                // "ja" / "en"（会議の言語、§5.5）
     let diarize: Bool
     let keyterms: [String]              // 参加者名・業界用語
     let knownSpeakers: [KnownSpeaker]   // name + 2〜10 秒の参照音声（対応プロバイダのみ）
@@ -168,13 +168,15 @@ protocol LiveTranscriber {
     func start(audio: AsyncStream<AudioChunk>, locale: Locale) -> AsyncThrowingStream<LiveSegment, Error>
     // LiveSegment: text, isFinal, timeRange
 }
+// SpeechAnalyzerLiveTranscriber は start(audio:control:) も持つ。LiveLocaleControl のロケールが変わったら、
+// 認識器を閉じて新しいロケールで開き直す（録音中の言語の切り替え、§5.5）
 ```
 
 ### 5.3 各プロバイダの実装メモ（細部は docs で確認）
 
-- **ElevenLabs Scribe v2（final の既定）**: `POST /v1/speech-to-text`（multipart）。`model_id=scribe_v2`、`language_code=ja`、`diarize=true`、`timestamps_granularity=word`、keyterms。話者は最大 32 人。マルチチャネルと diarize は排他なので、system track は話者分離付き、mic track は話者固定で別々に送る（同時に送る）。送る音声は FLAC に可逆圧縮する。レスポンスの `words[]`（`speaker_id`, `start`, `end`, `type`）を segment に畳む。送信と処理の時間を分けて記録する（G3）。
-- **OpenAI gpt-4o-transcribe-diarize**: `POST /v1/audio/transcriptions`。`model=gpt-4o-transcribe-diarize`、`response_format=diarized_json`、`chunking_strategy=auto`（30 秒超は必須）、`language=ja`、`known_speaker_names[]` + `known_speaker_references[]`（data URL、各 2〜10 秒、最大 4 人）。ファイル上限 25 MB → 送信用に再エンコード。それでも超える場合は無音位置で分割し、known_speaker_references で話者 id を揃える。
-- **Local（privacy_mode = local_only の会議、キーがないとき、および失敗時のフォールバック）**: SpeechAnalyzer をファイルモードで（`attributeOptions: [.audioTimeRange]`、volatile なし）+ FluidAudio の `performCompleteDiarization` → 時間重なり最大の話者を割り当てる。精度は粗い前提（手動割当で補う）。
+- **ElevenLabs Scribe v2（final の既定）**: `POST /v1/speech-to-text`（multipart）。`model_id=scribe_v2`、`language_code`（会議の言語。`ja` / `en`）、`diarize=true`、`timestamps_granularity=word`、keyterms。話者は最大 32 人。マルチチャネルと diarize は排他なので、system track は話者分離付き、mic track は話者固定で別々に送る（同時に送る）。送る音声は FLAC に可逆圧縮する。レスポンスの `words[]`（`speaker_id`, `start`, `end`, `type`）を segment に畳む。送信と処理の時間を分けて記録する（G3）。
+- **OpenAI gpt-4o-transcribe-diarize**: `POST /v1/audio/transcriptions`。`model=gpt-4o-transcribe-diarize`、`response_format=diarized_json`、`chunking_strategy=auto`（30 秒超は必須）、`language`（会議の言語）、`known_speaker_names[]` + `known_speaker_references[]`（data URL、各 2〜10 秒、最大 4 人）。ファイル上限 25 MB → 送信用に再エンコード。それでも超える場合は無音位置で分割し、known_speaker_references で話者 id を揃える。
+- **Local（privacy_mode = local_only の会議、キーがないとき、および失敗時のフォールバック）**: SpeechAnalyzer をファイルモードで（会議の言語のロケール、`attributeOptions: [.audioTimeRange]`、volatile なし）+ FluidAudio の `performCompleteDiarization` → 時間重なり最大の話者を割り当てる。精度は粗い前提（手動割当で補う）。
 - **Live（SpeechAnalyzer）**: `SpeechTranscriber.supportedLocale(equivalentTo:)` でロケール正規化、`AssetInventory.assetInstallationRequest(supporting:)` でモデルを事前ダウンロード（初回の案内でも行う）、`SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)` の形式へ `AVAudioConverter` で変換、`reportingOptions: [.volatileResults]` で途中結果を表示し `isFinal` で確定。
 
 ### 5.4 話者名の解決（SpeakerResolver）
@@ -190,6 +192,16 @@ protocol LiveTranscriber {
 mic track は常に `"me"`。
 
 **背景の声**: 相手のマイクが拾った周りの会話は、話者分離で別の話者に分かれる。後処理（resolve_speakers）で相手側の話者ごとの音量を測り、いちばん長く話した相手側の話者より 10 dB 以上小さい話者を候補として示す（自動では隠さない）。除外した話者の発言は全文で折りたたみ、要約・書き出し・検索から外す（DB には残す）。発話単位で話者を変えた発話は、変えた先の話者で判定する。
+
+### 5.5 会議の言語（2026-10-07）
+
+- 会議ごとに言語を持つ（`meetings.language`: `ja` / `en`）。ライブ字幕・確定の文字起こし・要約・書き出しがこれに従う。
+- 新しい会議の言語は設定で選ぶ（自動 / 日本語 / 英語。既定は自動）。次の録音の言語はメニューバーのパネルでも選べる。
+- **自動**: ライブ字幕を `ja-JP` で始め、会議のあとの文字起こしの前に、日本語のライブ字幕の文字の種類から英語の会議かを判定する（ラテン文字が 70% 以上で、文字が 60 以上あれば英語。英語の会議を `ja-JP` で認識するとラテン文字が 97%、日本語の会議は 0〜1%）。判定できなければ日本語。判定で決めたことは `meetings.language_detected` に残す。
+- **録音中の切り替え**: パネルと録音画面で、ライブ字幕と会議の言語を切り替えられる。認識器を閉じて新しいロケールで開き直し（その間の音声はたまり、時刻は録音のタイムラインのまま）、会議のあとはその言語で処理する（自動判定はしない）。英語のモデルは初めて英語を選んだときにダウンロードする。
+- **要約の言語**（`meetings.summary_language`）: 日本語の会議は日本語。英語の会議は設定「英語の会議の要約」に従う（既定は英語。2026-10-07 決定）。会議の言語が決まったときに会議ごとに記録し、設定を変えても過去の会議は変わらない。
+- **あとから変える**: 会議の画面のメニューで、会議の言語（文字起こしからやり直す。本文の編集は外して履歴に残す。音声が残っている会議だけ）と、要約の言語（要約だけを作り直す）を変えられる。
+- 言語を持つ前の会議と日本語の会議は、後処理の指紋（§8）と要約の入力を変えない（日本語は値を足さない）。言語を足しただけで、既存の会議が文字起こしし直しにならないようにする。
 
 ---
 
@@ -335,8 +347,9 @@ attendees:
 speakers:
   - {label: spk_0, name: 田中}
 privacy_mode: cloud_ok
+language: ja
 transcript_sha256: ...
-generated_by: minutes/0.1 (elevenlabs.scribe_v2, codex/<model>, prompt v2)
+generated_by: minutes/0.1 (elevenlabs.scribe_v2, codex/<model>, prompt v3)
 ---
 
 ## 要約
@@ -348,7 +361,8 @@ generated_by: minutes/0.1 (elevenlabs.scribe_v2, codex/<model>, prompt v2)
 [00:12:30] 田中: ...
 ```
 
-- `transcript.json` — `{ meeting, speakers, segments: [{id, t_start, t_end, speaker, text}] }`
+- 見出しは要約の言語に合わせる（英語なら `## Summary` / `## Decisions` / `## Action items` / `## Open questions` / `## Notes` / `## Transcript`）。
+- `transcript.json` — `{ meeting, language, speakers, segments: [{id, t_start, t_end, speaker, text}] }`
 - `summary.json` — Summarizer の構造化出力そのまま（§8.1）
 - `manifest.json` — `schema_version`、ファイル一覧と sha256
 - `audio/` — 任意。既定では書き出さない
@@ -378,7 +392,7 @@ generated_by: minutes/0.1 (elevenlabs.scribe_v2, codex/<model>, prompt v2)
   - **Anthropic API**: 利用者の API キーで Messages API を呼び、tool use（`record_minutes`）で構造化出力を受け取る。
   - **要約しない**: 文字起こしまでの議事録を作る。
 - **モデル ID・パラメータ・プロトコルの仕様は実装前に docs（§16）で確認する。**
-- 入力: 会議メタ（title, attendees）、話者付き全文（segment id 付き。除外した背景の声は含めない）、（Phase 3）同シリーズ前回の要約。
+- 入力: 会議メタ（title, attendees）、話者付き全文（segment id 付き。除外した背景の声は含めない）、会議の言語と要約の言語（§5.5。指示文の `{{meeting_language}}` / `{{output_language}}` に入れる。prompt v3）、（Phase 3）同シリーズ前回の要約。
 - 出力スキーマ:
 
 ```json
@@ -436,19 +450,19 @@ protocol SyncTarget {
 ### 10.1 メニューバー
 
 - 状態アイコン: `idle` / `armed` / `recording`（赤、経過時間つき）/ `finalizing`。
-- パネル: 開始／停止、今の会議（カレンダー候補）、プライバシーモード切替、今日・今週の会議時間、今日の予定、最近の会議、設定。
+- パネル: 開始／停止、今の会議（カレンダー候補）、プライバシーモード切替、次の録音の言語と録音中の言語の切り替え（§5.5）、今日・今週の会議時間、今日の予定、最近の会議、設定。
 
 ### 10.2 メインウィンドウ（`NavigationSplitView` 3 ペイン）
 
 - **左**: スマートフォルダ（今日 / 今週 / すべて / 処理中 / 失敗 / タグ）+ 検索欄。
 - **中央**: 会議リスト（タイトル、日時、参加者、処理状態）。
-- **右**: 議事録ビュー。上から 要約 → 決定事項 → アクション（チェックボックス）→ 全文（話者ごとに色分け、時刻クリックで再生、テキストは編集可）。録音中はライブ字幕 + 自分用メモ欄になる。
+- **右**: 議事録ビュー。上から 要約 → 決定事項 → アクション（チェックボックス）→ 全文（話者ごとに色分け、時刻クリックで再生、テキストは編集可）。見出しに会議の言語と要約の言語のメニュー（§5.5）。録音中はライブ字幕（言語の切り替えつき）+ 自分用メモ欄になる。
 - 話者割当: 全文の話者チップをクリック → 参加者候補から選択 → 同クラスタ全体に反映。
 - 検索: 入力ごとに FTS、ハイライト付き snippet。
 
 ### 10.3 設定
 
-録音対象アプリ、マイク、既定プロバイダ（live / final / 要約）、API キー（Keychain）、`privacy_mode` の既定、音声保持日数、同期先、対象カレンダー、ショートカット、外観、人物と用語、診断（診断情報の書き出し、初回の案内を開く）。
+録音対象アプリ、マイク、既定プロバイダ（final / 要約）、会議の言語（自動 / 日本語 / 英語）と英語の会議の要約の言語、API キー（Keychain）、`privacy_mode` の既定、音声保持日数、同期先、対象カレンダー、ショートカット、外観、人物と用語、診断（診断情報の書き出し、初回の案内を開く）。
 
 ### 10.4 初回の案内
 
@@ -505,6 +519,7 @@ minutes/
 - 配布: Developer ID で署名し（`--timestamp` を付け、`--deep` に頼らない）、`notarytool` で公証、`stapler` で添付して DMG にする。自動更新に Sparkle 2 を加える（EdDSA 署名、appcast）。リリースの手順を `scripts/` にまとめる。
 - 初めての人の導線: 初回の案内（§10.4）、会議専用ブラウザの説明、参加者への告知文のコピー、診断情報の書き出し（本文・音声・キーは含めない）。利用状況の送信（テレメトリ）は入れない。
 - Phase 1 の残り: G3（送信と処理の時間の記録、送る音声の圧縮）、G7（録音中の CPU。2026-10-05 に実会議で平均 10.6%）、片方のトラックが途切れても録音を続ける（§4.3）。
+- 英語の会議への対応（2026-10-07 に追加。§5.5）: 会議ごとの言語、会議のあとの自動判定、録音中の切り替え、要約の言語。0.2.0 として出し、公式の 0.1.0 からの自動更新の確認を兼ねる。
 
 完了条件:
 
@@ -525,7 +540,7 @@ minutes/
 - Chrome 拡張: `chrome.tabCapture` でタブ音声、Meet / Teams の発話者 DOM 監視、localhost WebSocket で App へ
 - 声の登録による自動話者解決、シリーズ会議での前回要約参照
 - 日本語トークナイザ、意味検索（`sqlite-vec`）
-- 英語混在対応
+- 1 つの会議の中で日本語と英語が入れ替わる会議（字幕の言語の自動の切り替え、Scribe v2 Realtime が候補）
 - ScreenCaptureKit フォールバックの本実装
 
 ---
@@ -558,7 +573,7 @@ minutes/
 |---|---|---|
 | 1 | 会議専用ブラウザの運用ルール | 会議用のブラウザを 1 つ決める（初回の案内で選ぶ）。タブ単位の録音は Phase 3 |
 | 2 | live の代替（Apple の日本語品質が不十分な場合） | Scribe v2 Realtime に差し替え可能な構造にしておく |
-| 3 | 英語・多言語の会議 | ライブ字幕の言語の切り替え（Phase 3） |
+| 3 | 英語・多言語の会議 | 会議ごとの言語（日本語・英語）は 2026-10-07 に対応（§5.5）。録音中の字幕の言語の自動の切り替え、会議の中での言語の入れ替わり、日英以外の言語は Phase 3 |
 
 ---
 

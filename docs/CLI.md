@@ -81,6 +81,7 @@ $CLI eval cut/transcript.elevenlabs.json cut/reference.txt --strip-speaker-prefi
 $CLI process recordings/2026-09-16_weekly --provider elevenlabs --title "週次定例"
 # 保存済みの本文から要約だけやり直す（編集・根拠 ID を保持。STT の API キーは不要）
 $CLI process recordings/2026-09-16_weekly --summary-only
+$CLI process recordings/2026-10-07_english --language en            # 英語の会議として文字起こし・要約（--summary-language ja で要約だけ日本語）
 # 要約の手段: codex（既定）/ claude-code / anthropic / none。モデルと実行ファイルも指定できる
 $CLI process recordings/2026-09-16_weekly --summary-only --summary-provider claude-code --summary-model <alias>
 $CLI process recordings/2026-09-16_weekly --summary-only --summary-model <model-id> --codex-path /absolute/path/to/codex

@@ -9,6 +9,7 @@ Mac で会議を録音し、話者付きの文字起こしと要約から議事�
 - **会議アプリの音と自分の声を別々に録音**: Google Meet・Microsoft Teams・Zoom などの音（相手の声）と、マイクの声（自分）を分けて録るので、誰が話したかを分けやすくなります。
 - **ライブ字幕**: 録音中の字幕は、この Mac の中（macOS の音声認識）で作ります。
 - **議事録**: 会議が終わると、文字起こし・要約・決定事項・アクション・未決の論点を作ります。要約やアクションには、根拠の発言へのリンクが付きます。
+- **日本語と英語の会議**: 会議ごとに言語を持ちます。「自動」にしておくと、会議のあとで英語の会議かを判定し、英語で文字起こし・要約します（英語の会議の要約を日本語にすることもできます）。録音中に字幕の言語を切り替えることも、あとから会議の画面で言語を変えることもできます。
 - **話者の名前**: 話者を一度選ぶと、同じ話者の発言すべてに名前が付きます。相手のマイクが拾った周りの会話（背景の声）は、話者ごとに外せます。
 - **検索と書き出し**: タイトル・参加者・本文・要約を全文検索できます。会議ごとに Markdown と JSON を書き出し、好きなフォルダ（Dropbox などの同期フォルダも可）にコピーできます。
 - **自動録音**: カレンダーの予定（Meet・Teams のリンク付き）の時刻に会議アプリから音がすると、録音するかを通知で確かめてから始めます（すぐに始める・自動では録音しない、も選べます）。
@@ -117,6 +118,7 @@ Minutes is a macOS app that records your meetings and turns them into minutes: a
 - Records the meeting app's audio (Meet, Teams, Zoom, …) and your microphone as separate tracks, so speakers are easier to tell apart.
 - On-device live captions (macOS speech recognition).
 - After the meeting: transcript, summary, decisions, action items, and open questions, each linked to the source utterances.
+- Meetings in Japanese or English. In automatic mode, Minutes detects English meetings after the meeting and transcribes and summarizes them in English (or summarizes them in Japanese, if you prefer). You can switch the caption language while recording, or change a meeting's language afterwards.
 - Speaker naming, background-voice exclusion, full-text search, and Markdown/JSON export.
 - Optional automatic recording for calendar meetings, with a confirmation notification by default.
 

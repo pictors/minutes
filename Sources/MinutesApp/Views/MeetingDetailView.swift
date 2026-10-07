@@ -96,6 +96,8 @@ struct MeetingDetailContent: View {
     @State private var extraSegments: [SegmentRecord] = []
     @State private var confirmingDelete = false
     @State private var pendingPrivacy: PrivacyMode?
+    /// 文字起こしし直す前の確認を出している言語。
+    @State private var pendingLanguage: MeetingLanguage?
     @State private var editingTitle = false
     @State private var titleDraft = ""
     @State private var newActionText = ""
@@ -259,6 +261,77 @@ struct MeetingDetailContent: View {
         } message: {
             Text(privacyDialogMessage)
         }
+        .confirmationDialog(pendingLanguage.map { "\($0.title)で文字起こしし直しますか？" } ?? "", isPresented: Binding(get: { pendingLanguage != nil }, set: { if !$0 { pendingLanguage = nil } }), titleVisibility: .visible) {
+            Button("文字起こしし直す") {
+                if let language = pendingLanguage, detail.setLanguage(language) { model.retryPipeline(meetingId: meeting.id, reprocess: true) }
+                pendingLanguage = nil
+            }
+            Button("キャンセル", role: .cancel) { pendingLanguage = nil }
+        } message: {
+            Text(languageDialogMessage(meeting))
+        }
+    }
+
+    private func languageDialogMessage(_ meeting: MeetingRecord) -> String {
+        var lines: [String] = []
+        if meeting.privacy == .cloudOk, model.settings.finalProviderId != "local.speechanalyzer+fluidaudio" {
+            lines.append("保存した音声を、もう一度文字起こしのサービスに送ります。")
+        } else {
+            lines.append("この Mac の中で文字起こしし直します。")
+        }
+        if meeting.privacy == .cloudOk, model.hasSummarizer { lines.append("要約も作り直します。") }
+        if detail.hasTranscriptEdits { lines.append("本文の編集は外れます（編集した本文は履歴に残ります）。") }
+        return lines.joined()
+    }
+
+    /// 会議の言語と要約の言語（ヘッダーのメニュー）。会議の言語を変えると文字起こしからやり直し、要約の言語を変えると要約だけを作り直す。
+    private func languageMenu(_ meeting: MeetingRecord) -> some View {
+        let language = meeting.meetingLanguage
+        let summary = meeting.summaryOutputLanguage
+        let canResummarize = detail.canSummarize && model.hasSummarizer && !detail.isSummarizing
+        return Menu {
+            Section("会議の言語") {
+                ForEach(MeetingLanguage.allCases, id: \.self) { option in
+                    Button {
+                        // 同じ言語を選んだら確定させるだけ（文字起こしし直さない）
+                        if option != language { pendingLanguage = option } else if meeting.languageDetected || meeting.language == nil { detail.confirmLanguage(option) }
+                    } label: {
+                        checkLabel(option.title, selected: meeting.language != nil && option == language)
+                    }
+                    .disabled(!detail.canChangeLanguage)
+                }
+            }
+            Section("要約の言語") {
+                ForEach(MeetingLanguage.allCases, id: \.self) { option in
+                    Button { detail.setSummaryLanguage(option) } label: {
+                        checkLabel(option.title, selected: option == summary)
+                    }
+                    .disabled(!canResummarize)
+                }
+            }
+            if detail.audioPurged {
+                Text("音声が削除済みのため、文字起こしし直せません")
+            }
+        } label: {
+            Label(languageLabel(meeting), systemImage: "globe")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("会議の言語を変えると文字起こしからやり直します。要約の言語を変えると要約だけを作り直します")
+    }
+
+    private func languageLabel(_ meeting: MeetingRecord) -> String {
+        // 自動の会議は、後処理で言語が決まるまで「自動」
+        guard meeting.language != nil || meeting.meetingStatus == .done || meeting.meetingStatus == .failed else { return "自動" }
+        var text = meeting.meetingLanguage.title + (meeting.languageDetected ? "（自動判定）" : "")
+        if meeting.summaryOutputLanguage != meeting.meetingLanguage { text += " · 要約は\(meeting.summaryOutputLanguage.title)" }
+        return text
+    }
+
+    private func checkLabel(_ title: String, selected: Bool) -> some View {
+        Group {
+            if selected { Label(title, systemImage: "checkmark") } else { Text(title) }
+        }
     }
 
     private var privacyDialogTitle: String {
@@ -341,6 +414,7 @@ struct MeetingDetailContent: View {
                 .labelsHidden()
                 .fixedSize()
                 .help("ローカルのみにするとクラウドへ送信せず、書き出し・同期も行いません")
+                languageMenu(meeting)
                 if let provider = detail.finalProviderName {
                     InfoChip(text: "文字起こし: \(ProviderCatalog.summarizeRunProvider(provider))", systemImage: "waveform")
                         .help(provider)

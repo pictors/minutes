@@ -167,6 +167,14 @@ public enum StoreSchema {
             ALTER TABLE speakers ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0;
             """)
         }
+        // 会議の言語（日本語・英語）と、それを会議のあとの自動判定で決めたか。要約の言語（英語の会議は設定で日本語にもできる）。
+        migrator.registerMigration("v8_meeting_language") { db in
+            try db.execute(sql: """
+            ALTER TABLE meetings ADD COLUMN language TEXT;
+            ALTER TABLE meetings ADD COLUMN language_detected INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE meetings ADD COLUMN summary_language TEXT;
+            """)
+        }
         return migrator
     }
 }

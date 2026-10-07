@@ -67,16 +67,19 @@ public struct PipelineProviders: Sendable {
     public var exportDirectory: URL
     public var syncTargets: [any SyncTarget]
     public var learnKeyterms: Bool
+    /// 英語の会議の要約の言語（設定。2026-10-07 決定: 既定は英語）。会議の言語が決まったときに会議ごとに記録する。
+    public var englishSummaryLanguage: MeetingLanguage
     public var notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)?
     public var onProgress: (@Sendable (String, PipelineStep, String) -> Void)?
 
-    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil) {
+    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, englishSummaryLanguage: MeetingLanguage = .en, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil) {
         self.cloud = cloud
         self.local = local
         self.summarizer = summarizer
         self.exportDirectory = exportDirectory
         self.syncTargets = syncTargets
         self.learnKeyterms = learnKeyterms
+        self.englishSummaryLanguage = englishSummaryLanguage
         self.notify = notify
         self.onProgress = onProgress
     }
@@ -322,17 +325,39 @@ public final class PostProcessPipeline: Sendable {
     func transcribeFinal(meeting: MeetingRecord, directory: URL) async throws -> String? {
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
-        let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms,
+        let language = try resolveLanguage(meeting)
+        let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms, language: language,
                                         manifest: try? RecordingManifest.read(from: directory))
         async let system = transcribeTrack(job, track: "system", sttName: RecordingSession.systemSTTName, artifact: PostProcessPipeline.systemArtifact, diarize: true)
         async let mic = transcribeTrack(job, track: "mic", sttName: RecordingSession.micSTTName, artifact: PostProcessPipeline.micArtifact, diarize: false)
-        return try await [system, mic].compactMap { $0 }.joined(separator: "; ")
+        let notes = try await [system, mic].compactMap { $0 }
+        return ([language == .ja ? nil : "language: \(language.rawValue)\(meeting.language == nil ? " (detected)" : "")"].compactMap { $0 } + notes).joined(separator: "; ")
+    }
+
+    /// 文字起こしの言語を決める。録音中に選んだ・会議の詳細で変えた言語があればそれ、なければ（自動）
+    /// 日本語のライブ字幕の文字の種類から判定する（判定できなければ日本語）。要約の言語がまだなければ設定から決める。
+    func resolveLanguage(_ meeting: MeetingRecord) throws -> MeetingLanguage {
+        var detected = meeting.languageDetected
+        let language: MeetingLanguage
+        if let chosen = MeetingLanguage(code: meeting.language) {
+            language = chosen
+        } else {
+            let live = try store.segments(meetingId: meeting.id, source: .live).map(\.text)
+            language = MeetingLanguageDetector.detect(live) ?? .ja
+            detected = true
+        }
+        let summary = MeetingLanguage(code: meeting.summaryLanguage) ?? (language == .en ? providers.englishSummaryLanguage : .ja)
+        if meeting.language != language.rawValue || meeting.languageDetected != detected || meeting.summaryLanguage != summary.rawValue {
+            try store.setMeetingLanguage(id: meeting.id, language: language, detected: detected, summaryLanguage: summary)
+        }
+        return language
     }
 
     private struct TrackTranscriptionJob: Sendable {
         var meeting: MeetingRecord
         var directory: URL
         var keyterms: [String]
+        var language: MeetingLanguage
         var manifest: RecordingManifest?
     }
 
@@ -363,7 +388,7 @@ public final class PostProcessPipeline: Sendable {
             audioURL = trimmed
             timeOffset = micOffset
         }
-        let request = TranscriptionRequest(audioURL: audioURL, language: "ja", diarize: diarize, keyterms: job.keyterms, knownSpeakers: [])
+        let request = TranscriptionRequest(audioURL: audioURL, language: job.language.rawValue, diarize: diarize, keyterms: job.keyterms, knownSpeakers: [])
         var result: TranscriptionResult
         let note: String
         guard let current = try store.meeting(id: meeting.id) else { throw PipelineError.meetingNotFound(meeting.id) }
@@ -563,6 +588,8 @@ public final class PostProcessPipeline: Sendable {
         case .transcribeFinal:
             try files([RecordingSession.systemSTTName, RecordingSession.micSTTName, Self.systemArtifact, Self.micArtifact])
             values += [meeting.privacyMode, providers.local.cacheIdentity, providers.cloud?.cacheIdentity ?? "none", meeting.attendeesJson ?? "", try PipelineFingerprint.encoded(store.manualKeyterms()), String(format: "offset=%.3f", meeting.meetingStartOffsetSeconds)]
+            // 日本語（言語を持つ前の会議を含む）は値を足さない。足すと既存の会議がすべて文字起こしし直しになる
+            if meeting.meetingLanguage != .ja { values.append("language=\(meeting.meetingLanguage.rawValue)") }
         case .mergeTracks:
             try files([Self.systemArtifact, Self.micArtifact, Self.mergedArtifact])
         case .resolveSpeakers:

@@ -32,7 +32,7 @@ struct RecordingView: View {
                 Banner(kind: .error, text: error, actionTitle: "メモを再保存", action: { notesDraft?.flush() })
             }
             HSplitView {
-                LiveCaptionsPane()
+                LiveCaptionsPane(preparation: snapshot?.livePreparation)
                     .frame(minWidth: 340)
                     .layoutPriority(1)
                 NotesPane(notes: Binding(get: { notesDraft?.text ?? "" }, set: { notesDraft?.edit($0) }))
@@ -92,6 +92,7 @@ extension SessionSnapshot {
             a.state == b.state && a.meeting == b.meeting && a.tappedProcessNames == b.tappedProcessNames
                 && a.lastError == b.lastError && a.awaitingStartConfirmation == b.awaitingStartConfirmation
                 && a.interruptedTracks == b.interruptedTracks
+                && a.liveLanguage == b.liveLanguage && a.livePreparation == b.livePreparation
         default:
             false
         }
@@ -223,6 +224,8 @@ struct MeterLabel: View {
 /// ライブ字幕（確定行 + 途中経過）。
 struct LiveCaptionsPane: View {
     @Environment(AppModel.self) private var model
+    /// ライブ字幕のモデルを用意している・切り替えられなかった（`SessionSnapshot.livePreparation`）。
+    var preparation: LivePreparation?
 
     private var volatileTracks: [String] {
         model.liveVolatile.keys.sorted().filter { !(model.liveVolatile[$0] ?? "").isEmpty }
@@ -234,10 +237,17 @@ struct LiveCaptionsPane: View {
                 Label("ライブ字幕", systemImage: "captions.bubble")
                     .font(.headline)
                 Spacer()
+                LiveLanguageMenu(preparation: preparation)
                 Text("\(model.liveLines.count) 行")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
+            }
+            if let preparation, let status = preparation.statusText {
+                Label(status, systemImage: preparation.isFailure ? "exclamationmark.triangle.fill" : "arrow.down.circle")
+                    .font(.caption)
+                    .foregroundStyle(preparation.isFailure ? AnyShapeStyle(Palette.amber) : AnyShapeStyle(.secondary))
+                    .transition(.opacity)
             }
             ScrollViewReader { proxy in
                 ScrollView {

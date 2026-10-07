@@ -11,8 +11,10 @@ public struct PendingMeetingInfo: Sendable, Equatable {
     public var calendarEndDate: Date?
     /// この録音だけ対象アプリを絞る（nil なら設定の一覧）。
     public var targetBundleIdentifiers: [String]?
+    /// 会議の言語。nil は自動（ライブ字幕を `SessionConfiguration.liveLocale` で始め、会議のあとで判定する）。
+    public var language: MeetingLanguage?
 
-    public init(title: String, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode = .cloudOk, calendarEndDate: Date? = nil, targetBundleIdentifiers: [String]? = nil) {
+    public init(title: String, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode = .cloudOk, calendarEndDate: Date? = nil, targetBundleIdentifiers: [String]? = nil, language: MeetingLanguage? = nil) {
         self.title = title
         self.platform = platform
         self.calendarEventId = calendarEventId
@@ -21,6 +23,7 @@ public struct PendingMeetingInfo: Sendable, Equatable {
         self.privacyMode = privacyMode
         self.calendarEndDate = calendarEndDate
         self.targetBundleIdentifiers = targetBundleIdentifiers
+        self.language = language
     }
 }
 
@@ -32,6 +35,7 @@ public struct SessionConfiguration: Sendable {
     /// マイク入力デバイスの UID（nil = システムの既定）。
     public var micDeviceUID: String?
     public var liveTranscription = true
+    /// 会議の言語が自動のときに、ライブ字幕を始めるロケール（日本語。英語の会議は ja-JP の出力の文字の種類で判定できる）。
     public var liveLocale = Locale(identifier: "ja-JP")
     /// 両トラックがこの秒数無音なら finalizing（SPEC §6.2: 3 分）
     public var silenceTimeout: TimeInterval = 180
@@ -65,6 +69,10 @@ public struct SessionSnapshot: Sendable, Equatable {
     public var awaitingStartConfirmation = false
     /// 音声が届いていないトラック（"system" / "mic"）。録音は続いている（SPEC §4.3）。
     public var interruptedTracks: [String] = []
+    /// 録音中のライブ字幕の言語。
+    public var liveLanguage: MeetingLanguage?
+    /// ライブ字幕のモデルを用意している・用意できなかった（用意できていれば nil）。
+    public var livePreparation: LivePreparation?
 }
 
 /// 会議 1 回分の録音・ライブ字幕・状態遷移。終了後は永続キューへ渡して次の録音を受け付ける。
@@ -103,6 +111,10 @@ public actor MeetingSessionController {
     private var captureFailure: CaptureFailure?
     private var meetingLease: MeetingLease?
     private var uiState: String?
+    /// ライブ字幕の言語（両トラックの認識器が見る）。録音ごとに作る。
+    private var liveControl: LiveLocaleControl?
+    private var liveLanguage: MeetingLanguage?
+    private var livePreparation: LivePreparation?
     public private(set) var lastError: String?
 
     public init(store: Store, pipeline: PostProcessPipeline, configuration: SessionConfiguration, postProcessingQueue: PostProcessingQueue? = nil, makeRecording: @escaping @Sendable (RecordingOptions) -> any MeetingRecording = { RecordingSession(options: $0) }) {
@@ -145,7 +157,9 @@ public actor MeetingSessionController {
             micLevelDb: levels.micDb,
             lastError: lastError,
             awaitingStartConfirmation: awaitingStartConfirmation,
-            interruptedTracks: recording?.interruptedTracks() ?? []
+            interruptedTracks: recording?.interruptedTracks() ?? [],
+            liveLanguage: liveLanguage,
+            livePreparation: livePreparation
         )
     }
 
@@ -250,9 +264,26 @@ public actor MeetingSessionController {
         if machine.state == .recording { enterFinalizing(.calendarEndPassed, grace: true) }
     }
 
+    /// 録音中にライブ字幕と会議の言語を切り替える。会議のあとの文字起こし・要約もこの言語にする（自動判定はしない）。
+    public func setLiveLanguage(_ language: MeetingLanguage) throws {
+        guard machine.state == .armed || machine.state == .recording || machine.state == .finalizing else {
+            throw AudioCaptureError.invalidState("録音中ではありません")
+        }
+        info?.language = language
+        liveLanguage = language
+        livePreparation = nil
+        liveControl?.set(language.locale)
+        if let current = meeting {
+            try store.setMeetingLanguage(id: current.id, language: language, detected: false)
+            meeting = try store.meeting(id: current.id) ?? current
+            notifyState()
+        }
+        emit("live language: \(language.rawValue)")
+    }
+
     /// 再試行も同じキューへ入れる。別会議の録音状態には触れない。
-    public func retryPipeline(meetingId: String) async throws {
-        try store.requestPostProcessing(meetingId: meetingId)
+    public func retryPipeline(meetingId: String, reprocess: Bool = false) async throws {
+        try store.requestPostProcessing(meetingId: meetingId, reprocess: reprocess)
         await postProcessingQueue.start()
     }
 
@@ -297,6 +328,10 @@ public actor MeetingSessionController {
         }
         session.setUIState(uiState)
         recording = session
+        let language = info.language ?? MeetingLanguage(code: configuration.liveLocale.identifier) ?? .ja
+        liveLanguage = language
+        livePreparation = nil
+        liveControl = LiveLocaleControl(locale: info.language?.locale ?? configuration.liveLocale)
         // permission / capture の await より先に記録する。開始途中の異常終了も復旧対象になる。
         try createMeetingRow()
         try await session.start()
@@ -319,7 +354,8 @@ public actor MeetingSessionController {
             privacyMode: info.privacyMode,
             status: .recording,
             audioDir: recording.options.outputDirectory.path,
-            recordingStartedAt: origin
+            recordingStartedAt: origin,
+            language: info.language
         )
         meeting = try store.createMeeting(record)
         let flushed = pendingLiveSegments.map { segment -> SegmentRecord in
@@ -351,17 +387,36 @@ public actor MeetingSessionController {
     }
 
     private func consume(_ stream: AsyncStream<AudioChunk>, track: String, label: String?) -> Task<Void, Never> {
-        let locale = configuration.liveLocale
+        let control = liveControl ?? LiveLocaleControl(locale: configuration.liveLocale)
         let generation = pendingMeetingId
+        // モデルの用意の進み具合は相手側のトラックで代表する（両トラックが同じモデルを待つ）
+        let reportsPreparation = track == TrackMerger.systemTrack
+        let report: @Sendable (LivePreparation) -> Void = { [weak self] preparation in
+            guard reportsPreparation else { return }
+            Task { await self?.updateLivePreparation(preparation, generation: generation) }
+        }
         return Task { [weak self] in
-            let transcriber = SpeechAnalyzerLiveTranscriber(reportVolatile: true)
+            let transcriber = SpeechAnalyzerLiveTranscriber(reportVolatile: true, onPreparation: report)
             do {
-                for try await segment in transcriber.start(audio: stream, locale: locale) {
+                for try await segment in transcriber.start(audio: stream, control: control) {
                     await self?.handleLive(generation: generation, track: track, label: label, segment: segment)
                 }
             } catch {
                 await self?.emit("live \(track) error: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func updateLivePreparation(_ preparation: LivePreparation, generation: String?) {
+        guard let generation, generation == pendingMeetingId else { return }
+        switch preparation {
+        case let .ready(locale):
+            // 切り替えに失敗して元の言語で開き直したときは、失敗の知らせを残す
+            if locale.identifier == liveControl?.locale.identifier { livePreparation = nil }
+        case .preparing(_, nil):
+            break  // モデルの確認だけ（ダウンロードしないなら一瞬で終わる）
+        case .preparing, .failed:
+            livePreparation = preparation
         }
     }
 
@@ -540,6 +595,9 @@ public actor MeetingSessionController {
     }
 
     private func cleanupAfterMeeting() {
+        liveControl = nil
+        liveLanguage = nil
+        livePreparation = nil
         meetingLease = nil
         captureFailure = nil
         awaitingStartConfirmation = false

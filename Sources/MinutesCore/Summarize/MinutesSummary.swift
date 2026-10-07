@@ -103,14 +103,20 @@ public struct SummaryInput: Codable, Sendable {
     public var speakerNames: [String: String]
     /// 同シリーズ前回の要約（Phase 3）。
     public var previousSummaryMd: String?
+    /// 会議で話された言語。nil は日本語。
+    public var meetingLanguage: MeetingLanguage?
+    /// 要約を書く言語。nil は日本語。
+    public var outputLanguage: MeetingLanguage?
 
-    public init(meetingTitle: String, startedAt: Date?, attendees: [Attendee], segments: [TranscriptDocument.Segment], speakerNames: [String: String] = [:], previousSummaryMd: String? = nil) {
+    public init(meetingTitle: String, startedAt: Date?, attendees: [Attendee], segments: [TranscriptDocument.Segment], speakerNames: [String: String] = [:], previousSummaryMd: String? = nil, meetingLanguage: MeetingLanguage? = nil, outputLanguage: MeetingLanguage? = nil) {
         self.meetingTitle = meetingTitle
         self.startedAt = startedAt
         self.attendees = attendees
         self.segments = segments
         self.speakerNames = speakerNames
         self.previousSummaryMd = previousSummaryMd
+        self.meetingLanguage = meetingLanguage
+        self.outputLanguage = outputLanguage
     }
 
     public var durationSeconds: Double { segments.map(\.tEnd).max() ?? 0 }

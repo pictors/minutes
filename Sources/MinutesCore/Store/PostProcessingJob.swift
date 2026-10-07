@@ -31,20 +31,21 @@ extension Store {
     }
 
     /// 手動再試行。別の会議を録音中でも依頼でき、処理中・待機中の同じ依頼は増やさない。
-    public func requestPostProcessing(meetingId: String) throws {
+    /// `reprocess` は完了済みの会議も依頼する（会議の言語を変えたときなど。入力が変わったステップだけやり直す）。
+    public func requestPostProcessing(meetingId: String, reprocess: Bool = false) throws {
         if try postProcessingJobs().contains(where: { $0.meetingId == meetingId && $0.jobStatus != .failed }) { return }
         let lease = try acquireMeetingLease(meetingId)
-        try enqueuePostProcessing(meetingId: meetingId, lease: lease)
+        try enqueuePostProcessing(meetingId: meetingId, lease: lease, reprocess: reprocess)
     }
 
     /// 録音側は終了済みファイルとロックを保持したまま、終了状態とジョブを同時に保存する。
-    func enqueuePostProcessing(meetingId: String, lease: MeetingLease, endedAt: Date? = nil) throws {
+    func enqueuePostProcessing(meetingId: String, lease: MeetingLease, endedAt: Date? = nil, reprocess: Bool = false) throws {
         try validateMeetingLease(lease, meetingId: meetingId)
         defer { withExtendedLifetime(lease) {} }
         try writer.write { db in
             guard var meeting = try MeetingRecord.fetchOne(db, key: meetingId) else { throw StoreError.notFound(meetingId) }
             if let job = try PostProcessingJob.fetchOne(db, key: meetingId), job.jobStatus != .failed { return }
-            guard endedAt != nil || meeting.meetingStatus == .failed else { throw StoreError.meetingBusy(meetingId) }
+            guard endedAt != nil || meeting.meetingStatus == .failed || (reprocess && meeting.meetingStatus == .done) else { throw StoreError.meetingBusy(meetingId) }
             guard meeting.audioDirectoryURL != nil else { throw PipelineError.noAudio(meetingId) }
             meeting.meetingStatus = .finalizing
             meeting.endedAt = endedAt ?? meeting.endedAt

@@ -133,6 +133,13 @@ final class AppModel {
     var operationError: String?
     @ObservationIgnored private var notesDrafts: [String: UserNotesDraft] = [:]
     var privacyModeForNextMeeting: PrivacyMode
+    /// 次の録音の言語（既定は設定の「会議の言語」）。英語を選んだら英語のライブ字幕のモデルを先に用意する。
+    var languageForNextMeeting: MeetingLanguageChoice {
+        didSet { if languageForNextMeeting == .en { prepareLiveModel(.en) } }
+    }
+    /// 録音中のライブ字幕の言語（自動は日本語で始め、会議のあとで判定する）。録音していなければ nil。
+    private(set) var liveLanguageChoice: MeetingLanguageChoice?
+    @ObservationIgnored private var preparedLiveModels: Set<MeetingLanguage> = []
     /// minutes://meeting/<id>?seg=<n> で指定されたセグメント
     var pendingSegmentId: Int64?
     /// 表示中の会議の「⋯」（ウィンドウのツールバー）の状態。会議を出していなければ nil。
@@ -179,6 +186,7 @@ final class AppModel {
     init() {
         var settings = AppSettings.load()
         self.privacyModeForNextMeeting = settings.defaultPrivacyMode
+        self.languageForNextMeeting = settings.meetingLanguage
         var openedStore: Store?
         var openError: (any Error)?
         do { openedStore = try Store.open() } catch { openError = error }
@@ -194,6 +202,7 @@ final class AppModel {
         if let store = openedStore {
             self.store = store
             rebuildPipeline()
+            if settings.meetingLanguage == .en { prepareLiveModel(.en) }
             observeMeetings()
             observeRecentMeetings()
             observePanelMeetings()
@@ -245,6 +254,9 @@ final class AppModel {
         let appearanceOnly = sameExceptAppearance == settings
         if privacyModeForNextMeeting == settings.defaultPrivacyMode {
             privacyModeForNextMeeting = newSettings.defaultPrivacyMode
+        }
+        if languageForNextMeeting == settings.meetingLanguage {
+            languageForNextMeeting = newSettings.meetingLanguage
         }
         settings = newSettings
         do { try newSettings.save() } catch {
@@ -314,7 +326,8 @@ final class AppModel {
         default:
             cloud = APIKeys.resolve(APIKeys.elevenLabs).map { ElevenLabsTranscriber(apiKey: $0) }
         }
-        let local = LocalTranscriber(locale: Locale(identifier: settings.liveLocale))
+        // この Mac の中の文字起こしは、会議ごとの言語（日本語・英語）のロケールで認識する
+        let local = LocalTranscriber()
         let summarizer = try? SummaryProviders.make(settings: settings)
         var targets: [any SyncTarget] = []
         if let sync = settings.syncDirectoryURL { targets.append(LocalDirectorySyncTarget(destination: sync)) }
@@ -325,6 +338,7 @@ final class AppModel {
             exportDirectory: settings.exportDirectoryURL,
             syncTargets: targets,
             learnKeyterms: settings.keytermsAutoLearn,
+            englishSummaryLanguage: settings.englishSummaryLanguage,
             notify: { meeting, notes in
                 Task { @MainActor in
                     AppModel.postNotification(title: "議事録ができました", body: meeting.title + (notes?.summaryMd == nil ? "（要約なし）" : ""), meetingId: meeting.id)
@@ -349,7 +363,8 @@ final class AppModel {
         var configuration = SessionConfiguration(targetBundleIdentifiers: settings.targetBundleIdentifiers, audioRootDirectory: settings.audioRootDirectoryURL)
         configuration.includeMic = settings.includeMic
         configuration.micDeviceUID = settings.micDevice
-        configuration.liveLocale = Locale(identifier: settings.liveLocale)
+        // 会議の言語が自動のときは日本語で始める（英語の会議は、日本語のライブ字幕の文字の種類で会議のあとに判定する）
+        configuration.liveLocale = MeetingLanguage.ja.locale
         configuration.silenceTimeout = settings.silenceTimeoutSeconds
         configuration.confirmBeforeAutoStart = settings.confirmBeforeAutoStart
         let session = MeetingSessionController(store: store, pipeline: pipeline, configuration: configuration, postProcessingQueue: queue)
@@ -463,6 +478,8 @@ final class AppModel {
         startingRecording = true
         var pending = info ?? PendingMeetingInfo(title: defaultTitle())
         if info == nil { pending.privacyMode = privacyModeForNextMeeting }
+        if pending.language == nil { pending.language = languageForNextMeeting.language }
+        liveLanguageChoice = MeetingLanguageChoice(pending.language)
         if let eventId = pending.calendarEventId, let candidate = candidates.first(where: { $0.id == eventId }), let store {
             _ = try? store.claimAutoRecording(occurrence: eventId + "/" + Store.isoString(candidate.startDate), expiresAt: candidate.endDate, now: Date())
         }
@@ -497,16 +514,43 @@ final class AppModel {
         }
     }
 
+    /// 録音中にライブ字幕と会議の言語を切り替える（会議のあとの文字起こし・要約もこの言語になる）。
+    func setLiveLanguage(_ language: MeetingLanguage) {
+        guard let session, isRecording else { return }
+        let previous = liveLanguageChoice
+        liveLanguageChoice = MeetingLanguageChoice(language)
+        Task {
+            do { try await session.setLiveLanguage(language) } catch {
+                liveLanguageChoice = previous
+                operationError = "言語を切り替えられません: \(error.localizedDescription)"
+                appendEvent(operationError ?? error.localizedDescription)
+            }
+        }
+    }
+
+    /// ライブ字幕のモデルを先に入れておく（録音中に切り替えたときに待たせない）。失敗してもログだけ残す。
+    func prepareLiveModel(_ language: MeetingLanguage) {
+        guard !preparedLiveModels.contains(language) else { return }
+        preparedLiveModels.insert(language)
+        Task { [weak self] in
+            do { try await SpeechAssets.prepareLiveTranscription(locale: language.locale) } catch {
+                self?.preparedLiveModels.remove(language)
+                self?.appendEvent("\(language.title)のライブ字幕のモデルを用意できません: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func stopRecording() {
         guard let session else { return }
         awaitingStartConfirmation = false
         Task { await session.stop() }
     }
 
-    func retryPipeline(meetingId: String) {
+    /// 後処理をやり直す。`reprocess` は完了済みの会議も対象にする（会議の言語を変えたとき）。
+    func retryPipeline(meetingId: String, reprocess: Bool = false) {
         guard let session else { return }
         Task {
-            do { try await session.retryPipeline(meetingId: meetingId) }
+            do { try await session.retryPipeline(meetingId: meetingId, reprocess: reprocess) }
             catch {
                 operationError = "再実行できません: \(error.localizedDescription)"
                 appendEvent(operationError ?? error.localizedDescription)
@@ -545,7 +589,9 @@ final class AppModel {
                                           enabled: settings.autoStartOnAudio, appRunning: detector.isTargetRunning(), idle: true) else { continue }
                 var info = candidate.pendingInfo
                 info.privacyMode = privacyModeForNextMeeting
+                info.language = languageForNextMeeting.language
                 try await session.arm(info)
+                liveLanguageChoice = MeetingLanguageChoice(info.language)
                 AppModel.postNotification(title: "録音準備", body: settings.confirmBeforeAutoStart
                     ? "\(candidate.title) の音声を検知したら開始を確認します"
                     : "\(candidate.title) の音声を検知したら録音を開始します")
@@ -600,6 +646,7 @@ final class AppModel {
             clearLiveVolatile()
             if rebuildAfterRecording { rebuildPipeline() }
         }
+        if state != .armed, state != .recording, state != .finalizing, !startingRecording { liveLanguageChoice = nil }
         updateElapsedTicker()
     }
 

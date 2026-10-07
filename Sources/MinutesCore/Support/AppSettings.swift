@@ -54,7 +54,11 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var confirmBeforeAutoStart: Bool = false
     public var silenceTimeoutSeconds: Double = 180
     public var keytermsAutoLearn: Bool = true
-    public var liveLocale: String = "ja-JP"
+    /// 新しい会議の言語（2026-10-07）。自動はライブ字幕を日本語で始め、会議のあとで英語の会議かを判定する。
+    /// 録音中はパネルや録音画面で切り替えられる。
+    public var meetingLanguage: MeetingLanguageChoice = .auto
+    /// 英語の会議の要約の言語（2026-10-07 決定: 既定は英語）。
+    public var englishSummaryLanguage: MeetingLanguage = .en
     public var includeMic: Bool = true
     /// 自分（mic トラック "me"）の表示名。空なら「自分」/ 書き出しは "me"。
     public var selfName: String?
@@ -100,7 +104,11 @@ public struct AppSettings: Codable, Sendable, Equatable {
         confirmBeforeAutoStart = try container.decodeIfPresent(Bool.self, forKey: .confirmBeforeAutoStart) ?? defaults.confirmBeforeAutoStart
         silenceTimeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .silenceTimeoutSeconds) ?? defaults.silenceTimeoutSeconds
         keytermsAutoLearn = try container.decodeIfPresent(Bool.self, forKey: .keytermsAutoLearn) ?? defaults.keytermsAutoLearn
-        liveLocale = try container.decodeIfPresent(String.self, forKey: .liveLocale) ?? defaults.liveLocale
+        // 会議の言語を持つ前は、ライブ字幕のロケール（live_locale）だけを選べた。英語にしていたら英語の会議として引き継ぐ
+        let legacyLiveLocale = try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(String.self, forKey: .liveLocale)
+        meetingLanguage = (try? container.decodeIfPresent(String.self, forKey: .meetingLanguage)).flatMap(MeetingLanguageChoice.init(rawValue:))
+            ?? (MeetingLanguage(code: legacyLiveLocale) == .en ? .en : defaults.meetingLanguage)
+        englishSummaryLanguage = (try? container.decodeIfPresent(String.self, forKey: .englishSummaryLanguage)).flatMap(MeetingLanguage.init(rawValue:)) ?? defaults.englishSummaryLanguage
         includeMic = try container.decodeIfPresent(Bool.self, forKey: .includeMic) ?? defaults.includeMic
         selfName = try container.decodeIfPresent(String.self, forKey: .selfName)
         micDevice = try container.decodeIfPresent(String.self, forKey: .micDevice)
@@ -109,6 +117,10 @@ public struct AppSettings: Codable, Sendable, Equatable {
         appearance = (try? container.decodeIfPresent(String.self, forKey: .appearance)).flatMap(AppAppearance.init(rawValue:)) ?? defaults.appearance
         onboardingCompletedAt = try? container.decodeIfPresent(Date.self, forKey: .onboardingCompletedAt)
         recordingNotice = try container.decodeIfPresent(String.self, forKey: .recordingNotice)
+    }
+
+    private enum LegacyKeys: String, CodingKey {
+        case liveLocale
     }
 
     public var resolvedSelfName: String? {

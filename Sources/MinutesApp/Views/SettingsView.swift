@@ -526,7 +526,6 @@ struct ProviderSettingsPane: View {
     @State private var claudeCode: ConnectionCheck = .idle
     @State private var claudeCodeConnection: ClaudeCodeConnection?
     @State private var claudeCodeRefresh = 0
-    @State private var supportedLocales: [String] = []
 
     enum ConnectionCheck: Equatable {
         case idle, checking, ok(String), failed(String)
@@ -567,13 +566,6 @@ struct ProviderSettingsPane: View {
         return detail.flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// 対応ロケール一覧（現在の設定値は一覧になくても残す）。
-    private var localeChoices: [String] {
-        var choices = supportedLocales
-        if !choices.contains(draft.liveLocale) { choices.insert(draft.liveLocale, at: 0) }
-        return choices
-    }
-
     var body: some View {
         Form {
             Section {
@@ -591,11 +583,12 @@ struct ProviderSettingsPane: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Toggle("要約で学習した用語を次回の keyterms に追加する", isOn: $draft.keytermsAutoLearn)
             } footer: {
                 Text((finalEntry.map { $0.detail + "。" } ?? "")
                      + "ローカルのみの会議とクラウド失敗時は常にローカルを使います。"
                      + (finalEntry?.keyName == nil ? "" : "キーは Keychain に保存し、.env / 環境変数より優先します。")
-                     + "変更は次の後処理から適用されます。")
+                     + "変更は次の後処理から適用されます。学習した用語は「人物と用語」で確認・削除できます。")
             }
             Section {
                 Picker("要約", selection: Binding(get: { draft.resolvedSummaryProvider }, set: { draft.summaryProvider = $0 })) {
@@ -658,17 +651,19 @@ struct ProviderSettingsPane: View {
                 }
             }
             Section {
-                Picker("ロケール", selection: $draft.liveLocale) {
-                    ForEach(localeChoices, id: \.self) { identifier in
-                        Text(Locale.current.localizedString(forIdentifier: identifier).map { "\($0)（\(identifier)）" } ?? identifier).tag(identifier)
-                    }
+                Picker("会議の言語", selection: $draft.meetingLanguage) {
+                    Text("自動（日本語と英語）").tag(MeetingLanguageChoice.auto)
+                    Text("日本語").tag(MeetingLanguageChoice.ja)
+                    Text("英語").tag(MeetingLanguageChoice.en)
                 }
-                .disabled(model.isRecording)
-                Toggle("要約で学習した用語を次回の keyterms に追加する", isOn: $draft.keytermsAutoLearn)
+                Picker("英語の会議の要約", selection: $draft.englishSummaryLanguage) {
+                    Text("英語").tag(MeetingLanguage.en)
+                    Text("日本語").tag(MeetingLanguage.ja)
+                }
             } header: {
-                Text("ライブ字幕")
+                Text("会議の言語")
             } footer: {
-                Text(supportedLocales.isEmpty ? "SpeechAnalyzer が対応するロケールを確認しています…" : "SpeechAnalyzer が対応するロケール。モデルは初回の録音時にダウンロードされます。学習した用語は「人物と用語」で確認・削除できます。")
+                Text("自動は、ライブ字幕を日本語で始め、会議のあとで英語の会議かを判定します。録音中はメニューバーのパネルや録音画面で言語を切り替えられます。英語のライブ字幕のモデルは、初めて英語を選んだときにダウンロードします。会議の言語と要約の言語は、会議の画面であとから変えられます。")
             }
         }
         .formStyle(.grouped)
@@ -676,10 +671,6 @@ struct ProviderSettingsPane: View {
         .animation(.snappy, value: draft.resolvedSummaryProvider)
         .task(id: codexLookup) { await checkCodex() }
         .task(id: claudeCodeLookup) { await checkClaudeCode() }
-        .task {
-            let locales = await SpeechAssets.supportedLocales()
-            supportedLocales = locales.map(\.identifier).sorted()
-        }
     }
 
     @ViewBuilder

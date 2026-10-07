@@ -110,7 +110,7 @@ final class TestRecording {
         }
         self.session = session
         phase = .running
-        let locale = Locale(identifier: settings.liveLocale)
+        let locale = settings.meetingLanguage.liveLanguage.locale
         for (track, stream) in [(TrackMerger.systemTrack, session.systemChunks), (TrackMerger.micTrack, session.micChunks)] {
             guard let stream else { continue }
             tasks.append(Task { [weak self] in

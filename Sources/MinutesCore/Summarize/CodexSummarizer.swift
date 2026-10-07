@@ -33,11 +33,14 @@ public final class CodexSummarizer: Summarizing {
     }
 
     public func summarize(_ input: SummaryInput) async throws -> MinutesSummary {
-        try await StructuredSummary.summarize(input, prompt: prompt, generate: generate)
+        let system = prompt.systemMessage(for: input)
+        return try await StructuredSummary.summarize(input, prompt: prompt) { user, validIds in
+            try await generate(system: system, user: user, validIds: validIds)
+        }
     }
 
-    private func generate(_ user: String, validIds: Set<Int>) async throws -> MinutesSummary {
-        let completion = try await client.complete(system: prompt.system, user: user, model: model)
+    private func generate(system: String, user: String, validIds: Set<Int>) async throws -> MinutesSummary {
+        let completion = try await client.complete(system: system, user: user, model: model)
         let summary: MinutesSummary
         do {
             summary = try JSONCoding.decoder().decode(MinutesSummary.self, from: Data(completion.text.utf8))

@@ -71,14 +71,23 @@ public struct MeetingRecord: MinutesRecord, Identifiable, Equatable {
     public var recordingStartedAt: Date?
     /// タグ（JSON 配列）。スマートフォルダ「タグ」と検索に使う。
     public var tagsJson: String?
+    /// 会議の言語（ISO 639-1、`MeetingLanguage`）。nil はまだ決まっていない（自動。言語を持つ前の会議は日本語で処理した）。
+    public var language: String?
+    /// `language` を会議のあとの自動判定で決めた（録音中の切り替えや会議の詳細で選んだときは false）。
+    public var languageDetected: Bool
+    /// 要約の言語（ISO 639-1）。nil は日本語。文字起こしのときに会議の言語と設定から決める。
+    public var summaryLanguage: String?
 
-    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = []) {
+    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = [], language: MeetingLanguage? = nil, languageDetected: Bool = false, summaryLanguage: MeetingLanguage? = nil) {
         self.id = id
         self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.recordingStartedAt = recordingStartedAt
         self.tagsJson = MeetingRecord.encodeTags(tags)
+        self.language = language?.rawValue
+        self.languageDetected = languageDetected
+        self.summaryLanguage = summaryLanguage?.rawValue
         self.platform = platform?.rawValue
         self.calendarEventId = calendarEventId
         self.calendarTitle = calendarTitle
@@ -114,6 +123,12 @@ public struct MeetingRecord: MinutesRecord, Identifiable, Equatable {
     }
 
     public var audioDirectoryURL: URL? { audioDir.map { URL(fileURLWithPath: $0, isDirectory: true) } }
+
+    /// 文字起こしに使う言語。決まっていなければ日本語（言語を持つ前の会議も日本語で処理した）。
+    public var meetingLanguage: MeetingLanguage { MeetingLanguage(code: language) ?? .ja }
+
+    /// 要約と書き出しの見出しの言語。
+    public var summaryOutputLanguage: MeetingLanguage { MeetingLanguage(code: summaryLanguage) ?? .ja }
 
     /// 録音ファイル先頭から会議開始までの秒数。録音準備（armed）中に録った区間で、mic の文字起こしから除外する。
     public var meetingStartOffsetSeconds: Double {

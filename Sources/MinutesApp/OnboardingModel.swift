@@ -330,7 +330,7 @@ final class OnboardingModel {
         if speechModel.isOK { return }
         speechModel = .checking
         do {
-            try await SpeechAssets.prepareLiveTranscription(locale: Locale(identifier: model.settings.liveLocale)) { [weak self] fraction in
+            try await SpeechAssets.prepareLiveTranscription(locale: model.settings.meetingLanguage.liveLanguage.locale) { [weak self] fraction in
                 Task { @MainActor in self?.speechProgress = fraction }
             }
             speechProgress = 1

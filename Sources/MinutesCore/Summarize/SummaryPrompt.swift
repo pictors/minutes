@@ -45,6 +45,11 @@ public struct SummaryPrompt: Sendable {
         return SummaryPrompt(version: version, system: system, userTemplate: user, mergeTemplate: merge)
     }
 
+    /// system は会議の言語と要約の言語を差し込む（日本語の会議は v2 と同じ文になる）。
+    public func systemMessage(for input: SummaryInput) -> String {
+        fill(system, input: input, extra: [:])
+    }
+
     func userMessage(for input: SummaryInput, transcript: String, partLabel: String?) -> String {
         fill(userTemplate, input: input, extra: [
             "{{transcript}}": transcript,
@@ -63,7 +68,17 @@ public struct SummaryPrompt: Sendable {
             .replacingOccurrences(of: "{{date}}", with: input.startedAt.map { JSONCoding.iso8601Local($0) } ?? "不明")
             .replacingOccurrences(of: "{{attendees}}", with: attendees)
             .replacingOccurrences(of: "{{previous_summary}}", with: input.previousSummaryMd ?? "（なし）")
+            .replacingOccurrences(of: "{{meeting_language}}", with: (input.meetingLanguage ?? .ja).title)
+            .replacingOccurrences(of: "{{output_language}}", with: Self.outputLanguageText(input.outputLanguage ?? .ja))
         for (key, value) in extra { text = text.replacingOccurrences(of: key, with: value) }
         return text
+    }
+
+    /// 「出力はすべて{{output_language}}。」に入れる言葉。英語は本文の欄を明示する（指示文が日本語なので、つられて日本語で書かせない）。
+    static func outputLanguageText(_ language: MeetingLanguage) -> String {
+        switch language {
+        case .ja: "日本語"
+        case .en: "英語（summary_md・decisions・action_items・open_questions の文章を英語で書く）"
+        }
     }
 }

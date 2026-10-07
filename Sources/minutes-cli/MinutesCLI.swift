@@ -84,6 +84,7 @@ struct MinutesCLI {
               --summary-provider codex|claude-code|anthropic|none（既定: codex）--summary-model <model>
               --codex-path <absolute-path> --claude-path <absolute-path>
               --summary-only で保存済み本文から要約だけを更新（本文・根拠 ID は保持）
+              --language ja|en で会議の言語を決める（省略すると新しい会議はライブ字幕から自動判定）。--summary-language ja|en で要約の言語
               Codex の要約は codex login、Claude Code の要約は claude auth login のログインを使用。ANTHROPIC_API_KEY は不要。
 
           minutes-cli repair-rate <recording-dir> --out <new-dir> --track system|mic --sample-rate <Hz>

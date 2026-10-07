@@ -118,17 +118,25 @@ struct MenuBarPanel: View {
             }
         } trailing: {
             if state == .recording || state == .finalizing, let meeting {
-                HStack(spacing: 5) {
-                    if meeting.privacy == .localOnly {
-                        Image(systemName: "lock.fill").help("ローカルのみ（クラウドへ送信しない）")
+                HStack(spacing: 6) {
+                    LiveLanguageMenu(preparation: snapshot?.livePreparation)
+                    HStack(spacing: 5) {
+                        if meeting.privacy == .localOnly {
+                            Image(systemName: "lock.fill").help("ローカルのみ（クラウドへ送信しない）")
+                        }
+                        Text("\(meeting.startedAt.formatted(date: .omitted, time: .shortened)) から")
+                            .monospacedDigit()
                     }
-                    Text("\(meeting.startedAt.formatted(date: .omitted, time: .shortened)) から")
-                        .monospacedDigit()
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.secondary)
                 }
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.secondary)
+            } else if state == .armed {
+                LiveLanguageMenu(preparation: snapshot?.livePreparation)
             } else if !model.isRecording {
-                PrivacyMenu(mode: Binding(get: { model.privacyModeForNextMeeting }, set: { model.privacyModeForNextMeeting = $0 }))
+                HStack(spacing: 6) {
+                    NextLanguageMenu(choice: Binding(get: { model.languageForNextMeeting }, set: { model.languageForNextMeeting = $0 }))
+                    PrivacyMenu(mode: Binding(get: { model.privacyModeForNextMeeting }, set: { model.privacyModeForNextMeeting = $0 }))
+                }
             }
         }
     }
@@ -168,6 +176,7 @@ struct MenuBarPanel: View {
             if let names = snapshot?.interruptedTrackNames {
                 return "\(names)が途切れています · 録音は継続中"
             }
+            if let status = snapshot?.livePreparation?.statusText { return status }
             return ["録音中", tappedApps].compactMap { $0 }.joined(separator: " · ")
         case .finalizing:
             return "録音の終了を待っています"
@@ -183,7 +192,7 @@ struct MenuBarPanel: View {
         switch model.sessionState {
         case .armed: model.awaitingStartConfirmation
         case .idle, .done, .failed: model.runningTargetApps().isEmpty
-        case .recording: snapshot?.interruptedTracks.isEmpty == false
+        case .recording: snapshot?.interruptedTracks.isEmpty == false || snapshot?.livePreparation?.isFailure == true
         default: false
         }
     }
@@ -506,16 +515,7 @@ struct PrivacyMenu: View {
             }
             .pickerStyle(.inline)
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: mode.symbol)
-                Text(mode.title)
-            }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .background(Surface.card, in: .capsule)
-            .contentShape(.capsule)
+            HeaderCapsuleLabel(systemImage: mode.symbol, title: mode.title)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

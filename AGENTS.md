@@ -78,7 +78,7 @@ python3 scripts/make-fixtures.py
 ```
 Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方から使う）
   Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList
-  Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ, TrackMerger, TranscriptDocument
+  Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
   Eval/                      CER
   Support/                   ArgumentParser, DotEnv, Multipart, HostClock, JSON, Log, AppSettings, Diagnostics（診断情報の書き出し）
   Store/                     GRDB レコード・スキーマ・Store・音声保持
@@ -111,6 +111,7 @@ site/                        公開ページ（minutes.tools、日本語と英�
 - Process Tap は「タブ単位」の切り出しができない。会議は専用ブラウザで開く運用（初回の案内と README）。
 - SpeechAnalyzer の日本語モデルと FluidAudio のモデルは初回にダウンロードされる（`assets --install`、`transcribe --provider local` の初回、アプリの初回の案内）。
 - 最初の起動では初回の案内（`OnboardingView`）が開き、終えるまで自動録音を準備しない。会議がすでにある環境では出さない。設定 > 診断 から開き直せる。
+- 会議の言語（日本語・英語、SPEC §5.5）: 会議ごとに `meetings.language` を持ち、ライブ字幕・確定の文字起こし・要約・書き出しが従う。自動は日本語のライブ字幕で始め、後処理の文字起こしの前に字幕の文字の種類で判定する（`MeetingLanguageDetector`）。録音中の切り替えは `LiveLocaleControl` で認識器を開き直す。日本語は後処理の指紋と要約の入力に値を足さない（足すと既存の会議がすべて文字起こしし直しになる）。英語のライブ字幕のモデルは初めて英語を選んだときにダウンロードする。
 - 自動更新は Sparkle（`Updates.swift`）。配布用のビルド（`build-app.sh --dist`）だけが SUFeedURL を持ち、開発用のビルドと `swift run` では動かさない。Sparkle.framework は XPC サービスを外して内側から署名する。更新の DMG は EdDSA で署名する（鍵はキーチェーンのアカウント `jp.pictors.minutes`。公開鍵は Info.plist の SUPublicEDKey）。版を上げるときは Info.plist の CFBundleShortVersionString と CFBundleVersion（数字、毎回増やす）を直す。
 
 ## 要約（Codex / Claude Code / Anthropic）
@@ -124,3 +125,4 @@ site/                        公開ページ（minutes.tools、日本語と英�
   - `MINUTES_CLAUDE_CODE_LIVE=1 swift test --filter ClaudeCodeSummarizerTests.liveSmoke`（`MINUTES_CLAUDE_CODE_MODEL=<alias>`）
   - `MINUTES_CLAUDE_CODE_LIVE=1 swift test --filter ClaudeCodeSummarizerTests.liveModels`
 - CLI の品質検証は `python3 scripts/test-transcribe-validation.py .build/debug/minutes-cli`。
+- `MINUTES_SPEECH_LIVE=1 swift test --filter LiveLocaleRestartTests` は、実際の SpeechAnalyzer で録音中の言語の切り替え（認識器の開き直し）を確かめる任意テスト（fixtures/sample_meeting の音声を使う。送信なし、新しいモデルも落とさない）。

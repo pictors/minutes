@@ -5,7 +5,7 @@ import MinutesCore
 /// アプリと同じ Store / パイプラインを使うので、実会議のフォルダで G3〜G5 を CLI から確認できる。
 enum ProcessCommand {
     static let spec = ArgumentSpec(
-        options: ["title", "privacy", "provider", "db", "export-dir", "sync-dir", "force", "locale", "summary-provider", "summary-model", "codex-path", "claude-path"],
+        options: ["title", "privacy", "provider", "db", "export-dir", "sync-dir", "force", "locale", "language", "summary-language", "summary-provider", "summary-model", "codex-path", "claude-path"],
         flags: ["no-summary", "summary-only", "quiet"]
     )
 
@@ -22,6 +22,15 @@ enum ProcessCommand {
             throw ArgumentError.invalidValue(option: "privacy", value: privacyRaw, expected: "cloud_ok | local_only")
         }
         let locale = Locale(identifier: parsed.value("locale") ?? "ja-JP")
+        // 会議の言語（省略すると、新しい会議は自動判定、既存の会議はそのまま）と要約の言語
+        let language = try parsed.value("language").map { raw -> MeetingLanguage in
+            guard let language = MeetingLanguage(rawValue: raw) else { throw ArgumentError.invalidValue(option: "language", value: raw, expected: "ja | en") }
+            return language
+        }
+        let summaryLanguage = try parsed.value("summary-language").map { raw -> MeetingLanguage in
+            guard let language = MeetingLanguage(rawValue: raw) else { throw ArgumentError.invalidValue(option: "summary-language", value: raw, expected: "ja | en") }
+            return language
+        }
         let quiet = parsed.has("quiet")
         let force = Set(parsed.list("force").compactMap { PipelineStep(rawValue: $0) })
 
@@ -54,6 +63,12 @@ enum ProcessCommand {
             ))
             Console.info("会議を作成: \(meeting.id) (\(meeting.title))")
         }
+        if let language, MeetingLanguage(code: meeting.language) != language || meeting.languageDetected {
+            // 言語を変えたら本文の編集を外して文字起こしし直す（アプリの会議の画面と同じ）
+            try store.prepareRetranscription(meetingId: meeting.id)
+            try store.setMeetingLanguage(id: meeting.id, language: language, detected: false)
+        }
+        if let summaryLanguage { try store.setSummaryLanguage(id: meeting.id, language: summaryLanguage) }
 
         let providerName = parsed.value("provider") ?? "elevenlabs"
         let cloud: (any BatchTranscriber)?
@@ -89,6 +104,7 @@ enum ProcessCommand {
         if let sync = parsed.value("sync-dir") { targets.append(LocalDirectorySyncTarget(destination: URL(fileURLWithPath: sync))) }
         let providers = PipelineProviders(
             cloud: cloud, local: local, summarizer: summarizer, exportDirectory: exportDirectory, syncTargets: targets,
+            englishSummaryLanguage: summaryLanguage ?? settings.englishSummaryLanguage,
             notify: { meeting, notes in Console.out("通知: 議事録ができました — \(meeting.title)\(notes == nil ? "（要約なし）" : "")") },
             onProgress: { _, step, message in Console.info("[\(step.rawValue)] \(message)") }
         )

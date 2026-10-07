@@ -150,7 +150,7 @@ public enum MeetingExporter {
         let document = TranscriptDocument(
             meeting: .init(id: meeting.id, title: meeting.title, startedAt: meeting.startedAt, durationSeconds: input.segments.map(\.tEnd).max(), sourceDirectory: nil),
             provider: input.providerDescription,
-            language: "ja",
+            language: meeting.meetingLanguage.rawValue,
             speakers: speakers.map { .init(label: $0.clusterLabel, name: $0.displayName, providerLabel: nil, track: $0.clusterLabel == TrackMerger.micSpeakerLabel ? TrackMerger.micTrack : TrackMerger.systemTrack) },
             segments: segments.map { segment in
                 .init(id: Int(segment.id ?? 0), track: segment.clusterLabel == TrackMerger.micSpeakerLabel ? TrackMerger.micTrack : TrackMerger.systemTrack,
@@ -219,40 +219,43 @@ public enum MeetingExporter {
             }
         }
         lines.append("privacy_mode: \(meeting.privacyMode)")
+        lines.append("language: \(meeting.meetingLanguage.rawValue)")
         lines.append("transcript_sha256: \(transcriptSha256)")
         lines.append("generated_by: \(yamlString(generatedBy))")
         lines.append("---")
         lines.append("")
+        // 見出しは要約の言語に合わせる（英語で要約した会議は英語の見出し。2026-10-07 決定）
+        let label = Labels(meeting.summaryOutputLanguage)
         lines.append("# \(meeting.title)")
         lines.append("")
-        lines.append("## 要約")
+        lines.append("## \(label.summary)")
         lines.append("")
-        lines.append(notes?.summaryMd?.isEmpty == false ? notes!.summaryMd! : "（要約なし）")
+        lines.append(notes?.summaryMd?.isEmpty == false ? notes!.summaryMd! : label.noSummary)
         lines.append("")
-        lines.append("## 決定事項")
+        lines.append("## \(label.decisions)")
         lines.append("")
         let decisions = notes?.decisions ?? []
-        lines.append(contentsOf: decisions.isEmpty ? ["（なし）"] : decisions.map { "- \($0.text)（evidence: \(evidenceText($0.evidence))）" })
+        lines.append(contentsOf: decisions.isEmpty ? [label.none] : decisions.map { "- \($0.text)\(label.paren("evidence: \(evidenceText($0.evidence))"))" })
         lines.append("")
-        lines.append("## アクション")
+        lines.append("## \(label.actions)")
         lines.append("")
         let actions = notes?.actionItems ?? []
-        lines.append(contentsOf: actions.isEmpty ? ["（なし）"] : actions.map {
-            "- [\($0.done == true ? "x" : " ")] \($0.text)（owner: \($0.owner) / kind: \($0.kind.rawValue) / due: \($0.due ?? "-") / evidence: \(evidenceText($0.evidence))）"
+        lines.append(contentsOf: actions.isEmpty ? [label.none] : actions.map {
+            "- [\($0.done == true ? "x" : " ")] \($0.text)\(label.paren("owner: \($0.owner) / kind: \($0.kind.rawValue) / due: \($0.due ?? "-") / evidence: \(evidenceText($0.evidence))"))"
         })
         lines.append("")
-        lines.append("## 未決・論点")
+        lines.append("## \(label.openQuestions)")
         lines.append("")
         let questions = notes?.openQuestions ?? []
-        lines.append(contentsOf: questions.isEmpty ? ["（なし）"] : questions.map { "- \($0.text)（evidence: \(evidenceText($0.evidence))）" })
+        lines.append(contentsOf: questions.isEmpty ? [label.none] : questions.map { "- \($0.text)\(label.paren("evidence: \(evidenceText($0.evidence))"))" })
         if let userNotes = notes?.userNotesMd, !userNotes.isEmpty {
             lines.append("")
-            lines.append("## メモ")
+            lines.append("## \(label.notes)")
             lines.append("")
             lines.append(userNotes)
         }
         lines.append("")
-        lines.append("## 全文（話者付き）")
+        lines.append("## \(label.transcript)")
         lines.append("")
         for segment in segments {
             lines.append("[\(TimeFormatting.hms(segment.tStart))] \(displayName(segment)): \(segment.text)")
@@ -263,6 +266,25 @@ public enum MeetingExporter {
 
     static func evidenceText(_ ids: [Int]) -> String {
         ids.isEmpty ? "-" : ids.map { "seg#\($0)" }.joined(separator: ", ")
+    }
+
+    /// meeting.md の見出しと定型の言葉（要約の言語ごと）。
+    struct Labels {
+        var summary, noSummary, decisions, actions, openQuestions, notes, transcript, none: String
+        var paren: (String) -> String
+
+        init(_ language: MeetingLanguage) {
+            switch language {
+            case .ja:
+                (summary, noSummary, decisions, actions, openQuestions, notes, transcript, none) =
+                    ("要約", "（要約なし）", "決定事項", "アクション", "未決・論点", "メモ", "全文（話者付き）", "（なし）")
+                paren = { "（\($0)）" }
+            case .en:
+                (summary, noSummary, decisions, actions, openQuestions, notes, transcript, none) =
+                    ("Summary", "(No summary)", "Decisions", "Action items", "Open questions", "Notes", "Transcript", "(None)")
+                paren = { " (\($0))" }
+            }
+        }
     }
 }
 

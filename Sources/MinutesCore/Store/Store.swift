@@ -297,6 +297,55 @@ public final class Store: Sendable {
         return try request.fetchAll(db)
     }
 
+    // MARK: - Language
+
+    /// 会議の言語を決める（録音中の切り替え、会議の詳細での変更、会議のあとの自動判定）。
+    /// 要約の言語も一緒に置き換える。nil なら次の文字起こしで、会議の言語と設定から決め直す。
+    public func setMeetingLanguage(id: String, language: MeetingLanguage, detected: Bool, summaryLanguage: MeetingLanguage? = nil) throws {
+        try writer.write { db in
+            guard var record = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound("meeting \(id)") }
+            record.language = language.rawValue
+            record.languageDetected = detected
+            record.summaryLanguage = summaryLanguage?.rawValue
+            record.updatedAt = Date()
+            try record.update(db)
+        }
+    }
+
+    /// 要約の言語だけを変える（会議の言語と本文はそのまま。要約は作り直す）。
+    public func setSummaryLanguage(id: String, language: MeetingLanguage) throws {
+        try writer.write { db in
+            guard var record = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound("meeting \(id)") }
+            record.summaryLanguage = language.rawValue
+            record.updatedAt = Date()
+            try record.update(db)
+        }
+    }
+
+    /// 本文に人の編集があるか（言語を変えて文字起こしし直すと、編集は外れる）。
+    public func hasTranscriptEdits(meetingId: String) throws -> Bool {
+        try writer.read { db in
+            try Store.fetchSegments(db, meetingId: meetingId, source: .final).contains { $0.originalText == nil || $0.text != $0.originalText }
+        }
+    }
+
+    /// 言語を変えて文字起こしし直す前に、本文の編集を外す（編集した本文は transcript_revisions に残す）。
+    /// 再認識は編集済みの本文を置き換えない決まり（`reconcileSegments`）なので、言語を変えたときだけここで戻す。
+    public func prepareRetranscription(meetingId: String) throws {
+        try writer.write { db in
+            let current = try Store.fetchSegments(db, meetingId: meetingId, source: .final)
+            guard current.contains(where: { $0.originalText == nil || $0.text != $0.originalText }) else { return }
+            let content = String(decoding: try JSONCoding.encoder().encode(current.map { record -> SegmentRecord in
+                var raw = record; raw.id = nil; raw.speakerId = nil; return raw
+            }), as: UTF8.self)
+            try db.execute(sql: "INSERT OR IGNORE INTO transcript_revisions(meeting_id, content, created_at) VALUES (?, ?, ?)", arguments: [meetingId, content, Store.isoString(Date())])
+            try db.execute(sql: """
+                UPDATE segments SET text = COALESCE(original_text, text), original_text = COALESCE(original_text, text)
+                WHERE meeting_id = ? AND source = 'final' AND is_current = 1
+                """, arguments: [meetingId])
+        }
+    }
+
     // MARK: - Tags
 
     public func setMeetingTags(id: String, tags: [String]) throws {
@@ -751,7 +800,10 @@ public final class Store: Sendable {
             // 発話単位で話者を変更していれば、その話者のラベルで要約に渡す
             let label = row.speakerId.flatMap { byId[$0]?.clusterLabel } ?? row.clusterLabel
             return TranscriptDocument.Segment(id: Int(id), track: label == "me" ? "mic" : "system", tStart: row.tStart, tEnd: row.tEnd, speaker: label, text: row.text)
-        }, speakerNames: names)
+        }, speakerNames: names,
+        // 日本語は nil のまま渡す（言語を持つ前の会議と入力のハッシュを変えない）
+        meetingLanguage: meeting.meetingLanguage == .ja ? nil : meeting.meetingLanguage,
+        outputLanguage: meeting.summaryOutputLanguage == .ja ? nil : meeting.summaryOutputLanguage)
     }
 
     public func saveGeneratedSummary(meetingId: String, summary: MinutesSummary, model: String, inputFingerprint: String) throws {

@@ -26,6 +26,11 @@ public struct LocalTranscriber: BatchTranscriber {
 
     public func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
         let started = Date()
+        // 会議の言語（日本語・英語）に合わせる。CLI で別の言語のロケールを指定したときはそれを使う
+        var locale = self.locale
+        if let language = MeetingLanguage(code: request.language), MeetingLanguage(code: locale.identifier) != language {
+            locale = language.locale
+        }
         let stt = SpeechAnalyzerFileTranscriber(locale: locale, onStatus: onStatus)
         let output = try await stt.transcribe(fileURL: request.audioURL)
         var meta: [String: String] = [

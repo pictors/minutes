@@ -167,6 +167,17 @@ public final class MeetingDetailModel {
         return meeting.audioDir == nil && meeting.meetingStatus == .done
     }
 
+    /// 会議の言語を変えて文字起こしし直せる（後処理が終わっていて、音声が残っている）。
+    public var canChangeLanguage: Bool {
+        guard let meeting, !isProcessing else { return false }
+        return (meeting.meetingStatus == .done || meeting.meetingStatus == .failed) && meeting.audioDir != nil
+    }
+
+    /// 本文に人の編集がある（言語を変えて文字起こしし直すと、編集は外れて履歴に残る）。
+    public var hasTranscriptEdits: Bool {
+        source == .final && segments.contains { $0.originalText == nil || $0.text != $0.originalText }
+    }
+
     /// 完了後に失敗したままの任意ステップ（要約・書き出し）。同じステップの成功が後にあれば消える。
     public var pendingWarnings: [StepProgress] {
         guard meeting?.meetingStatus == .done else { return [] }
@@ -423,6 +434,43 @@ public final class MeetingDetailModel {
             } while exportRefreshPending
             reload()
         }
+    }
+
+    /// 会議の言語を変える。文字起こしからやり直すので、成功したら呼び出し側が後処理を依頼する（`canChangeLanguage` の会議だけ）。
+    /// 本文の編集は外す（編集した本文は履歴に残す）。要約の言語は、次の文字起こしで会議の言語と設定から決め直す。
+    @discardableResult
+    public func setLanguage(_ language: MeetingLanguage) -> Bool {
+        guard canChangeLanguage else { return false }
+        do {
+            try store.prepareRetranscription(meetingId: meetingId)
+            try store.setMeetingLanguage(id: meetingId, language: language, detected: false)
+        } catch {
+            self.error = "言語を変更できません: \(error.localizedDescription)"
+            return false
+        }
+        reload()
+        return true
+    }
+
+    /// 自動判定で決まった（または決まっていない）言語を、文字起こしし直さずにそのまま確定させる。
+    public func confirmLanguage(_ language: MeetingLanguage) {
+        guard let meeting else { return }
+        do { try store.setMeetingLanguage(id: meetingId, language: language, detected: false, summaryLanguage: meeting.summaryOutputLanguage) } catch {
+            self.error = "言語を変更できません: \(error.localizedDescription)"
+            return
+        }
+        reload()
+    }
+
+    /// 要約の言語を変えて、要約を作り直す（本文はそのまま）。
+    public func setSummaryLanguage(_ language: MeetingLanguage) {
+        guard let meeting, meeting.summaryOutputLanguage != language else { return }
+        do { try store.setSummaryLanguage(id: meetingId, language: language) } catch {
+            self.error = "要約の言語を変更できません: \(error.localizedDescription)"
+            return
+        }
+        reload()
+        if canSummarize { regenerateSummary() }
     }
 
     /// プライバシーを変える。cloud_ok へ切り替えたら要約を生成し、local_only へ戻すときは希望に応じて書き出しを消す。
