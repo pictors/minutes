@@ -69,11 +69,11 @@ rep('>会議アプリの音と自分の声を録り、会議が終わったら�
     '>Minutes records the meeting app’s audio and your own voice. When the meeting ends, it transcribes and summarizes with the services you choose. It lives in the menu bar and waits for your next meeting.</p>')
 rep('<strong>声を分けて録音。</strong>Meet・Teams・Zoom などの会議アプリの音と、マイクの自分の声を別々に録ります。誰が話したかを分けやすくなります。',
     '<strong>Two separate tracks.</strong> The meeting app’s audio (Meet, Teams, Zoom, …) and your microphone are recorded separately, so speakers are easier to tell apart.')
-rep('<strong>ライブ字幕。</strong>録音中の字幕は、この Mac の中（macOS の音声認識）で作ります。',
-    '<strong>Live captions.</strong> Captions during the meeting are made on your Mac with macOS speech recognition.')
+rep('<strong>ライブ字幕。</strong>録音中の字幕は、この Mac の中（macOS の音声認識）で作ります。日本語と英語に対応し、録音中に切り替えられます。',
+    '<strong>Live captions.</strong> Captions during the meeting are made on your Mac with macOS speech recognition, in Japanese or English. You can switch while recording.')
 rep('<span class="inline-block">要約も、</span><span class="inline-block">決定事項も、</span><span class="inline-block">アクションも。</span>', 'Summary, decisions, and action items.')
-rep('<strong>文字起こしと要約。</strong>会議が終わると、話者付きの文字起こし・要約・決定事項・アクション・未決の論点を作ります。どれも根拠の発言へ戻れます。',
-    '<strong>Transcript and summary.</strong> After the meeting, Minutes writes a transcript with speakers, a summary, decisions, action items, and open questions — each linked back to what was said.')
+rep('<strong>文字起こしと要約。</strong>会議が終わると、話者付きの文字起こし・要約・決定事項・アクション・未決の論点を作ります。どれも根拠の発言へ戻れます。英語の会議は英語でまとめます（日本語にもできます）。',
+    '<strong>Transcript and summary.</strong> After the meeting, Minutes writes a transcript with speakers, a summary, decisions, action items, and open questions — each linked back to what was said. English meetings are summarized in English (or in Japanese, if you prefer).')
 rep('aria-label="作るもの"', 'aria-label="What Minutes writes"')
 rep('ring-line">要約</li>', 'ring-line">Summary</li>')
 rep('ring-line">決定事項</li>', 'ring-line">Decisions</li>')
