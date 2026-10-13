@@ -63,8 +63,8 @@ private func tone(seconds: Double) -> [Float] {
 
 @Suite("レビュー修正（2026-09-23）")
 struct ReviewFixesTests {
-    @Test("録音準備中の区間を mic の文字起こしから除外し、時刻は録音原点のまま保つ")
-    func micTrimmedByMeetingStart() async throws {
+    @Test("録音準備中の区間を両トラックの文字起こしから除外し、時刻は録音原点のまま保つ")
+    func tracksTrimmedByMeetingStart() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let audio = root.appendingPathComponent("audio", isDirectory: true)
@@ -79,15 +79,17 @@ struct ReviewFixesTests {
         let transcriber = CapturingTranscriber()
         let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: transcriber, summarizer: nil, exportDirectory: root.appendingPathComponent("export")))
         _ = try await pipeline.run(meetingId: meeting.id)
+        // 相手側も切る（開始を確かめる設定では、検知から開始までに直前の別の会議などが入りうる）
         let durations = transcriber.durations.withLock { $0 }
-        #expect(abs((durations[RecordingSession.systemSTTName] ?? 0) - 12) < 0.05)
+        #expect(abs((durations[RecordingSession.systemSTTName] ?? 0) - 2) < 0.05)
         #expect(abs((durations[RecordingSession.micSTTName] ?? 0) - 2) < 0.05)
         let finals = try store.segments(meetingId: meeting.id, source: .final)
         let mic = try #require(finals.first { $0.clusterLabel == TrackMerger.micSpeakerLabel })
         #expect(abs(mic.tStart - 10) < 0.001)
         #expect(abs(mic.tEnd - 11) < 0.001)
         let system = try #require(finals.first { $0.clusterLabel == "spk_0" })
-        #expect(system.tStart == 0)
+        #expect(abs(system.tStart - 10) < 0.001)
+        #expect(!finals.contains { $0.tStart < 10 })
         // 一時ファイルは残らない
         let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path))?.filter { $0.hasPrefix("minutes-trim-") } ?? []
         #expect(leftovers.isEmpty)
@@ -179,10 +181,98 @@ struct ReviewFixesTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(await controller.state == .recording)
-        // 録音の原点（10 分前）ではなく、音声を検知した時刻から数える
+        // 録音の原点ではなく、音声を検知した区間の始まり（の 1 秒前）から数える
         let elapsed = await controller.snapshot().elapsedSeconds
         #expect(elapsed >= 0 && elapsed < 5, "elapsed: \(elapsed)")
         await controller.stop()
+    }
+
+    @Test("音声の検知で始めた会議は、検知した区間の始まりより少し前を開始にする（相手側も開始前を切るので、冒頭を残す）")
+    func detectedStartCoversDetectionInterval() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try Store.open(at: root.appendingPathComponent("db.sqlite"))
+        let recordings = Mutex<[ArmedFakeRecording]>([])
+        var configuration = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
+        configuration.liveTranscription = false
+        configuration.includeMic = false
+        configuration.monitorInterval = 0.5
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: CapturingTranscriber(), summarizer: nil, exportDirectory: root.appendingPathComponent("export")))
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: configuration, makeRecording: { options in
+            let recording = ArmedFakeRecording(options: options)
+            recordings.withLock { $0.append(recording) }
+            return recording
+        })
+        try await controller.arm(.init(title: "週次定例", privacyMode: .localOnly))
+        // 無音の区間を何度か読んだあとに声が始まる（開始が録音の原点に張り付かない長さ）
+        try await Task.sleep(for: .seconds(1.6))
+        #expect(await controller.state == .armed)
+        let spokeAt = Date()
+        recordings.withLock { $0[0].active.withLock { $0 = true } }
+        for _ in 0..<150 {
+            if await controller.state == .recording { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await controller.state == .recording)
+        let meeting = try #require(await controller.currentMeeting)
+        // 声の始まり（検知した区間の中）より前から始まり、区間 1 つ + 余裕 1 秒 + 保存時の秒の切り捨てより前には戻らない
+        #expect(meeting.startedAt <= spokeAt.addingTimeInterval(-0.9), "started: \(meeting.startedAt), spoke: \(spokeAt)")
+        #expect(meeting.startedAt >= spokeAt.addingTimeInterval(-3), "started: \(meeting.startedAt), spoke: \(spokeAt)")
+        await controller.stop()
+    }
+
+    @Test("開始のボタンより前に終わったライブ字幕は消し、開始のあとに遅れて確定しても保存しない")
+    func liveBeforeStartIsDropped() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try Store.open(at: root.appendingPathComponent("db.sqlite"))
+        var configuration = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
+        configuration.liveTranscription = false
+        configuration.includeMic = false
+        configuration.monitorInterval = 0.05
+        configuration.confirmBeforeAutoStart = true
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: CapturingTranscriber(), summarizer: nil, exportDirectory: root.appendingPathComponent("export")))
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: configuration, makeRecording: { options in
+            ArmedFakeRecording(options: options)
+        })
+        try await controller.arm(.init(title: "週次定例", privacyMode: .localOnly))
+        let armed = try #require(await controller.currentMeeting)
+        func live(_ text: String, _ start: Double, _ end: Double) -> LiveSegment {
+            LiveSegment(text: text, isFinal: true, start: start, end: end, receivedAt: 0)
+        }
+        // 録音準備中に、直前の別の会議の声が字幕になった（会議の行は録音準備の時点からあるので、そのまま保存される）
+        await controller.handleLive(generation: armed.id, track: TrackMerger.systemTrack, label: nil, segment: live("前の会議の締めくくり", 0.1, 0.3))
+        await controller.handleLive(generation: armed.id, track: TrackMerger.systemTrack, label: nil, segment: live("前の会議の最後のひとこと", 0.4, 0.6))
+        #expect(try store.segments(meetingId: armed.id, source: .live).count == 2)
+        // 録音準備から 1 秒以上たってから開始のボタンを押す（時刻は秒に丸めて保存するので、開始の位置は 1〜2 秒）
+        try await Task.sleep(for: .seconds(1.2))
+
+        try await controller.startNow()
+        let meeting = try #require(await controller.currentMeeting)
+        let offset = meeting.meetingStartOffsetSeconds
+        #expect(offset >= 1 && offset <= 2, "offset: \(offset)")
+        #expect(try store.segments(meetingId: armed.id, source: .live).isEmpty)
+        // 開始より前の音声の字幕が開始のあとに確定しても捨て、開始のあとの字幕は残す
+        await controller.handleLive(generation: armed.id, track: TrackMerger.systemTrack, label: nil, segment: live("前の会議の字幕の遅れ", 0.7, 0.9))
+        await controller.handleLive(generation: armed.id, track: TrackMerger.systemTrack, label: nil, segment: live("本日はよろしくお願いします", offset + 1, offset + 3))
+        #expect(try store.segments(meetingId: armed.id, source: .live).map(\.text) == ["本日はよろしくお願いします"])
+        await controller.stop()
+    }
+
+    @Test("言語の自動判定は、会議の開始より前のライブ字幕を見ない")
+    func languageIgnoresLiveBeforeStart() throws {
+        let store = try Store.inMemory()
+        let origin = Date(timeIntervalSince1970: 1_800_000_000)
+        let meeting = try store.createMeeting(MeetingRecord(title: "予定", startedAt: origin.addingTimeInterval(300), privacyMode: .localOnly, status: .finalizing, recordingStartedAt: origin))
+        _ = try store.appendSegments([
+            // 開始前: 直前の別の会議（英語）。これを含めると英語の会議と判定される
+            SegmentRecord(meetingId: meeting.id, source: .live, tStart: 10, tEnd: 30, clusterLabel: nil, text: "Thanks everyone, let's wrap up the quarterly review here. Next we will go through the hiring plan for the design team and the budget for the new office. Please send your comments by Friday so that we can finalize everything before the board meeting next month."),
+            SegmentRecord(meetingId: meeting.id, source: .live, tStart: 302, tEnd: 315, clusterLabel: nil, text: "それでは始めます。今日は来月のリリースの段取りと、問い合わせ窓口の担当を決めたいと思います。資料は先ほど共有したものを見てください。"),
+        ])
+        #expect(MeetingLanguageDetector.detect(try store.segments(meetingId: meeting.id, source: .live).map(\.text)) == .en)
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: CapturingTranscriber(), summarizer: nil, exportDirectory: FileManager.default.temporaryDirectory))
+        #expect(try pipeline.resolveLanguage(meeting) == .ja)
+        #expect(try store.meeting(id: meeting.id)?.languageDetected == true)
     }
 
     @Test("検索はタイトル・参加者にもヒットし、会議ごとに前後 1 件を付けてまとめる")

@@ -342,7 +342,9 @@ public final class PostProcessPipeline: Sendable {
         if let chosen = MeetingLanguage(code: meeting.language) {
             language = chosen
         } else {
-            let live = try store.segments(meetingId: meeting.id, source: .live).map(\.text)
+            // 会議の開始より前（録音準備中）の字幕は見ない（新しい会議では開始の時点で消している）
+            let live = try store.segments(meetingId: meeting.id, source: .live)
+                .filter { $0.tEnd > meeting.meetingStartOffsetSeconds }.map(\.text)
             language = MeetingLanguageDetector.detect(live) ?? .ja
             detected = true
         }
@@ -375,18 +377,17 @@ public final class PostProcessPipeline: Sendable {
         var timeOffset = 0.0
         var temporaryDirectory: URL?
         defer { if let temporaryDirectory { try? FileManager.default.removeItem(at: temporaryDirectory) } }
-        // 録音準備中（会議開始前）の自分の声は会議の一部ではない。送信前に切り落とし、時刻は録音原点に戻す。
-        let micOffset = meeting.meetingStartOffsetSeconds
-        if track == TrackMerger.micTrack, micOffset >= 1 {
-            let samples = try AudioFileTools.loadMono16k(audioURL, from: micOffset)
-            guard samples.count >= Int(AudioFileTools.sttSampleRate) else { return "\(track): skipped (会議開始後の音声なし)" }
+        // 録音準備中（会議開始前）の音声は会議の一部ではない。両トラックとも送信前に切り落とし、時刻は録音原点に戻す。
+        // 相手側も切る: 開始を確かめる設定では、検知から開始のボタンまでに直前の別の会議などの音声が入りうる。
+        let startOffset = meeting.meetingStartOffsetSeconds
+        if startOffset >= 1 {
             let trimDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-trim-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: trimDirectory, withIntermediateDirectories: true)
-            let trimmed = trimDirectory.appendingPathComponent(sttName)
-            try AudioFileTools.writeWAV(samples: samples, sampleRate: AudioFileTools.sttSampleRate, to: trimmed)
             temporaryDirectory = trimDirectory
+            let trimmed = trimDirectory.appendingPathComponent(sttName)
+            guard try AudioFileTools.copyTail(of: audioURL, from: startOffset, to: trimmed) >= 1 else { return "\(track): skipped (会議開始後の音声なし)" }
             audioURL = trimmed
-            timeOffset = micOffset
+            timeOffset = startOffset
         }
         let request = TranscriptionRequest(audioURL: audioURL, language: job.language.rawValue, diarize: diarize, keyterms: job.keyterms, knownSpeakers: [])
         var result: TranscriptionResult

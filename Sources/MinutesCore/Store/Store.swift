@@ -231,6 +231,7 @@ public final class Store: Sendable {
     }
 
     /// 会議の開始時刻を音声検知・手動開始の時点に合わせる。録音原点（`recording_started_at`）は動かさない。
+    /// 開始より前に終わったライブ字幕は消す（録音準備中の音声で、直前の別の会議などが入りうる。会議として保存・検索しない）。
     public func setMeetingStarted(id: String, at startedAt: Date) throws {
         try writer.write { db in
             guard var record = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound("meeting \(id)") }
@@ -238,6 +239,11 @@ public final class Store: Sendable {
             record.startedAt = max(startedAt, record.recordingStartedAt ?? startedAt)
             record.updatedAt = Date()
             try record.update(db)
+            // 保存した値（秒で切り捨てた時刻）で比べる。後処理の切り落とし・ライブ字幕の保存の判定と同じ位置になる
+            let offset = (try MeetingRecord.fetchOne(db, key: id) ?? record).meetingStartOffsetSeconds
+            _ = try SegmentRecord
+                .filter(Column("meeting_id") == id && Column("source") == SegmentSource.live.rawValue && Column("t_end") <= offset)
+                .deleteAll(db)
         }
     }
 

@@ -130,7 +130,7 @@ public struct MeetingRecord: MinutesRecord, Identifiable, Equatable {
     /// 要約と書き出しの見出しの言語。
     public var summaryOutputLanguage: MeetingLanguage { MeetingLanguage(code: summaryLanguage) ?? .ja }
 
-    /// 録音ファイル先頭から会議開始までの秒数。録音準備（armed）中に録った区間で、mic の文字起こしから除外する。
+    /// 録音ファイル先頭から会議開始までの秒数。録音準備（armed）中に録った区間で、両トラックの文字起こしから除外する。
     public var meetingStartOffsetSeconds: Double {
         guard let recordingStartedAt else { return 0 }
         return max(0, startedAt.timeIntervalSince(recordingStartedAt))

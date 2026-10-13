@@ -119,7 +119,7 @@ site/                        公開ページ（minutes.tools、日本語と英�
 - 要約の既定は Codex app server。`codex login` と設定の「接続を確認」を使う。Claude Code（`claude -p`、Claude Code のログイン）と Anthropic API（キー）も選べる。「要約しない」なら文字起こしまで。
 - GUI 起動時も実行ファイルを探せるよう、デスクトップアプリ同梱 CLI / PATH / ~/.local/bin / Homebrew を確認する。設定の実行ファイルはポップアップ（自動検出 / 見つかった CLI（版つき）/ その他…）で選ぶ（`ExecutablePickerRow`。候補は `SummaryCLI.candidates()` で自動検出と同じ順）。
 - モデルは設定のピッカーで選ぶ。Codex は app-server の `model/list`（非表示を除く）、Claude Code は接続確認で `claude -p --input-format stream-json` に制御要求（`initialize` の `models`、`get_context_usage` の `model`）だけを送って読む（推論・送信なし）。未選択はそれぞれの CLI の設定に従う。
-- 要約・書き出しの失敗は会議を failed にせず警告（`PipelineOutcome.warnings`）として残す。録音準備（armed）中の mic 音声は `meetings.recording_started_at` と `started_at` の差で後処理から除外する。
+- 要約・書き出しの失敗は会議を failed にせず警告（`PipelineOutcome.warnings`）として残す。録音準備（armed）中の音声は、mic・system とも `meetings.recording_started_at` と `started_at` の差で送信前に切り落とす（会議の開始は、開始のボタン・確認の承認ならその時刻、音声の検知なら検知した監視区間の始まりの 1 秒前）。開始より前に終わったライブ字幕は開始の時点で消す。
 - 通常の `swift test` は実 API を呼ばない。次の任意テストは架空の会議だけを送る（一覧の読み取りは送信なし）:
   - `MINUTES_CODEX_LIVE=1 swift test --filter CodexSummarizerTests.liveSmoke`（`MINUTES_CODEX_MODEL=<id>`）
   - `MINUTES_CLAUDE_CODE_LIVE=1 swift test --filter ClaudeCodeSummarizerTests.liveSmoke`（`MINUTES_CLAUDE_CODE_MODEL=<alias>`）

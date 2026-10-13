@@ -50,6 +50,35 @@ struct AudioTests {
         #expect(abs(Double(loaded.count) / 16_000 - 2.0) < 0.15)
     }
 
+    @Test("指定の秒より後ろを同じ形式のまま写す（送信前に会議の開始前を切り落とす）")
+    func copyTail() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("system_16k.wav")
+        // 前の 1 秒と後ろの 2 秒で音を変える
+        try AudioFileTools.writeWAV(samples: sine(seconds: 1, rate: 16_000, amplitude: 0.1) + sine(seconds: 2, rate: 16_000, frequency: 880), sampleRate: 16_000, to: source)
+        let output = directory.appendingPathComponent("trimmed.wav")
+        #expect(abs(try AudioFileTools.copyTail(of: source, from: 1, to: output) - 2) < 0.001)
+        #expect(abs(try AudioFileTools.duration(of: output) - 2) < 0.001)
+        let original = try AVAudioFile(forReading: source)
+        let trimmed = try AVAudioFile(forReading: output)
+        #expect(trimmed.fileFormat.sampleRate == 16_000)
+        #expect(trimmed.fileFormat.channelCount == 1)
+        #expect(trimmed.fileFormat.settings[AVLinearPCMBitDepthKey] as? Int == 16)
+        func read(_ file: AVAudioFile, from frame: AVAudioFramePosition) throws -> [Float] {
+            file.framePosition = frame
+            let count = AVAudioFrameCount(file.length - frame)
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: count))
+            try file.read(into: buffer, frameCount: count)
+            let channel = try #require(buffer.floatChannelData)
+            return Array(UnsafeBufferPointer(start: channel[0], count: Int(buffer.frameLength)))
+        }
+        #expect(try read(trimmed, from: 0) == read(original, from: 16_000))
+        // 長さより後ろからは空
+        #expect(try AudioFileTools.copyTail(of: source, from: 10, to: directory.appendingPathComponent("empty.wav")) == 0)
+    }
+
     @Test("TrackPipeline: 先頭オフセットと欠落を無音で補完し、タイムラインを保つ")
     func pipelineTimeline() throws {
         let rate = 48_000.0

@@ -106,6 +106,28 @@ public enum AudioFileTools {
         try wavData(samples: samples, sampleRate: sampleRate).write(to: url, options: .atomic)
     }
 
+    /// `start` 秒より後ろを同じ形式のまま `output` に写し、写した長さ（秒）を返す（送信前に会議の開始前を切り落とす）。
+    /// 全体を読み込まず少しずつ写すので、長い会議の両トラックを同時に切ってもメモリは増えない。
+    @discardableResult
+    public static func copyTail(of url: URL, from start: Double, to output: URL) throws -> Double {
+        let input = try AVAudioFile(forReading: url)
+        let sampleRate = input.fileFormat.sampleRate
+        let firstFrame = min(input.length, max(0, AVAudioFramePosition((start * sampleRate).rounded())))
+        let writer = try AVAudioFile(forWriting: output, settings: input.fileFormat.settings, commonFormat: input.processingFormat.commonFormat, interleaved: input.processingFormat.isInterleaved)
+        let chunkFrames: AVAudioFrameCount = 65_536
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: chunkFrames) else {
+            throw AudioCaptureError.conversionFailed("音声を写すバッファを作れません")
+        }
+        input.framePosition = firstFrame
+        while input.framePosition < input.length {
+            try input.read(into: buffer, frameCount: chunkFrames)
+            if buffer.frameLength == 0 { break }
+            try writer.write(from: buffer)
+        }
+        writer.close()
+        return Double(input.length - firstFrame) / sampleRate
+    }
+
     // MARK: - FLAC
 
     /// 送信用に FLAC（可逆圧縮）へ写した一時ファイルを作る。呼び出し側がフォルダごと消す。

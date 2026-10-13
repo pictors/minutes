@@ -106,6 +106,10 @@ public actor MeetingSessionController {
     private var finalizingHasGrace = false
     private var armedAt: Date?
     private var lastSnapshot: RecordingSession.Snapshot?
+    /// 監視で読む区間ピーク（音声の検知に使う）の区間の始まり。音声を検知した区間の始まりを会議の開始にする。
+    private var levelIntervalStartedAt: Date?
+    /// 音声を検知して始めた会議の開始を、検知した区間の始まりからさらに戻す秒数（話し始めの小さな音を切らない。それより前は閾値未満）。
+    static let detectedStartLeadIn: TimeInterval = 1
     private var finishing = false
     private var starting = false
     private var captureFailure: CaptureFailure?
@@ -146,7 +150,7 @@ public actor MeetingSessionController {
     /// 画面用。音量は録音側から直接読むので、監視周期（5 秒）より細かく更新できる。
     public func snapshot() -> SessionSnapshot {
         let levels = recording?.levels() ?? TrackLevels()
-        // 録音の原点ではなく会議の開始から数える（armed から入ると markMeetingStarted で開始時刻が今に更新される）
+        // 録音の原点ではなく会議の開始から数える（armed から入ると markMeetingStarted で開始時刻が更新される。ボタンなら今、音声の検知なら検知した区間の始まり）
         let meetingStart = machine.state == .armed ? nil : meeting?.startedAt
         return SessionSnapshot(
             state: machine.state,
@@ -369,10 +373,11 @@ public actor MeetingSessionController {
         notifyState()
     }
 
-    /// 会議の開始時刻を今にする。録音準備（armed）中に録った区間は mic の文字起こしから除外され、一覧の開始時刻も実際の開始になる。
-    private func markMeetingStarted() throws {
+    /// 会議の開始時刻を決める（既定は今。開始のボタン・確認の承認）。それより前に録った区間（録音準備中）は両トラックの文字起こしから
+    /// 除外され、それより前に終わったライブ字幕は消える。一覧の開始時刻も実際の開始になる。
+    private func markMeetingStarted(at date: Date = Date()) throws {
         guard let current = meeting else { return }
-        try store.setMeetingStarted(id: current.id, at: Date())
+        try store.setMeetingStarted(id: current.id, at: date)
         meeting = try store.meeting(id: current.id) ?? current
         notifyState()
     }
@@ -420,12 +425,14 @@ public actor MeetingSessionController {
         }
     }
 
-    private func handleLive(generation: String?, track: String, label: String?, segment: LiveSegment) {
+    func handleLive(generation: String?, track: String, label: String?, segment: LiveSegment) {
         guard let generation, generation == pendingMeetingId else { return }
         liveHandler?(generation, track, segment)
         guard segment.isFinal else { return }
         // 録音準備中の自分の声は会議ではない。画面には流すが保存・検索対象にはしない。
         if machine.state == .armed, track == TrackMerger.micTrack { return }
+        // 会議の開始より前の音声は、開始のあとに確定した字幕でも保存しない（開始までに保存した分は開始の時点で消している）
+        if machine.state != .armed, let meeting, segment.end <= meeting.meetingStartOffsetSeconds { return }
         let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let record = SegmentRecord(meetingId: meeting?.id ?? "", source: .live, tStart: segment.start, tEnd: segment.end, clusterLabel: label, text: text)
@@ -439,6 +446,7 @@ public actor MeetingSessionController {
 
     private func startMonitor() {
         monitorTask?.cancel()
+        levelIntervalStartedAt = Date()
         let interval = configuration.monitorInterval
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -452,11 +460,14 @@ public actor MeetingSessionController {
     private func monitorTick() async {
         guard let recording, !finishing else { return }
         let snapshot = recording.snapshot()
+        let now = Date()
+        // 区間ピークは前回の読み出し（監視の開始）から今までの音量。読み出しでリセットされる
+        let intervalStart = levelIntervalStartedAt ?? now.addingTimeInterval(-configuration.monitorInterval)
+        levelIntervalStartedAt = now
         lastSnapshot = snapshot
         let threshold = configuration.silenceThresholdDb
         let systemActive = (snapshot.system?.intervalPeakRmsDb ?? -120) > threshold
         let micActive = (snapshot.mic?.intervalPeakRmsDb ?? -120) > threshold
-        let now = Date()
 
         switch machine.state {
         case .armed:
@@ -473,7 +484,8 @@ public actor MeetingSessionController {
                 do {
                     try apply(.audioDetected)
                     try createMeetingRow()
-                    try markMeetingStarted()
+                    // 声はこの区間のどこかで始まっている（それより前は閾値未満）。区間の始まりより少し前を会議の開始にして冒頭を切らない
+                    try markMeetingStarted(at: intervalStart.addingTimeInterval(-Self.detectedStartLeadIn))
                 } catch { await failRecording(error.localizedDescription); return }
                 emit("audio detected → recording")
             } else if let armedAt, now.timeIntervalSince(armedAt) > configuration.armedTimeout {
@@ -609,5 +621,6 @@ public actor MeetingSessionController {
         finalizingSince = nil
         armedAt = nil
         lastSnapshot = nil
+        levelIntervalStartedAt = nil
     }
 }
