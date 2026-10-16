@@ -473,10 +473,11 @@ final class AppModel {
     }
 
     /// 手動開始。開始できなければアラートで理由を示す（権限・対象アプリ未起動など）。
+    /// タイトルが空なら、開始の時点で音を出している対象アプリから付ける（`defaultTitle`）。
     func startRecording(_ info: PendingMeetingInfo? = nil) {
         guard let session, !startingRecording else { return }
         startingRecording = true
-        var pending = info ?? PendingMeetingInfo(title: defaultTitle())
+        var pending = info ?? PendingMeetingInfo(title: "")
         if info == nil { pending.privacyMode = privacyModeForNextMeeting }
         if pending.language == nil { pending.language = languageForNextMeeting.language }
         liveLanguageChoice = MeetingLanguageChoice(pending.language)
@@ -485,12 +486,16 @@ final class AppModel {
         }
         liveLines = []
         clearLiveVolatile()
-        Task {
+        Task { [pending] in
+            var pending = pending
             defer {
                 startingRecording = false
                 if rebuildAfterRecording, !isRecording { rebuildPipeline() }
             }
             do {
+                if pending.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    pending.title = await defaultTitle(targets: pending.targetBundleIdentifiers)
+                }
                 try await session.start(pending)
                 // 手動開始は録音ビューを見せる（自動開始では選択を変えない）
                 if let meeting = await session.currentMeeting { selectedMeetingId = meeting.id }
@@ -613,12 +618,21 @@ final class AppModel {
             .sorted { $0.startDate < $1.startDate }
     }
 
-    func defaultTitle() -> String {
+    /// 予定のない会議の名前。対象アプリ（nil なら設定の一覧）のうち、いま音を出しているかマイクを使っているアプリの名前と日時。
+    /// どれも鳴っていなければ「会議」。
+    func defaultTitle(targets: [String]? = nil) async -> String {
+        let targets = targets ?? settings.targetBundleIdentifiers
+        let date = Date()
+        // Core Audio のプロセス一覧を読むのに時間がかかるので main の外で読む
+        let active = await Task.detached { (try? AudioProcessList.activeTargets(targets)) ?? [] }.value
+        let running = detector.runningTargets()
+        let name = active.lazy.compactMap { target in
+            running.first { BundleIDMatcher.matches($0.bundleIdentifier, target: target) }?.localizedName
+        }.first
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
         formatter.dateFormat = "M月d日 H:mm"
-        let apps = detector.runningTargets().compactMap(\.localizedName).first ?? "会議"
-        return "\(apps) \(formatter.string(from: Date()))"
+        return "\(name ?? "会議") \(formatter.string(from: date))"
     }
 
     /// 録音対象として設定されているアプリのうち、起動しているもの（開始前の選択用）。

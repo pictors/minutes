@@ -87,4 +87,35 @@ struct SupportTests {
         #expect(!BundleIDMatcher.matches(nil, target: "com.google.Chrome"))
         #expect(BundleIDMatcher.matches("com.microsoft.teams2", targets: ["com.google.Chrome", "com.microsoft.teams2"]))
     }
+
+    @Test("音を出している対象アプリ（helper は祖先のアプリへ、入出力の両方を先に、同じなら設定の順）")
+    func activeTargets() {
+        func process(_ pid: Int32, _ bundleID: String?, output: Bool, input: Bool) -> AudioProcessInfo {
+            AudioProcessInfo(objectID: UInt32(pid), pid: pid, bundleID: bundleID, name: nil, parentPID: nil, isRunningOutput: output, isRunningInput: input)
+        }
+        let targets = ["company.thebrowser.Browser", "com.tinyspeck.slackmacgap"]
+        // bundle id のない子プロセスは祖先のアプリで決める
+        let ancestors: (Int32) -> [String] = { $0 == 30 ? ["com.tinyspeck.slackmacgap"] : [] }
+        let rank = { (processes: [AudioProcessInfo]) in
+            AudioProcessList.rankActiveTargets(targets, processes: processes, ancestorBundleIDs: ancestors)
+        }
+
+        // ブラウザの通話（helper が入出力）は、通知音だけの Slack より先
+        #expect(rank([process(10, "company.thebrowser.browser.helper", output: true, input: true),
+                      process(20, "com.tinyspeck.slackmacgap.helper", output: true, input: false)])
+                == ["company.thebrowser.Browser", "com.tinyspeck.slackmacgap"])
+        #expect(rank([process(10, "company.thebrowser.browser.helper", output: true, input: false),
+                      process(30, nil, output: true, input: true)])
+                == ["com.tinyspeck.slackmacgap", "company.thebrowser.Browser"])
+        // 出力だけは入力だけより先、同じなら設定の順
+        #expect(rank([process(10, "company.thebrowser.Browser", output: false, input: true),
+                      process(20, "com.tinyspeck.slackmacgap", output: true, input: false)])
+                == ["com.tinyspeck.slackmacgap", "company.thebrowser.Browser"])
+        #expect(rank([process(20, "com.tinyspeck.slackmacgap", output: true, input: false),
+                      process(10, "company.thebrowser.Browser", output: true, input: false)])
+                == ["company.thebrowser.Browser", "com.tinyspeck.slackmacgap"])
+        // 鳴っていない対象と、対象外のアプリは含めない
+        #expect(rank([process(10, "company.thebrowser.Browser", output: false, input: false),
+                      process(40, "com.example.player", output: true, input: true)]).isEmpty)
+    }
 }

@@ -117,6 +117,40 @@ public enum AudioProcessList {
         return result.sorted { $0.pid < $1.pid }
     }
 
+    /// 対象アプリのうち、いま音を出しているかマイクを使っているもの（`rankActiveTargets` の順）。
+    /// 音の入出力はブラウザなら helper が持つので、祖先のアプリまでたどって対象に結びつける。
+    public static func activeTargets(_ targets: [String]) throws -> [String] {
+        guard !targets.isEmpty else { return [] }
+        let table = ProcessTree.byPID()
+        let active = try all().filter { $0.isRunningOutput || $0.isRunningInput }
+        return rankActiveTargets(targets, processes: active) { pid in
+            ProcessTree.ancestors(of: pid, in: table).compactMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
+        }
+    }
+
+    /// 音を出している・マイクを使っている対象を、入出力の両方（通話中らしい）→ 出力だけ → 入力だけの順に並べる。
+    /// 同じ順位なら `targets` の順。どちらも使っていない対象は含めない。`ancestorBundleIDs` は pid の祖先アプリの bundle id。
+    public static func rankActiveTargets(_ targets: [String], processes: [AudioProcessInfo], ancestorBundleIDs: (Int32) -> [String]) -> [String] {
+        var scores: [String: Int] = [:]
+        for process in processes {
+            let score = switch (process.isRunningOutput, process.isRunningInput) {
+            case (true, true): 3
+            case (true, false): 2
+            case (false, true): 1
+            case (false, false): 0
+            }
+            guard score > 0 else { continue }
+            let target = targets.first { BundleIDMatcher.matches(process.bundleID, target: $0) }
+                ?? ancestorBundleIDs(process.pid).lazy.compactMap { ancestor in targets.first { BundleIDMatcher.matches(ancestor, target: $0) } }.first
+            guard let target else { continue }
+            scores[target] = max(scores[target] ?? 0, score)
+        }
+        return targets.enumerated()
+            .filter { scores[$0.element] != nil }
+            .sorted { (scores[$0.element]!, -$0.offset) > (scores[$1.element]!, -$1.offset) }
+            .map(\.element)
+    }
+
     /// 対象 bundle id に属するプロセス（本体・helper・子プロセス）を解決する。
     /// 1. Core Audio のプロセス一覧から bundle id（前方一致）で選ぶ
     /// 2. 祖先プロセスが対象アプリならその helper も含める

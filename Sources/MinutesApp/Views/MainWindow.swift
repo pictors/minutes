@@ -177,8 +177,15 @@ struct RecordStartPopover: View {
     @State private var privacy: PrivacyMode = .cloudOk
     @State private var selectedApps: Set<String> = []
     @State private var runningApps: [(bundleID: String, name: String)] = []
+    /// タイトルが空のときの名前（選んだアプリのうち音を出しているもの）。開くときと選び直したときに読む。
+    @State private var titlePrompt = ""
 
     private var selectedCandidate: CalendarCandidate? { model.candidates.first { $0.id == candidateId } }
+    /// 選んだ録音対象（設定の順）。
+    private var selectedTargets: [String] {
+        let order = model.settings.targetBundleIdentifiers
+        return selectedApps.sorted { (order.firstIndex(of: $0) ?? .max, $0) < (order.firstIndex(of: $1) ?? .max, $1) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -194,7 +201,7 @@ struct RecordStartPopover: View {
                     if let candidate = selectedCandidate { title = candidate.title }
                 }
             }
-            TextField("タイトル", text: $title, prompt: Text(model.defaultTitle()))
+            TextField("タイトル", text: $title, prompt: Text(titlePrompt))
                 .textFieldStyle(.roundedBorder)
             VStack(alignment: .leading, spacing: 6) {
                 Text("録音対象アプリ").font(.caption).foregroundStyle(.secondary)
@@ -245,6 +252,7 @@ struct RecordStartPopover: View {
                 title = first.title
             }
         }
+        .task(id: selectedApps) { titlePrompt = await model.defaultTitle(targets: selectedTargets) }
     }
 
     private func start() {
@@ -252,12 +260,13 @@ struct RecordStartPopover: View {
         if let candidate = selectedCandidate {
             info = candidate.pendingInfo
         } else {
-            info = PendingMeetingInfo(title: model.defaultTitle())
+            // 名前は開始の時点で付ける（`AppModel.startRecording`）
+            info = PendingMeetingInfo(title: "")
         }
         let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cleaned.isEmpty { info.title = cleaned }
         info.privacyMode = privacy
-        info.targetBundleIdentifiers = Array(selectedApps)
+        info.targetBundleIdentifiers = selectedTargets
         model.privacyModeForNextMeeting = privacy
         isPresented = false
         model.startRecording(info)
