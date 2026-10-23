@@ -23,6 +23,7 @@ struct MinutesApp: App {
         }
         .defaultSize(width: 1240, height: 780)
         .windowResizability(.contentMinSize)
+        .commands { ImportCommands(model: model) }
 
         Settings {
             SettingsView()
@@ -74,6 +75,22 @@ struct MenuBarLabel: View {
                 model.presentedOnboarding = true
                 openWindow(id: "onboarding")
             }
+        }
+    }
+}
+
+/// 「ファイル > 音声ファイルを取り込む…」（SPEC §4.4）。メニューはメインウィンドウを出している間だけ現れる。
+struct ImportCommands: Commands {
+    let model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .importExport) {
+            Button("音声ファイルを取り込む…") {
+                openWindow(id: "main")
+                model.showingImportPicker = true
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
         }
     }
 }

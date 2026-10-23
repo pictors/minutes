@@ -38,6 +38,18 @@ struct MainWindow: View {
             }
         }
         .onDisappear { model.setMainWindowVisible(false) }
+        // 音声の取り込み（SPEC §4.4）: メニューのファイル選択と、確認のシート（複数なら 1 つずつ。閉じるのはシートのボタンだけ）
+        .fileImporter(isPresented: Binding(get: { model.showingImportPicker }, set: { model.showingImportPicker = $0 }),
+                      allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls): model.prepareImports(urls)
+            case .failure(let error): model.operationError = error.localizedDescription
+            }
+        }
+        .sheet(item: Binding(get: { model.pendingImports.first }, set: { _ in })) { item in
+            ImportAudioSheet(item: item)
+                .environment(model)
+        }
         .onOpenURL { url in
             if model.handle(url: url) == .settings {
                 openSettings()
@@ -415,6 +427,7 @@ struct ProviderStatusRow: View {
 
 struct ContentColumn: View {
     @Environment(AppModel.self) private var model
+    @State private var dropTargeted = false
 
     var body: some View {
         ZStack {
@@ -423,8 +436,15 @@ struct ContentColumn: View {
             } else {
                 MeetingListView().transition(.opacity)
             }
+            if dropTargeted { DropHighlight() }
         }
+        .safeAreaInset(edge: .bottom) {
+            if model.importingCount > 0 { ImportProgressBar(count: model.importingCount).transition(.opacity) }
+        }
+        .audioImportDropTarget(model, isTargeted: $dropTargeted)
         .animation(.smooth(duration: 0.2), value: model.isSearchActive)
+        .animation(.easeOut(duration: 0.15), value: dropTargeted)
+        .animation(.smooth(duration: 0.2), value: model.importingCount > 0)
         .navigationSplitViewColumnWidth(min: 290, ideal: 350)
     }
 }
@@ -818,6 +838,7 @@ private struct FadeInOnAppear: ViewModifier {
 /// 何も選んでいないときの右ペイン。ウィンドウの中でブランドを見せるのはここだけにする（会議を選ぶと消えるので作業の邪魔にならない）。
 struct EmptyDetailView: View {
     @Environment(AppModel.self) private var model
+    @State private var dropTargeted = false
 
     var body: some View {
         ContentUnavailableView {
@@ -837,7 +858,7 @@ struct EmptyDetailView: View {
                     .accessibilityHidden(true)
             }
         } description: {
-            Text("左のリストから会議を選ぶか、録音を開始してください。\n録音中はここにライブ字幕とメモが表示されます。")
+            Text("左のリストから会議を選ぶか、録音を開始してください。\n録音中はここにライブ字幕とメモが表示されます。\nボイスメモなどの音声ファイルは、ここにドロップすると取り込めます。")
         } actions: {
             Button {
                 model.startRecording()
@@ -849,6 +870,12 @@ struct EmptyDetailView: View {
             .tint(Palette.record)
             .controlSize(.large)
             .disabled(model.isRecording)
+            Button("音声ファイルを取り込む…") { model.showingImportPicker = true }
+                .buttonStyle(.link)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay { if dropTargeted { DropHighlight() } }
+        .audioImportDropTarget(model, isTargeted: $dropTargeted)
+        .animation(.easeOut(duration: 0.15), value: dropTargeted)
     }
 }

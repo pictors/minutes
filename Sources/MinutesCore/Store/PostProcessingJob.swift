@@ -58,6 +58,21 @@ extension Store {
         }
     }
 
+    /// 取り込んだ録音（SPEC §4.4）: 会議の行と後処理の依頼を 1 つの書き込みで作る（依頼のない処理中の会議を残さない）。
+    public func createMeetingForPostProcessing(_ meeting: MeetingRecord) throws -> MeetingRecord {
+        guard meeting.audioDirectoryURL != nil else { throw PipelineError.noAudio(meeting.id) }
+        var record = meeting
+        record.meetingStatus = .finalizing
+        record.createdAt = Date()
+        record.updatedAt = record.createdAt
+        try writer.write { db in
+            try record.insert(db)
+            try db.execute(sql: "INSERT INTO post_processing_jobs(meeting_id, status, enqueued_at) VALUES (?, 'queued', ?)",
+                           arguments: [record.id, Store.isoString(Date())])
+        }
+        return record
+    }
+
     /// ワーカーが会議ロックを取得してから実行する。CLI 等で完了済みなら依頼だけ消す。
     func beginPostProcessing(meetingId: String, lease: MeetingLease) throws -> Bool {
         try validateMeetingLease(lease, meetingId: meetingId)

@@ -131,6 +131,12 @@ final class AppModel {
     var isSearchActive: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     private(set) var startupError: String?
     var operationError: String?
+    /// 確認を待っている音声の取り込み（先頭を確認のシートに出す、SPEC §4.4）。
+    private(set) var pendingImports: [PendingImport] = []
+    /// 音声を写している取り込みの件数（会議リストの下に進み具合を出す）。
+    private(set) var importingCount = 0
+    /// メニューの「音声ファイルを取り込む…」で開くファイル選択。
+    var showingImportPicker = false
     @ObservationIgnored private var notesDrafts: [String: UserNotesDraft] = [:]
     var privacyModeForNextMeeting: PrivacyMode
     /// 次の録音の言語（既定は設定の「会議の言語」）。英語を選んだら英語のライブ字幕のモデルを先に用意する。
@@ -558,6 +564,60 @@ final class AppModel {
             do { try await session.retryPipeline(meetingId: meetingId, reprocess: reprocess) }
             catch {
                 operationError = "再実行できません: \(error.localizedDescription)"
+                appendEvent(operationError ?? error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - 音声の取り込み（SPEC §4.4）
+
+    /// 選んだ・ドロップされた音声を読み、確認のシートに並べる。`temporary` はドロップで受け取った写し（取り込みのあとで消す）。
+    func prepareImports(_ urls: [URL], temporary: Bool = false) {
+        Task {
+            for url in urls {
+                do {
+                    let probe = try await AudioImport.probe(url)
+                    pendingImports.append(PendingImport(source: url, probe: probe, temporary: temporary))
+                } catch {
+                    if temporary { PendingImport.removeTemporary(url) }
+                    operationError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// 取り込む録音と時間が重なる予定（前後 1 時間も候補に出す）。
+    func importEvents(start: Date, duration: Double) -> [CalendarCandidate] {
+        calendar.events(overlapping: DateInterval(start: start.addingTimeInterval(-3600), duration: duration + 7200),
+                        calendarIdentifiers: settings.calendarIdentifiers)
+    }
+
+    func cancelImport(_ item: PendingImport) {
+        pendingImports.removeAll { $0.id == item.id }
+        if item.temporary { PendingImport.removeTemporary(item.source) }
+    }
+
+    /// 音声を写して会議を作り（main の外で）、後処理を始めて、その会議を開く。
+    func confirmImport(_ item: PendingImport, details: AudioImport.Details) {
+        pendingImports.removeAll { $0.id == item.id }
+        guard let store else { return }
+        let root = settings.audioRootDirectoryURL
+        importingCount += 1
+        Task {
+            defer {
+                importingCount -= 1
+                if item.temporary { PendingImport.removeTemporary(item.source) }
+            }
+            do {
+                let meeting = try await Task.detached(priority: .userInitiated) {
+                    try AudioImport.importMeeting(from: item.source, details: details, store: store, audioRoot: root)
+                }.value
+                appendEvent("音声を取り込みました: \(meeting.id)")
+                select(.folder(.all))
+                selectedMeetingId = meeting.id
+                await postProcessingQueue?.start()
+            } catch {
+                operationError = "\(item.source.lastPathComponent) を取り込めません: \(error.localizedDescription)"
                 appendEvent(operationError ?? error.localizedDescription)
             }
         }
@@ -1101,5 +1161,21 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
             return
         }
         onOpenMeeting?(meetingId)
+    }
+}
+
+/// 確認を待っている音声の取り込み（SPEC §4.4）。
+struct PendingImport: Identifiable, Equatable {
+    let id = UUID()
+    var source: URL
+    var probe: AudioImport.Probe
+    /// ドロップで受け取った写し（`DroppedAudioFile` の一時フォルダ）。元のファイルではない。
+    var temporary: Bool
+
+    /// 写しを入れた一時フォルダごと消す（`DroppedAudioFile` が作ったフォルダだけ）。
+    static func removeTemporary(_ url: URL) {
+        let directory = url.deletingLastPathComponent()
+        guard directory.lastPathComponent.hasPrefix(DroppedAudioFile.directoryPrefix) else { return }
+        try? FileManager.default.removeItem(at: directory)
     }
 }

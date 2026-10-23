@@ -13,6 +13,7 @@ Mac で会議を録音し、話者付きの文字起こしと要約から議事�
 - **話者の名前**: 話者を一度選ぶと、同じ話者の発言すべてに名前が付きます。相手のマイクが拾った周りの会話（背景の声）は、話者ごとに外せます。
 - **検索と書き出し**: タイトル・参加者・本文・要約を全文検索できます。会議ごとに Markdown と JSON を書き出し、好きなフォルダ（Dropbox などの同期フォルダも可）にコピーできます。
 - **自動録音**: カレンダーの予定（Meet・Teams のリンク付き）の時刻に会議アプリから音がすると、録音するかを通知で確かめてから始めます（すぐに始める・自動では録音しない、も選べます）。
+- **録音の取り込み**: 対面の会議を Apple Watch や iPhone のボイスメモで録ったら、その音声ファイルを取り込んで同じように議事録にできます。
 
 ## 動作環境
 
@@ -52,6 +53,7 @@ macOS はアプリ単位で音を録ります。**ブラウザのタブ単位で
 - **ショートカット**: 設定 > 録音 で、どのアプリからでも録音を始めたり止めたりできるショートカットを決められます。
 - **後処理**: 録音を止めると、文字起こしと要約は裏で順番に進みます。その間に次の会議を録音できます。失敗した会議は、会議の画面の「後処理をやり直す」でやり直せます。要約や書き出しだけの失敗は、会議を完了にしたまま警告として残します。
 - **編集**: 本文の修正、発話ごとの話者の変更、タイトル・参加者・タグ・アクションの編集ができます。編集した本文は、文字起こしをやり直しても保たれます。
+- **録音の取り込み**: 音声ファイル（m4a・mp3・wav など）を会議の一覧にドロップするか、ファイル > 音声ファイルを取り込む…（⌘⇧I）で選びます。題名・開始日時・会議の言語を確かめてから取り込み、時間が重なるカレンダーの予定があれば題名と参加者を付けます。Apple Watch のボイスメモは iCloud で Mac のボイスメモに同期されるので、Mac のボイスメモから Minutes へドラッグします（iPhone と Mac で、ボイスメモの iCloud の同期をオンにしておきます。ドラッグで取り込めないときは、ボイスメモからファイルとして書き出して選びます）。音声全体を 1 本のトラックとして話者を分けるので、自分の声も番号の話者の 1 人になります。
 
 ## 送信先と送信の条件
 
@@ -121,6 +123,7 @@ Minutes is a macOS app that records your meetings and turns them into minutes: a
 - Meetings in Japanese or English. In automatic mode, Minutes detects English meetings after the meeting and transcribes and summarizes them in English (or summarizes them in Japanese, if you prefer). You can switch the caption language while recording, or change a meeting's language afterwards.
 - Speaker naming, background-voice exclusion, full-text search, and Markdown/JSON export.
 - Optional automatic recording for calendar meetings, with a confirmation notification by default.
+- Import audio files (for example, Voice Memos recorded on Apple Watch or iPhone for in-person meetings) and process them the same way: drop them on the meeting list or use the File menu (⇧⌘I).
 
 **Requirements**: Apple Silicon Mac with macOS 26 or later. Transcription with ElevenLabs Scribe v2 (recommended, API key), OpenAI (API key), or on-device (no key). Summaries with Codex (ChatGPT sign-in), Claude Code (Claude sign-in), the Anthropic API (API key), or none.
 

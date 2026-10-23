@@ -66,22 +66,41 @@ final class CalendarService {
             guard !event.isAllDay, event.status != .canceled else { return nil }
             if let me = event.attendees?.first(where: { $0.isCurrentUser }), me.participantStatus == .declined { return nil }
             guard let (url, platform) = CalendarService.extractMeetingURL(from: [event.url?.absoluteString, event.notes, event.location]) else { return nil }
-            let attendees = (event.attendees ?? []).compactMap { participant -> Attendee? in
-                let name = participant.name ?? participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "")
-                let email = participant.url.scheme == "mailto" ? participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "") : nil
-                return Attendee(name: name, email: email)
-            }
-            return CalendarCandidate(
-                id: event.eventIdentifier ?? event.calendarItemIdentifier,
-                title: event.title ?? "会議",
-                startDate: start,
-                endDate: event.endDate ?? start.addingTimeInterval(3600),
-                attendees: attendees,
-                organizer: event.organizer?.name,
-                meetingURL: url,
-                platform: platform,
-                calendarIdentifier: event.calendar.calendarIdentifier
-            )
+            return CalendarService.candidate(event, meetingURL: url, platform: platform)
         }.sorted { abs($0.startDate.timeIntervalSince(now)) < abs($1.startDate.timeIntervalSince(now)) }
+    }
+
+    /// 時間が重なる予定（開始順）。Meet / Teams のリンクがない対面の予定も含める（取り込んだ録音の対応付け、SPEC §4.4）。
+    /// リンクがない予定は `meetingURL` が nil になる。
+    func events(overlapping interval: DateInterval, calendarIdentifiers: [String] = []) -> [CalendarCandidate] {
+        guard authorized else { return [] }
+        let calendars = calendarIdentifiers.isEmpty ? nil : store.calendars(for: .event).filter { calendarIdentifiers.contains($0.calendarIdentifier) }
+        let predicate = store.predicateForEvents(withStart: interval.start, end: interval.end, calendars: calendars)
+        return store.events(matching: predicate).compactMap { event in
+            guard !event.isAllDay, event.status != .canceled else { return nil }
+            if let me = event.attendees?.first(where: { $0.isCurrentUser }), me.participantStatus == .declined { return nil }
+            let link = CalendarService.extractMeetingURL(from: [event.url?.absoluteString, event.notes, event.location])
+            return CalendarService.candidate(event, meetingURL: link?.0, platform: link?.1 ?? .other)
+        }.sorted { $0.startDate < $1.startDate }
+    }
+
+    private static func candidate(_ event: EKEvent, meetingURL: URL?, platform: MeetingPlatform) -> CalendarCandidate {
+        let start = event.startDate ?? Date()
+        let attendees = (event.attendees ?? []).compactMap { participant -> Attendee? in
+            let name = participant.name ?? participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "")
+            let email = participant.url.scheme == "mailto" ? participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "") : nil
+            return Attendee(name: name, email: email)
+        }
+        return CalendarCandidate(
+            id: event.eventIdentifier ?? event.calendarItemIdentifier,
+            title: event.title ?? "会議",
+            startDate: start,
+            endDate: event.endDate ?? start.addingTimeInterval(3600),
+            attendees: attendees,
+            organizer: event.organizer?.name,
+            meetingURL: meetingURL,
+            platform: platform,
+            calendarIdentifier: event.calendar.calendarIdentifier
+        )
     }
 }

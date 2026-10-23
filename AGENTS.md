@@ -77,7 +77,7 @@ python3 scripts/make-fixtures.py
 
 ```
 Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方から使う）
-  Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList
+  Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList, AudioImport（外部の録音の取り込み、SPEC §4.4）
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
   Eval/                      CER
   Support/                   ArgumentParser, DotEnv, Multipart, HostClock, JSON, Log, AppSettings, Diagnostics（診断情報の書き出し）
