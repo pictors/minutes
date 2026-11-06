@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreAudio
 import Foundation
+import Synchronization
 
 /// 録音 1 回分の設定。
 public struct RecordingOptions: Sendable {
@@ -185,6 +186,11 @@ public final class RecordingSession: @unchecked Sendable {
     private var stopped = false
     private var diagnosticLog: FileHandle?
     private var watchdog: CaptureWatchdog?
+    /// 入力（tap・マイク）の停止を待つ秒数（`stopInputs`）。ふだんの停止は 1 秒かからない。
+    /// 待つ間は会議の状態も進まない（MeetingSessionController が停止を待つ）ので、長くしない。テストでは短くする。
+    var inputStopTimeout: TimeInterval = 3
+    /// tap の作り方（テストでは実機の代わりの tap を使う）。
+    var makeSystemCapture: @Sendable (ProcessTap.Configuration) -> SystemAudioCapture = { SystemAudioCapture(configuration: $0) }
 
     public init(options: RecordingOptions) {
         self.options = options
@@ -295,7 +301,7 @@ public final class RecordingSession: @unchecked Sendable {
         // AirPods の入力を先に起動し、通話モードの交渉後に aggregate を作る。
         // 以後のデバイス変更は SystemAudioCapture が tap / aggregate の再作成まで行う。
         if let configuration = tapConfiguration {
-            let tap = SystemAudioCapture(configuration: configuration)
+            let tap = makeSystemCapture(configuration)
             lock.withLock { self.tap = tap }
             tap.onLayoutObserved = { [weak self] message in self?.record(event: "tap layout: \(message)") }
             tap.onEvent = { [weak self] message in self?.record(event: message) }
@@ -372,6 +378,12 @@ public final class RecordingSession: @unchecked Sendable {
             defer { watchdog = nil }
             return watchdog
         }?.stop()
+        // 録音は停止を求めたこの時点で終える。入力の停止（stopInputs）は Core Audio の中で戻らないことがあり、そのあとの時計で
+        // 測ると録音の長さと終了時刻が延びる（機器の作り直しの途中に蓋を閉じた録音が、Mac が次に起きた翌日までの長さになった）。
+        let endedAt = Date()
+        let duration = HostClock.nowSeconds() - HostClock.seconds(fromHostTime: timelineStartHostTime)
+        systemPipeline?.end(at: duration)
+        micPipeline?.end(at: duration)
 
         defer {
             lock.withLock {
@@ -380,19 +392,12 @@ public final class RecordingSession: @unchecked Sendable {
             }
         }
         removeProcessListener()
-        // 再起動後の機器名・形式を停止前に取得する。
-        clockDeviceName = tap?.clockDeviceName ?? clockDeviceName
-        tapStreamDescription = tap?.streamInfo?.description ?? tapStreamDescription
-        tap?.stop()
         let micDeviceName = mic?.activeDeviceName
-        mic?.stop()
-        let endedAt = Date()
-        let duration = HostClock.nowSeconds() - HostClock.seconds(fromHostTime: timelineStartHostTime)
+        stopInputs()
         // 途切れたまま終わったトラックは末尾を無音で埋め、両トラックの長さを録音の終了にそろえる（SPEC §4.3）。
         let padTo = options.writeAudioFiles && lock.withLock({ captureFailure == nil }) ? duration : nil
         let systemStats = systemPipeline?.finish(padTo: padTo)
         let micStats = micPipeline?.finish(padTo: padTo)
-        tap?.invalidate()
         lock.withLock { tap = nil }
         mic = nil
 
@@ -458,6 +463,32 @@ public final class RecordingSession: @unchecked Sendable {
             }
         }
         return manifest
+    }
+
+    /// tap とマイクを並べて止め、`inputStopTimeout` だけ待つ（`CaptureStop`）。待ちきれなかった入力は裏で止まるのを待ち、
+    /// ファイルは先に閉じる（その間に届いた音声は `TrackPipeline.end(at:)` で書かない）。
+    /// tap の機器名・形式は止める前に読む（作り直したあとの値。読むのも tap の制御キューで待つので、止める側で読む）。
+    private func stopInputs() {
+        let tap = lock.withLock { self.tap }
+        let tapInfo = Mutex<(clock: String?, stream: String?)?>(nil)
+        var inputs: [CaptureStop.Input] = []
+        if let tap {
+            inputs.append(CaptureStop.Input(name: "system") {
+                let clock = tap.clockDeviceName
+                let stream = tap.streamInfo?.description
+                tapInfo.withLock { $0 = (clock, stream) }
+                tap.invalidate()
+            })
+        }
+        if let mic { inputs.append(CaptureStop.Input(name: "mic") { mic.stop() }) }
+        let unfinished = CaptureStop.run(inputs, timeout: inputStopTimeout)
+        if let info = tapInfo.withLock({ $0 }) {
+            clockDeviceName = info.clock ?? clockDeviceName
+            tapStreamDescription = info.stream ?? tapStreamDescription
+        }
+        if !unfinished.isEmpty {
+            record(event: String(format: "%@ did not stop within %g s; closing files without waiting", unfinished.joined(separator: ", "), inputStopTimeout))
+        }
     }
 
     // MARK: - Process following

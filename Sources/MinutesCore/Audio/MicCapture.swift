@@ -166,9 +166,12 @@ public final class MicCapture: @unchecked Sendable {
         lock.withLock { restartCount += 1 }
         do {
             try startEngine()
+            // 作り直しが戻る前に止められた（Core Audio が戻らず、録音の停止が待ちきれなかったなど）。作ったエンジンは止め、知らせない。
+            if lock.withLock({ stopped }) { teardownEngine(); return }
             failedRestarts = 0
             onConfigurationChange?(currentFormat)
         } catch {
+            if lock.withLock({ stopped }) { return }
             failedRestarts += 1
             Log.audio.error("mic engine restart failed (attempt \(self.failedRestarts, privacy: .public)): \(error.localizedDescription, privacy: .public)")
             // 録音全体は止めない。最初の失敗だけ知らせ、停止まで一定間隔で再試行する（エンジンがないと切替の通知も来ない）。

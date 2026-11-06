@@ -68,6 +68,8 @@ public final class TrackPipeline: @unchecked Sendable {
     private var expectedSampleTime: Double = .nan
     private var written16kFrames = 0
     private var finished = false
+    /// 録音の終わり（タイムラインの秒、`end(at:)`）。これより後に始まる音声は書かない。
+    private var recordingEnd: Double?
     private var streamingLive: Bool
     private let onLiveFailure: (@Sendable (String) -> Void)?
     private let onFailure: (@Sendable (CaptureFailure) -> Void)?
@@ -120,6 +122,12 @@ public final class TrackPipeline: @unchecked Sendable {
     /// 一度も音声が届かなかったトラックを無音で作るときのレート。
     static let silentTrackSampleRate: Double = 48_000
 
+    /// 録音の終わり（タイムラインの秒）を決める。これより後に始まる音声は書かない（またがる音声は残す）。
+    /// 録音は停止を求めた時点で終える。入力の停止を待つ間に届いた音声で、ファイルを録音の長さより延ばさない。
+    public func end(at timelineEnd: Double) {
+        queue.async { [self] in self.recordingEnd = timelineEnd }
+    }
+
     /// ファイルを閉じてストリームを終了する。
     /// `padTo` を渡すと、途切れたまま終わったトラックの末尾を録音の終了（タイムラインの秒）まで無音で埋める（SPEC §4.3）。
     public func finish(padTo timelineEnd: Double? = nil) -> TrackStatsSnapshot {
@@ -144,6 +152,8 @@ public final class TrackPipeline: @unchecked Sendable {
 
     private func process(_ inputChunk: PCMChunk) {
         guard !finished, stats.failure == nil else { return }
+        if let recordingEnd, inputChunk.hostTime != 0,
+           HostClock.seconds(fromHostTime: inputChunk.hostTime) - timelineStartSeconds >= recordingEnd { return }
         var chunk = inputChunk
         let rate = chunk.sampleRate
         guard rate.isFinite, rate > 0, chunk.frameCount > 0 else { return }
