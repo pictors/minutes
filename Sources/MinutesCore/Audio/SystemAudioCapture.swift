@@ -37,6 +37,8 @@ final class SystemAudioCapture: @unchecked Sendable {
 
     var onLayoutObserved: (@Sendable (String) -> Void)?
     var onEvent: (@Sendable (String) -> Void)?
+    /// デバイスの変化などで tap を作り直せたときに呼ぶ（失敗して再試行している間は呼ばない）。
+    var onRestart: (@Sendable () -> Void)?
 
     init(configuration: ProcessTap.Configuration, monitorDevices: Bool = true, restartDelay: TimeInterval = 0.3, retryDelay: TimeInterval = 3,
          makeTap: @escaping @Sendable (ProcessTap.Configuration) throws -> any SystemAudioTap = { try ProcessTap(configuration: $0) }) {
@@ -93,6 +95,7 @@ final class SystemAudioCapture: @unchecked Sendable {
                     try self.createTap()
                     let retried = self.failedRestarts > 0 ? " after \(self.failedRestarts) failed attempts" : ""
                     self.failedRestarts = 0
+                    self.onRestart?()
                     self.onEvent?("system restarted after device change\(retried): \(reason), clock=\(self.tap?.clockDeviceName ?? "?"), \(self.tap?.streamInfo.description ?? "?")")
                 } catch {
                     // 最初の失敗だけ記録し、停止まで一定間隔で作り直しを試みる。

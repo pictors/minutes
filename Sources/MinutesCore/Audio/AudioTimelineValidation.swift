@@ -53,8 +53,11 @@ struct AudioClockMonitor {
 /// manifest がないインポート音声では、実時間を推測しない。
 /// 録音済み manifest があるときは失敗記録・時計・実ファイル長を照合する。
 public enum RecordingAudioValidation {
+    /// `recordingDuration` は `RecordingManifest.durationForValidation` を渡す（入力が止まって止めた録音では nil）。
     public static func validate(stats: TrackStatsSnapshot, fileDuration: Double? = nil, recordingDuration: Double? = nil) throws {
-        if let failure = stats.failure { throw failure }
+        // 書き込み・変換・時計の失敗は、ファイルが壊れているかもしれないので先へ進めない。
+        // 監視が「音声が届かない」と止めた録音は、止まるまでのファイルが正常なので、長さの照合だけを行う。
+        if let failure = stats.failure, !failure.isInputStall { throw failure }
         if let lastAudio = stats.lastChunkTimelineEnd, lastAudio > 0 {
             // 途切れたまま終わったトラックは、停止時に末尾を無音で埋めている（SPEC §4.3）。
             let end = lastAudio + (stats.tailPaddingSeconds ?? 0)
@@ -75,4 +78,16 @@ public enum RecordingAudioValidation {
             throw CaptureFailure(track: track, operation: "録音品質の検証", message: String(format: "%@が一致しません（%.2f 秒 / %.2f 秒）。原音を保持しました。速度・欠落を確認してから再処理してください。", detail, actual, expected))
         }
     }
+}
+
+extension RecordingManifest {
+    /// 監視が「音声が届かない」と判断して止めた録音なら、その記録（`tracks` のどれか 1 つに付いている）。
+    public var inputStall: CaptureFailure? {
+        tracks.values.compactMap(\.failure).first(where: \.isInputStall)
+    }
+
+    /// 「最終音声と録音終了時刻」の照合に使う録音の長さ。入力が止まって止めた録音では照合しない（nil）:
+    /// 末尾を無音で埋めておらず、最後の音声から停止まで監視の 5 秒より長くあく（スリープで停止が遅れると数時間）。
+    /// その場合も、各トラックの長さと録音時計、保存ファイルの長さは照合する。
+    public var durationForValidation: Double? { inputStall == nil ? durationSeconds : nil }
 }

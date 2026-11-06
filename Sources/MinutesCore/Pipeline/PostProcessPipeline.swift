@@ -290,7 +290,7 @@ public final class PostProcessPipeline: Sendable {
             }
             if let duration = try? AudioFileTools.duration(of: sttURL), duration > 0 {
                 if let stats = manifest?.tracks[track] {
-                    try RecordingAudioValidation.validate(stats: stats, fileDuration: duration, recordingDuration: manifest?.durationSeconds)
+                    try RecordingAudioValidation.validate(stats: stats, fileDuration: duration, recordingDuration: manifest?.durationForValidation)
                 }
                 available += 1
             } else if let duration = try? AudioFileTools.duration(of: archiveURL), duration > 0 {
@@ -298,7 +298,7 @@ public final class PostProcessPipeline: Sendable {
                 guard !samples.isEmpty else { throw PipelineError.noAudio(track) }
                 try AudioFileTools.writeWAV(samples: samples, sampleRate: AudioFileTools.sttSampleRate, to: sttURL)
                 if let stats = manifest?.tracks[track] {
-                    try RecordingAudioValidation.validate(stats: stats, fileDuration: Double(samples.count) / AudioFileTools.sttSampleRate, recordingDuration: manifest?.durationSeconds)
+                    try RecordingAudioValidation.validate(stats: stats, fileDuration: Double(samples.count) / AudioFileTools.sttSampleRate, recordingDuration: manifest?.durationForValidation)
                 }
                 available += 1
             } else {
@@ -311,9 +311,17 @@ public final class PostProcessPipeline: Sendable {
 
     /// 録音中の途切れ（無音で補った時間）を pipeline_runs に残す（SPEC §4.3）。
     /// ふだんの小さな欠落（合計 5 秒未満）は書かない。途切れたまま終わって末尾を埋めた場合は短くても書く。
+    /// すべての入力が止まって録音を止めた場合は、各トラックの最後の音声の時刻を書く（そこまでを文字起こしする）。
     static func interruptionNote(_ manifest: RecordingManifest?) -> String? {
         guard let manifest else { return nil }
-        let notes = manifest.tracks.keys.sorted().compactMap { track -> String? in
+        var notes: [String] = []
+        if manifest.inputStall != nil {
+            let ends = manifest.tracks.keys.sorted().compactMap { track in
+                manifest.tracks[track]?.lastChunkTimelineEnd.map { "\(track) \(TimeFormatting.hms($0))" }
+            }
+            notes.append("入力が止まって録音を停止（最後の音声: \(ends.joined(separator: ", "))）")
+        }
+        notes += manifest.tracks.keys.sorted().compactMap { track -> String? in
             guard let stats = manifest.tracks[track], stats.gapSeconds >= 5 || (stats.tailPaddingSeconds ?? 0) > 0 else { return nil }
             return String(format: "%@: 途切れ %.0f 秒を無音で補完", track, stats.gapSeconds)
         }

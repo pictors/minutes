@@ -63,7 +63,7 @@ public enum RecordingRateRepair {
         manifest.id = UUID().uuidString.lowercased()
         manifest.title = (manifest.title ?? "会議") + "（音声補正版）"
         manifest.events.append("rate repair: \(track), \(factor)x duration, actual \(actualSampleRate) Hz; original: \(source.path)")
-        try RecordingAudioValidation.validate(stats: stats, fileDuration: Double(sttSamples.count) / AudioFileTools.sttSampleRate, recordingDuration: manifest.durationSeconds)
+        try RecordingAudioValidation.validate(stats: stats, fileDuration: Double(sttSamples.count) / AudioFileTools.sttSampleRate, recordingDuration: manifest.durationForValidation)
         try manifest.write(to: destination)
         try JSONCoding.encoder().encode(manifest.tracks.keys.sorted()).write(to: destination.appendingPathComponent("expected-tracks.json"))
         complete = true

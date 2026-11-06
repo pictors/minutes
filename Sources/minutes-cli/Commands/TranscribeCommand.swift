@@ -58,7 +58,7 @@ enum TranscribeCommand {
                 throw TranscriptionError.unsupportedAudio("\(track) の音声ファイルが空です")
             }
             if let stats {
-                try RecordingAudioValidation.validate(stats: stats, fileDuration: duration, recordingDuration: manifest?.durationSeconds)
+                try RecordingAudioValidation.validate(stats: stats, fileDuration: duration, recordingDuration: manifest?.durationForValidation)
             }
         }
 

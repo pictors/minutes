@@ -148,6 +148,11 @@ public final class RecordingSession: @unchecked Sendable {
         lock.withLock { watchdog }?.interruptedTracks ?? []
     }
 
+    /// 機器の切り替えで入力を作り直せたトラックは、作り直した時刻から途切れを数え直す（作り直しの間は音声が届かない）。
+    private func noteRestart(_ track: String) {
+        lock.withLock { watchdog }?.noteRestart(track: track)
+    }
+
     private func record(_ interruption: CaptureWatchdog.Interruption) {
         switch interruption {
         case let .interrupted(track, since):
@@ -264,6 +269,7 @@ public final class RecordingSession: @unchecked Sendable {
             let mic = MicCapture(deviceUID: options.micDeviceUID)
             mic.onConfigurationChange = { [weak self] format in
                 if let format {
+                    self?.noteRestart("mic")
                     self?.record(event: "mic restarted after device change: \(Int(format.sampleRate)) Hz, \(format.channelCount) ch, device=\(mic.activeDeviceName ?? "default")")
                     let capture = self?.lock.withLock { self?.tap }
                     capture?.requestRestart(reason: "microphone configuration")
@@ -293,6 +299,7 @@ public final class RecordingSession: @unchecked Sendable {
             lock.withLock { self.tap = tap }
             tap.onLayoutObserved = { [weak self] message in self?.record(event: "tap layout: \(message)") }
             tap.onEvent = { [weak self] message in self?.record(event: message) }
+            tap.onRestart = { [weak self] in self?.noteRestart("system") }
             let pipeline = TrackPipeline(
                 name: "system",
                 timelineStartHostTime: t0,
@@ -392,7 +399,8 @@ public final class RecordingSession: @unchecked Sendable {
         var tracks: [String: TrackStatsSnapshot] = [:]
         if let systemStats { tracks["system"] = systemStats }
         if let micStats { tracks["mic"] = micStats }
-        if let failure = lock.withLock({ captureFailure }) { tracks[failure.track]?.failure = failure }
+        // トラック自身の失敗（書き込みなど）は、あとから来た監視の失敗で上書きしない（後処理は前者だけを止める）。
+        if let failure = lock.withLock({ captureFailure }), tracks[failure.track]?.failure == nil { tracks[failure.track]?.failure = failure }
         var files: [String: String] = [:]
         if options.writeAudioFiles {
             if systemStats != nil {

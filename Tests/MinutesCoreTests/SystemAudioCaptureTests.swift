@@ -119,11 +119,15 @@ struct SystemAudioCaptureTests {
             return FakeSystemTap(configuration: config)
         })
         defer { capture.stop() }
+        let restarted = Mutex(0)
         capture.onEvent = { event in events.withLock { $0.append(event) } }
+        capture.onRestart = { restarted.withLock { $0 += 1 } }
         try capture.start { _ in }
         capture.requestRestart(reason: "output")
         try await waitUntil { events.withLock { $0.contains { $0.hasPrefix("system restarted") } } }
         #expect(count.withLock { $0 } == 4)
+        // 作り直せた 1 回だけを知らせる（最初の開始と、失敗した作り直しでは呼ばない）。監視はここから数え直す
+        #expect(restarted.withLock { $0 } == 1)
         // 失敗の記録は続けて失敗しても 1 回だけ
         #expect(events.withLock { $0.filter { $0.hasPrefix("system restart failed") }.count } == 1)
         #expect(events.withLock { $0.contains { $0.contains("after 2 failed attempts") } })
