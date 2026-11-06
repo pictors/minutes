@@ -706,7 +706,6 @@ private struct LiveModelLine: View {
 private struct TestPage: View {
     @Bindable var onboarding: OnboardingModel
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
 
     private var test: TestRecording { onboarding.test }
 
@@ -842,8 +841,7 @@ private struct TestPage: View {
     private func openMeeting(_ id: String) {
         guard let url = URL(string: "minutes://meeting/\(id)") else { return }
         model.handle(url: url)
-        openWindow(id: "main")
-        model.setMainWindowVisible(true)
+        model.showMainWindow()
     }
 }
 

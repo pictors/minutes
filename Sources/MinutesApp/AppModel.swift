@@ -242,8 +242,6 @@ final class AppModel {
 
     /// 初回の案内をまだ終えていない。終えるまで自動録音の準備をしない（許可も選んでいないうちに録音を始めない）。
     var needsOnboarding: Bool { settings.onboardingCompletedAt == nil }
-    /// この起動で案内を開いた（メニューバーのラベルが出直しても開き直さない）。
-    @ObservationIgnored var presentedOnboarding = false
 
     func completeOnboarding() {
         guard needsOnboarding else { return }
@@ -1030,24 +1028,95 @@ final class AppModel {
 
     // MARK: - Window / activation
 
-    /// メインウィンドウか初回の案内を出している間だけ Dock とアプリメニューを持つ（⌘Tab・Edit メニューが使える）。閉じたらメニューバー常駐に戻る。
+    /// 出している間 Dock とアプリメニューを持たせる窓。`main` と `onboarding` は Scene の id。
+    enum AppWindow: String {
+        case main, onboarding, settings
+    }
+
+    /// メインウィンドウ・初回の案内・設定を出している間だけ Dock とアプリメニューを持つ（⌘Tab・Edit メニューが使える）。閉じたらメニューバー常駐に戻る。
     func setMainWindowVisible(_ visible: Bool) {
         setElapsedSurface(.window, visible: visible)
-        setWindowVisible("main", visible: visible)
+        setWindowVisible(.main, visible: visible)
     }
 
     func setOnboardingVisible(_ visible: Bool) {
-        setWindowVisible("onboarding", visible: visible)
+        setWindowVisible(.onboarding, visible: visible)
     }
 
-    @ObservationIgnored private var visibleWindows: Set<String> = []
+    func setSettingsVisible(_ visible: Bool) {
+        setWindowVisible(.settings, visible: visible)
+    }
 
-    private func setWindowVisible(_ id: String, visible: Bool) {
-        if visible { visibleWindows.insert(id) } else { visibleWindows.remove(id) }
+    @ObservationIgnored private var visibleWindows: Set<AppWindow> = []
+
+    private func setWindowVisible(_ window: AppWindow, visible: Bool) {
+        if visible { visibleWindows.insert(window) } else { visibleWindows.remove(window) }
         let policy: NSApplication.ActivationPolicy = visibleWindows.isEmpty ? .accessory : .regular
-        guard NSApp.activationPolicy() != policy else { return }
-        NSApp.setActivationPolicy(policy)
-        if visible { NSApp.activate() }
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
+    }
+
+    /// 利用者が求めた窓を開いて、Minutes を前に出す。パネル・通知・URL・起動・開き直しのどれもここを通す。
+    /// Dock とメニューを先に持たせてから開き、それからアクティブにする（窓が出ていても毎回。出ている窓がほかのアプリの後ろにあることがある）。
+    func present(_ window: AppWindow, open: () -> Void) {
+        let wasActive = NSApp.isActive
+        setWindowVisible(window, visible: true)
+        open()
+        // macOS 14 からアクティベーションは協調的になり、activate() は「お願い」で、システムが断ることがある（公式の説明:
+        // "Passing control from one app to another with cooperative activation"）。メニューバーのパネルを操作している間や、
+        // 二度目の起動・URL で開いたときは Minutes がすでにアクティブなので activate() で前に出る。Finder・Dock・Spotlight から
+        // 起動した直後はアクティブでなく、activate() は断られる（macOS 26.5 で確認）。そのときだけ、利用者が窓を求めた操作として
+        // activate(ignoringOtherApps:) で前に出す（将来廃止の予定。26.5 の SDK では警告は出ない）。
+        if wasActive {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// メインウィンドウを開いて前に出す。会議を指定すれば選んでおく。
+    func showMainWindow(meetingId: String? = nil) {
+        if let meetingId {
+            selectFolder(.all)
+            selectedMeetingId = meetingId
+        }
+        present(.main) { windowOpener?(.main) }
+    }
+
+    func showOnboarding() {
+        present(.onboarding) { windowOpener?(.onboarding) }
+    }
+
+    // MARK: - 起動と開き直し
+
+    /// 窓を開く手段（SwiftUI の openWindow）。メニューバーのラベルが起動直後に渡す。
+    @ObservationIgnored private var windowOpener: (@MainActor (AppWindow) -> Void)?
+    /// 起動のしかた。窓を開く手段とそろったら最初の窓を出す（どちらが先に来てもよい）。
+    @ObservationIgnored private var pendingLaunch: LaunchKind?
+
+    func setWindowOpener(_ opener: @escaping @MainActor (AppWindow) -> Void) {
+        windowOpener = opener
+        presentLaunchWindowIfReady()
+    }
+
+    /// 起動を終えた（`AppDelegate.applicationDidFinishLaunching`）。
+    func didFinishLaunching(_ kind: LaunchKind) {
+        pendingLaunch = kind
+        presentLaunchWindowIfReady()
+    }
+
+    private func presentLaunchWindowIfReady() {
+        guard let kind = pendingLaunch, windowOpener != nil else { return }
+        pendingLaunch = nil
+        switch LaunchWindow.choose(kind: kind, needsOnboarding: needsOnboarding, startupFailed: startupError != nil) {
+        case .main: showMainWindow()
+        case .onboarding: showOnboarding()
+        case nil: break
+        }
+    }
+
+    /// 起動中に Dock・Finder・Spotlight からもう一度開いた。案内の途中なら案内を、そうでなければメインウィンドウを前に出す。
+    func reopen() {
+        if needsOnboarding { showOnboarding() } else { showMainWindow() }
     }
 
     // MARK: - URL scheme
@@ -1118,18 +1187,13 @@ final class AppModel {
             Task { @MainActor in
                 guard let self else { return }
                 if let meetingId { self.handle(url: URL(string: "minutes://meeting/\(meetingId)")!) }
-                self.notificationDelegate.openMainWindow?()
+                self.showMainWindow()
             }
         }
         notificationDelegate.onStartRecording = { [weak self] in
             Task { @MainActor in self?.startNow() }
         }
         center.delegate = notificationDelegate
-    }
-
-    /// 通知からウィンドウを開く手段は Scene 側が持つ（openWindow）。
-    func setNotificationWindowOpener(_ opener: @escaping @MainActor () -> Void) {
-        notificationDelegate.openMainWindow = opener
     }
 
     static func postNotification(title: String, body: String, meetingId: String? = nil, category: String? = nil) {
@@ -1148,7 +1212,6 @@ final class AppModel {
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     var onOpenMeeting: (@Sendable (String?) -> Void)?
     var onStartRecording: (@Sendable () -> Void)?
-    var openMainWindow: (@MainActor () -> Void)?
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]

@@ -4,7 +4,9 @@ import SwiftUI
 
 @main
 struct MinutesApp: App {
-    @State private var model = AppModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    private var model: AppModel { appDelegate.model }
 
     var body: some Scene {
         MenuBarExtra {
@@ -16,7 +18,9 @@ struct MinutesApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Minutes", id: "main") {
+        // 起動したときに開くかは AppDelegate が決める（利用者が開いたら開き、ログイン時は開かない）。
+        // 復元は止めない（止めると窓の位置と大きさも覚えなくなる）
+        Window("Minutes", id: AppModel.AppWindow.main.rawValue) {
             MainWindow()
                 .environment(model)
                 .frame(minWidth: 980, minHeight: 620)
@@ -31,8 +35,8 @@ struct MinutesApp: App {
         }
         .windowResizability(.contentSize)
 
-        // 初回の案内。最初の起動でメニューバーのラベルから開く（`MenuBarLabel`）。前回開いていても起動時に復元しない
-        Window("Minutes へようこそ", id: "onboarding") {
+        // 初回の案内。最初の起動で AppDelegate が開く。前回開いていても起動時に復元しない
+        Window("Minutes へようこそ", id: AppModel.AppWindow.onboarding.rawValue) {
             OnboardingView()
                 .environment(model)
         }
@@ -41,6 +45,23 @@ struct MinutesApp: App {
         .defaultPosition(.center)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+    }
+}
+
+/// 起動と、起動中にもう一度開いたとき（Dock・Finder・Spotlight）の窓を決める。アプリ全体の状態（AppModel）もここで持つ。
+/// 起動の Apple イベント（ログイン項目かどうか）は applicationDidFinishLaunching の中でしか読めない。
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let model = AppModel()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        model.didFinishLaunching(LaunchKind(event: NSAppleEventManager.shared().currentAppleEvent))
+    }
+
+    /// 窓を出していないとき（メニューバー常駐）も届く。AppKit・SwiftUI の既定の動き（最初の Scene を出す）は使わない。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        model.reopen()
+        return false
     }
 }
 
@@ -65,16 +86,9 @@ struct MenuBarLabel: View {
                 Image(systemName: state.symbol)
             }
         }
-        // 通知のクリックでウィンドウを開く手段。メニューバーのラベルは起動直後から存在する。
+        // 起動・開き直し・通知のクリックで窓を開く手段。メニューバーのラベルは起動直後から存在する。
         .onAppear {
-            model.setNotificationWindowOpener {
-                openWindow(id: "main")
-                model.setMainWindowVisible(true)
-            }
-            if model.needsOnboarding, !model.presentedOnboarding {
-                model.presentedOnboarding = true
-                openWindow(id: "onboarding")
-            }
+            model.setWindowOpener { openWindow(id: $0.rawValue) }
         }
     }
 }
@@ -82,12 +96,11 @@ struct MenuBarLabel: View {
 /// 「ファイル > 音声ファイルを取り込む…」（SPEC §4.4）。メニューはメインウィンドウを出している間だけ現れる。
 struct ImportCommands: Commands {
     let model: AppModel
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .importExport) {
             Button("音声ファイルを取り込む…") {
-                openWindow(id: "main")
+                model.showMainWindow()
                 model.showingImportPicker = true
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])

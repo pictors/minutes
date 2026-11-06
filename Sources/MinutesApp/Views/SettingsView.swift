@@ -33,7 +33,12 @@ struct SettingsView: View {
         }
         .frame(width: 680)
         .windowResizeAnchor(.top)
-        .onAppear(perform: load)
+        // 設定を出している間も Dock とアプリメニューを持つ（メインウィンドウと同じ）
+        .onAppear {
+            load()
+            model.setSettingsVisible(true)
+        }
+        .onDisappear { model.setSettingsVisible(false) }
         .onChange(of: draft) { _, _ in scheduleSave() }
         .onChange(of: model.requestedSettingsTab) { _, tab in consumeRequestedTab(tab) }
         // メニューバーのパネルで切り替えたテーマを下書きにも反映する（古い値で上書き保存しない）
@@ -1430,7 +1435,6 @@ struct PeopleAndTermsPane: View {
 
 struct DiagnosticsPane: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
     @State private var exportMessage: String?
     @State private var exporting = false
 
@@ -1464,10 +1468,7 @@ struct DiagnosticsPane: View {
             }
             Section {
                 HStack {
-                    Button("初回の案内を開く") {
-                        openWindow(id: "onboarding")
-                        NSApp.activate()
-                    }
+                    Button("初回の案内を開く") { model.showOnboarding() }
                     Spacer()
                 }
             } footer: {

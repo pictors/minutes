@@ -29,7 +29,6 @@ struct MenuBarPanel: View {
     }
 
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @AppStorage("menuBarPanel.tab") private var tab: PanelTab = .overview
     @State private var choice: CandidateChoice = .automatic
@@ -399,18 +398,12 @@ struct MenuBarPanel: View {
     }
 
     private func openMain(meetingId: String? = nil) {
-        if let meetingId {
-            model.selectFolder(.all)
-            model.selectedMeetingId = meetingId
-        }
-        openWindow(id: "main")
-        model.setMainWindowVisible(true)
+        model.showMainWindow(meetingId: meetingId)
     }
 
     private func openSettingsWindow(tab: SettingsTab? = nil) {
         if let tab { model.requestedSettingsTab = tab }
-        openSettings()
-        NSApp.activate()
+        model.present(.settings) { openSettings() }
     }
 
     /// 予定と「今の会議」候補を 1 分ごと・予定の変更時に読み直す（表示中のみ）。

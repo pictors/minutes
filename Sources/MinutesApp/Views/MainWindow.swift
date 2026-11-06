@@ -6,7 +6,6 @@ import SwiftUI
 struct MainWindow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -30,13 +29,8 @@ struct MainWindow: View {
             }
         }
         // ウィンドウを出している間は Dock とアプリメニューを持つ（⌘Tab、Edit メニュー）。閉じたら常駐に戻す。
-        .onAppear {
-            model.setMainWindowVisible(true)
-            model.setNotificationWindowOpener {
-                openWindow(id: "main")
-                model.setMainWindowVisible(true)
-            }
-        }
+        // 前に出すのは開く操作の側（AppModel.present）。
+        .onAppear { model.setMainWindowVisible(true) }
         .onDisappear { model.setMainWindowVisible(false) }
         // 音声の取り込み（SPEC §4.4）: メニューのファイル選択と、確認のシート（複数なら 1 つずつ。閉じるのはシートのボタンだけ）
         .fileImporter(isPresented: Binding(get: { model.showingImportPicker }, set: { model.showingImportPicker = $0 }),
@@ -50,10 +44,13 @@ struct MainWindow: View {
             ImportAudioSheet(item: item)
                 .environment(model)
         }
+        // URL はメインウィンドウが受ける（閉じていれば SwiftUI が開いて渡す）。SwiftUI は渡したあとでこの窓を前に出すので、
+        // 設定はそのあとで開く（同じ流れで開くと、設定がメインウィンドウの後ろに残る）
         .onOpenURL { url in
-            if model.handle(url: url) == .settings {
-                openSettings()
-                NSApp.activate()
+            switch model.handle(url: url) {
+            case .meeting: model.showMainWindow()
+            case .settings: Task { model.present(.settings) { openSettings() } }
+            case .ignored: break
             }
         }
         .alert("起動エラー", isPresented: .constant(model.startupError != nil)) {
@@ -344,7 +341,7 @@ struct SidebarFooter: View {
             }
             Button {
                 model.requestedSettingsTab = .providers
-                openSettings()
+                model.present(.settings) { openSettings() }
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     ProviderStatusRow(symbol: "waveform.badge.magnifyingglass", title: "確定文字起こし", value: model.finalProviderLabel, ready: model.finalProviderReady)
