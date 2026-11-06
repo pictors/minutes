@@ -441,9 +441,10 @@ public final class RecordingSession: @unchecked Sendable {
             events: lock.withLock { events }
         )
         try manifest.write(to: options.outputDirectory)
-        if let failure = lock.withLock({ captureFailure }) { throw failure }
+        // 入力が止まっただけの録音は、止まるまでの音声で終える（会議を failed にしない。SPEC §4.3）。
+        if let failure = lock.withLock({ captureFailure }), !failure.isInputStall { throw failure }
         for stats in tracks.values {
-            try RecordingAudioValidation.validate(stats: stats, recordingDuration: manifest.durationSeconds)
+            try RecordingAudioValidation.validate(stats: stats, recordingDuration: manifest.durationForValidation)
         }
         if options.writeAudioFiles {
             for (role, name) in files {

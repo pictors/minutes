@@ -16,6 +16,8 @@ public enum SessionEvent: Sendable, Equatable {
     case targetProcessExited
     case calendarEndPassed
     case manualStop
+    /// すべての入力が届かなくなった（蓋を閉じた・音声機器が外れたなど）。止まるまでの音声で会議を終える（SPEC §4.3）。
+    case inputsStopped
     /// finalizing 中 1 分以内に音声が再開
     case audioResumed
     case captureFailed(String)
@@ -56,11 +58,11 @@ public struct SessionStateMachine: Sendable, Equatable {
             return .recording
         case (.armed, .disarm), (.armed, .targetProcessExited):
             return .idle
-        case (.recording, .silenceTimeout), (.recording, .targetProcessExited), (.recording, .manualStop), (.recording, .calendarEndPassed):
+        case (.recording, .silenceTimeout), (.recording, .targetProcessExited), (.recording, .manualStop), (.recording, .calendarEndPassed), (.recording, .inputsStopped):
             return .finalizing
         case (.finalizing, .audioResumed):
             return .recording
-        case (.finalizing, .manualStop):
+        case (.finalizing, .manualStop), (.finalizing, .inputsStopped):
             return .finalizing
         case (.finalizing, .recordingFinished):
             return .idle

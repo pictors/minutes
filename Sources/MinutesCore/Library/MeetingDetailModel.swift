@@ -161,6 +161,12 @@ public final class MeetingDetailModel {
         runs.last(where: { $0.step == PipelineStep.transcribeFinal.rawValue && $0.runStatus == .ok })?.provider
     }
 
+    /// すべての入力が届かなくなって録音を終えた会議（蓋を閉じた・音声機器が外れたなど。SPEC §4.3）。
+    public var endedByInputStall: Bool {
+        runs.last(where: { $0.step == PipelineStep.finalizeAudio.rawValue && $0.runStatus == .ok })?
+            .provider?.hasPrefix(PostProcessPipeline.inputStallNote) == true
+    }
+
     /// 音声が保持期限で削除されている（再生・再認識ができない）。
     public var audioPurged: Bool {
         guard let meeting else { return false }

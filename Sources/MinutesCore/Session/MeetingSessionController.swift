@@ -548,7 +548,8 @@ public actor MeetingSessionController {
             await failRecording(error)
             return
         }
-        if let captureFailure {
+        // 入力が止まっただけなら、止まるまでの音声で会議を終える（停止の処理中に止まった場合も）。
+        if let captureFailure, !captureFailure.isInputStall {
             finishing = false
             await failRecording(captureFailure.localizedDescription)
             return
@@ -581,7 +582,27 @@ public actor MeetingSessionController {
         guard generation == pendingMeetingId else { return }
         captureFailure = failure
         if starting || finishing { return }
+        if failure.isInputStall {
+            await inputsStopped(failure)
+            return
+        }
         await failRecording(failure.localizedDescription)
+    }
+
+    /// すべての入力が届かなくなった（蓋を閉じた・音声機器が外れたなど）。止まるまでのファイルは正常なので、
+    /// 会議を failed にせず、そこで終えて後処理に進める（SPEC §4.3）。会議になる前（録音準備中）なら準備を取りやめる。
+    private func inputsStopped(_ failure: CaptureFailure) async {
+        switch machine.state {
+        case .armed:
+            emit("録音準備を取りやめました: \(failure.message)")
+            await disarm()
+        case .recording, .finalizing:
+            try? apply(.inputsStopped)
+            emit("入力が止まったため録音を終えます: \(failure.message)")
+            await finishAndProcess()
+        default:
+            break
+        }
     }
 
     private func reportCaptureFailure(_ message: String) {

@@ -57,6 +57,21 @@ private actor AsyncGate {
 
 @Suite("録音失敗の伝播")
 struct CaptureFailureTests {
+    /// 監視が止めた録音のフォルダ（system に 4 秒の音と、監視の失敗を残した recording.json）。
+    private func writeStalledRecording(to directory: URL, failure: CaptureFailure) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let tone = (0..<64_000).map { Float(sin(Double($0) * 2 * .pi * 440 / 16_000) * 0.3) }
+        try AudioFileTools.writeWAV(samples: tone, sampleRate: 16_000, to: directory.appendingPathComponent(RecordingSession.systemSTTName))
+        var system = TrackPipeline(name: "system", timelineStartHostTime: HostClock.now(), archiveURL: nil, sttURL: nil, streamLiveAudio: false).finish()
+        system.lastChunkTimelineEnd = 4
+        system.writtenSeconds = 4
+        system.failure = failure
+        let manifest = RecordingManifest(schemaVersion: 1, id: UUID().uuidString, title: "lid closed", startedAt: Date(), endedAt: Date(), durationSeconds: 10,
+                                         targetBundleIdentifiers: [], allSystemAudio: false, tappedProcesses: [], clockDevice: nil, micDevice: nil, tapStream: nil,
+                                         files: ["system_stt": RecordingSession.systemSTTName], tracks: ["system": system], resourceUsage: nil, events: [])
+        try manifest.write(to: directory)
+    }
+
     @Test("ファイル作成失敗を一度だけ通知して成功時間を進めない")
     func openingFailure() {
         let failures = Mutex<[CaptureFailure]>([])
@@ -113,6 +128,64 @@ struct CaptureFailureTests {
         #expect(try store.latestRun(meetingId: id, step: "transcribe_final") == nil)
         let lease = try store.acquireMeetingLease(id)
         withExtendedLifetime(lease) {}
+    }
+
+    @Test("すべての入力が止まったら会議を failed にせず、そこで終えて後処理に進める（SPEC §4.3）")
+    @MainActor
+    func inputsStoppedFinishesMeeting() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-stall-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try Store.inMemory()
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: FakeTranscriber(id: "local", runsLocally: true, segments: []), summarizer: nil, exportDirectory: root.appendingPathComponent("export")))
+        let capture = FakeRecording(options: RecordingOptions(outputDirectory: root))
+        var config = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
+        config.liveTranscription = false
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, makeRecording: { _ in capture })
+        try await controller.start(PendingMeetingInfo(title: "lid closed"))
+        let id = try #require(await controller.currentMeeting?.id)
+        // 蓋を閉じるまでに録れた 4 秒の音声と、監視が止めた記録（偽の録音のフォルダが会議の音声フォルダ）
+        let stall = CaptureFailure(track: "system", operation: CaptureWatchdog.failureOperation, message: "すべての音声入力が 5 秒以上届いていません。")
+        try writeStalledRecording(to: capture.options.outputDirectory, failure: stall)
+        capture.onFailure?(stall)
+        for _ in 0..<400 {
+            if try store.meeting(id: id)?.meetingStatus == .done { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(try store.meeting(id: id)?.meetingStatus == .done)
+        #expect(try store.meeting(id: id)?.endedAt != nil)
+        #expect(await controller.state == .idle)
+        #expect(await controller.lastError == nil)
+        #expect(capture.stopped.withLock { $0 } == 1)
+        #expect(try store.latestRun(meetingId: id, step: "capture") == nil)
+        // 会議の詳細に「音声が止まったところで録音を終了」を出す
+        let detail = MeetingDetailModel(store: store, pipeline: nil, meetingId: id, notesDraft: UserNotesDraft { _ in }, voicesDirectory: root)
+        detail.reload()
+        #expect(detail.endedByInputStall)
+        #expect(SessionStateMachine.next(from: .recording, on: .inputsStopped) == .finalizing)
+        #expect(SessionStateMachine.next(from: .armed, on: .inputsStopped) == nil)
+    }
+
+    @Test("録音準備中に入力が止まったら、失敗にせず準備を取りやめる")
+    func inputsStoppedWhileArmed() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-stall-armed-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try Store.inMemory()
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: FakeTranscriber(id: "local", runsLocally: true, segments: []), summarizer: nil, exportDirectory: root))
+        let capture = FakeRecording(options: RecordingOptions(outputDirectory: root))
+        var config = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
+        config.liveTranscription = false
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, makeRecording: { _ in capture })
+        try await controller.arm(PendingMeetingInfo(title: "armed"))
+        #expect(await controller.state == .armed)
+        capture.onFailure?(CaptureFailure(track: "system", operation: CaptureWatchdog.failureOperation, message: "すべての音声入力が 5 秒以上届いていません。"))
+        for _ in 0..<200 {
+            if await controller.state == .idle { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await controller.state == .idle)
+        #expect(await controller.lastError == nil)
+        #expect(capture.stopped.withLock { $0 } == 1)
+        #expect(try store.listMeetings().isEmpty)
     }
 
     @Test("字幕処理がキャンセルを無視しても停止の待ち時間を超えない")

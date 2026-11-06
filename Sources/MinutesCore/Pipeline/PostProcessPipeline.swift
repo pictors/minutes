@@ -309,6 +309,9 @@ public final class PostProcessPipeline: Sendable {
         return Self.interruptionNote(manifest)
     }
 
+    /// すべての入力が止まって録音を終えた会議の、finalize_audio の記録の書き出し（会議の詳細はこれで見分ける）。
+    public static let inputStallNote = "入力が止まって録音を停止"
+
     /// 録音中の途切れ（無音で補った時間）を pipeline_runs に残す（SPEC §4.3）。
     /// ふだんの小さな欠落（合計 5 秒未満）は書かない。途切れたまま終わって末尾を埋めた場合は短くても書く。
     /// すべての入力が止まって録音を止めた場合は、各トラックの最後の音声の時刻を書く（そこまでを文字起こしする）。
@@ -319,7 +322,7 @@ public final class PostProcessPipeline: Sendable {
             let ends = manifest.tracks.keys.sorted().compactMap { track in
                 manifest.tracks[track]?.lastChunkTimelineEnd.map { "\(track) \(TimeFormatting.hms($0))" }
             }
-            notes.append("入力が止まって録音を停止（最後の音声: \(ends.joined(separator: ", "))）")
+            notes.append("\(inputStallNote)（最後の音声: \(ends.joined(separator: ", "))）")
         }
         notes += manifest.tracks.keys.sorted().compactMap { track -> String? in
             guard let stats = manifest.tracks[track], stats.gapSeconds >= 5 || (stats.tailPaddingSeconds ?? 0) > 0 else { return nil }

@@ -427,6 +427,10 @@ struct MeetingDetailContent: View {
                     InfoChip(text: "音声は保持期間を過ぎたため削除済み", systemImage: "speaker.slash")
                         .help("文字起こしと要約は残っています。再生と再認識はできません")
                 }
+                if detail.endedByInputStall {
+                    InfoChip(text: "音声が止まったところで録音を終了", systemImage: "exclamationmark.triangle")
+                        .help("会議アプリの音声とマイクの音声がどちらも届かなくなったため、そこで録音を終えました（蓋を閉じた・音声機器が外れたなど）。それまでの音声から議事録を作っています")
+                }
                 Spacer()
                 if meeting.meetingStatus == .failed {
                     Button {
