@@ -42,9 +42,12 @@ public enum PipelineError: Error, LocalizedError {
     case summaryAlreadyRunning
     case localOnlyExport
     case staleSummary
+    /// クラウドの文字起こしが失敗し、切り替えたローカルも失敗した（両方の理由を残す）。
+    case fallbackFailed(cloud: String, local: String)
 
     public var errorDescription: String? {
         switch self {
+        case let .fallbackFailed(cloud, local): return "\(local)（先に失敗したクラウドの文字起こし: \(Log.preview(cloud, limit: 160))）"
         case let .meetingNotFound(id): return "会議 \(id) が見つかりません"
         case let .noAudio(id): return "会議 \(id) の音声ファイルがありません"
         case let .artifactMissing(name): return "中間成果物 \(name) がありません（前のステップからやり直してください）"
@@ -71,8 +74,10 @@ public struct PipelineProviders: Sendable {
     public var englishSummaryLanguage: MeetingLanguage
     public var notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)?
     public var onProgress: (@Sendable (String, PipelineStep, String) -> Void)?
+    /// 手順の途中のスリープの見張り方（SPEC §8.2。テストで差し替える）。
+    public var sleepMonitor: SleepMonitor
 
-    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, englishSummaryLanguage: MeetingLanguage = .en, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil) {
+    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, englishSummaryLanguage: MeetingLanguage = .en, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil, sleepMonitor: SleepMonitor = .system) {
         self.cloud = cloud
         self.local = local
         self.summarizer = summarizer
@@ -82,6 +87,7 @@ public struct PipelineProviders: Sendable {
         self.englishSummaryLanguage = englishSummaryLanguage
         self.notify = notify
         self.onProgress = onProgress
+        self.sleepMonitor = sleepMonitor
     }
 }
 
@@ -162,14 +168,16 @@ public final class PostProcessPipeline: Sendable {
     }
 
     /// 永続ジョブの claim とパイプライン実行の間で、会議ロックを解放しない。
+    /// `policy` が待つ失敗（スリープ・回線・混雑）は `DeferredFailure` を投げ、会議は処理中のまま残す（キューが再開する。SPEC §8.2）。
     @discardableResult
-    func run(meetingId: String, force: Set<PipelineStep> = [], lease: MeetingLease) async throws -> PipelineOutcome {
+    func run(meetingId: String, force: Set<PipelineStep> = [], lease: MeetingLease, policy: RetryPolicy = .immediate) async throws -> PipelineOutcome {
         try store.validateMeetingLease(lease, meetingId: meetingId)
         defer { withExtendedLifetime(lease) {} }
         guard var meeting = try store.meeting(id: meetingId) else { throw PipelineError.meetingNotFound(meetingId) }
         guard let directory = meeting.audioDirectoryURL else { throw PipelineError.noAudio(meetingId) }
         var completed = false
-        defer { if !completed { try? store.setMeetingStatus(id: meetingId, status: .failed) } }
+        var deferred = false
+        defer { if !completed && !deferred { try? store.setMeetingStatus(id: meetingId, status: .failed) } }
         if meeting.meetingStatus != .finalizing {
             try store.setMeetingStatus(id: meetingId, status: .finalizing)
         }
@@ -194,12 +202,13 @@ public final class PostProcessPipeline: Sendable {
             try store.invalidateRuns(meetingId: meetingId, steps: downstream(step))
             let run = try store.recordRun(meetingId: meetingId, step: step.rawValue, status: .running)
             providers.onProgress?(meetingId, step, "開始")
+            let sleptSeconds = providers.sleepMonitor.start()
             do {
                 try clearArtifacts(for: step, directory: directory)
                 let provider: String?
                 switch step {
                 case .finalizeAudio: provider = try finalizeAudio(meeting: meeting, directory: directory)
-                case .transcribeFinal: provider = try await transcribeFinal(meeting: meeting, directory: directory)
+                case .transcribeFinal: provider = try await transcribeFinal(meeting: meeting, directory: directory, policy: policy)
                 case .mergeTracks: provider = try mergeTracks(meeting: meeting, directory: directory)
                 case .resolveSpeakers: provider = try resolveSpeakers(meeting: meeting, directory: directory)
                 case .summarize: provider = try await summarize(meeting: meeting, directory: directory)
@@ -218,6 +227,13 @@ public final class PostProcessPipeline: Sendable {
                 executed.append(step)
                 providers.onProgress?(meetingId, step, "完了")
             } catch {
+                if let failure = deferral(for: error, step: step, sleptSeconds: sleptSeconds(), policy: policy) {
+                    // 失敗にしない。会議は処理中のまま、キューが条件のそろったときに続きから再開する
+                    _ = try? store.finishRun(run, status: .failed, error: failure.localizedDescription)
+                    providers.onProgress?(meetingId, step, "中断: \(failure.localizedDescription)")
+                    deferred = true
+                    throw failure
+                }
                 _ = try? store.finishRun(run, status: .failed, error: error.localizedDescription)
                 providers.onProgress?(meetingId, step, "失敗: \(error.localizedDescription)")
                 if step.isRequired || error is CancellationError {
@@ -231,6 +247,14 @@ public final class PostProcessPipeline: Sendable {
         try store.setMeetingStatus(id: meetingId, status: .done)
         completed = true
         return PipelineOutcome(meetingId: meetingId, executed: executed, skipped: skipped, exportPath: exportPath, warnings: warnings)
+    }
+
+    /// 手順の失敗を、失敗にせず待ってやり直すか（SPEC §8.2）。文字起こしが投げた `DeferredFailure`（回線・混雑・送信中のスリープ）はそのまま。
+    /// それ以外は、手順の途中で Mac がスリープしていたときだけ待つ（要約の上限などはこれまでどおり失敗・警告にする）。
+    func deferral(for error: Error, step: PipelineStep, sleptSeconds: Double, policy: RetryPolicy) -> DeferredFailure? {
+        if let failure = error as? DeferredFailure { return failure }
+        guard policy.deferOnSleep, !(error is CancellationError), sleptSeconds >= providers.sleepMonitor.threshold else { return nil }
+        return DeferredFailure(reason: .sleep, step: step, underlying: error.localizedDescription)
     }
 
     /// ローカル専用に切り替えたときなどに、書き出しフォルダと同期先のコピーを消す。削除したパスを返す。
@@ -333,12 +357,12 @@ public final class PostProcessPipeline: Sendable {
 
     /// 2. privacy_mode に従ってプロバイダを選び、トラックごとに final を作る。クラウド失敗時は Local にフォールバック。
     /// system と mic は同時に送る（G3。順に送ると会議の終了から議事録までが 2 本分かかる）。
-    func transcribeFinal(meeting: MeetingRecord, directory: URL) async throws -> String? {
+    func transcribeFinal(meeting: MeetingRecord, directory: URL, policy: RetryPolicy = .immediate) async throws -> String? {
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
         let language = try resolveLanguage(meeting)
         let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms, language: language,
-                                        manifest: try? RecordingManifest.read(from: directory))
+                                        manifest: try? RecordingManifest.read(from: directory), policy: policy)
         async let system = transcribeTrack(job, track: "system", sttName: RecordingSession.systemSTTName, artifact: PostProcessPipeline.systemArtifact, diarize: true)
         async let mic = transcribeTrack(job, track: "mic", sttName: RecordingSession.micSTTName, artifact: PostProcessPipeline.micArtifact, diarize: false)
         let notes = try await [system, mic].compactMap { $0 }
@@ -372,6 +396,7 @@ public final class PostProcessPipeline: Sendable {
         var keyterms: [String]
         var language: MeetingLanguage
         var manifest: RecordingManifest?
+        var policy: RetryPolicy
     }
 
     /// 1 トラック分の final を作って成果物に書き、pipeline_runs に残す説明を返す（音声がなければ nil）。
@@ -409,15 +434,31 @@ public final class PostProcessPipeline: Sendable {
             result = try await providers.local.transcribe(request)
             note = "\(track): \(providers.local.id)"
         } else if let cloud = providers.cloud {
+            let sleptSeconds = providers.sleepMonitor.start()
             do {
-                result = try await cloud.transcribe(request)
+                result = job.policy.deferOnSleep
+                    ? try await transcribeWatchingSleep(cloud, request, sleptSeconds: sleptSeconds)
+                    : try await cloud.transcribe(request)
                 note = "\(track): \(cloud.id)" + (UploadTiming.note(from: result.providerMeta).map { " (\($0))" } ?? "")
             } catch {
                 try Task.checkCancellation()
                 if error is CancellationError { throw error }
+                let cloudError = "\(cloud.id): \(error.localizedDescription)"
+                // スリープ・回線・混雑での失敗は、ローカルに切り替えずに待ってクラウドでやり直す（SPEC §8.2）
+                let reason: DeferReason? = sleptSeconds() >= providers.sleepMonitor.threshold ? .sleep : TransientFailure.reason(for: error)
+                let shouldWait = reason == .sleep ? job.policy.deferOnSleep : job.policy.deferTransientCloudFailures
+                if let reason, shouldWait {
+                    Log.transcription.error("cloud transcription interrupted (\(reason.rawValue, privacy: .public)), retrying later: \(error.localizedDescription, privacy: .public)")
+                    throw DeferredFailure(reason: reason, step: .transcribeFinal, underlying: cloudError)
+                }
                 Log.transcription.error("cloud transcription failed, falling back to local: \(error.localizedDescription, privacy: .public)")
                 providers.onProgress?(meeting.id, .transcribeFinal, "\(cloud.id) 失敗 → \(providers.local.id) にフォールバック")
-                result = try await providers.local.transcribe(request)
+                do {
+                    result = try await providers.local.transcribe(request)
+                } catch let localError {
+                    if localError is CancellationError { throw localError }
+                    throw PipelineError.fallbackFailed(cloud: cloudError, local: localError.localizedDescription)
+                }
                 note = "\(track): \(providers.local.id) (fallback: \(Log.preview(error.localizedDescription, limit: 80)))"
             }
         } else {
@@ -430,6 +471,25 @@ public final class PostProcessPipeline: Sendable {
         }
         try JSONCoding.encoder().encode(result).write(to: artifactURL, options: .atomic)
         return note
+    }
+
+    /// クラウドの文字起こしを、送信中のスリープを見張りながら行う。スリープを挟んだら送信を止めて `SleepInterruption` を投げる
+    /// （接続はスリープで切れていて、待っても応答は来ない。送信の待ち時間の上限まで止まったままにしない）。
+    /// 見張りは起きている時間で数えるので、Mac が起きてから `checkInterval` 以内に気づく。
+    private func transcribeWatchingSleep(_ cloud: any BatchTranscriber, _ request: TranscriptionRequest, sleptSeconds: @escaping @Sendable () -> Double) async throws -> TranscriptionResult {
+        let monitor = providers.sleepMonitor
+        return try await withThrowingTaskGroup(of: TranscriptionResult.self) { group in
+            group.addTask { try await cloud.transcribe(request) }
+            group.addTask {
+                while true {
+                    try await SuspendingClock().sleep(for: monitor.checkInterval)
+                    if sleptSeconds() >= monitor.threshold { throw SleepInterruption() }
+                }
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw CancellationError() }
+            return result
+        }
     }
 
     /// 3. mic（me）と system を時刻でマージする。

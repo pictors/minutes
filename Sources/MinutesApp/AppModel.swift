@@ -188,6 +188,10 @@ final class AppModel {
     private var checkingArm = false
     private var startingRecording = false
     @ObservationIgnored private let notificationDelegate = NotificationDelegate()
+    /// 回線の見張り。回線を待っている後処理を、つながったら再開する（SPEC §8.2）。
+    @ObservationIgnored private let networkWatcher = NetworkPathWatcher()
+    /// Mac が起きた知らせ（スリープで止めた後処理を再開する）。
+    @ObservationIgnored private var queueWakeObservers: [NSObjectProtocol] = []
 
     init() {
         var settings = AppSettings.load()
@@ -359,10 +363,12 @@ final class AppModel {
             existing.updatePipeline(pipeline)
             queue = existing
         } else {
-            queue = PostProcessingQueue(store: store, pipeline: pipeline) { [weak self] event in
+            let networkWatcher = networkWatcher
+            queue = PostProcessingQueue(store: store, pipeline: pipeline, onEvent: { [weak self] event in
                 Task { @MainActor in self?.handlePostProcessing(event) }
-            }
+            }, isNetworkAvailable: { networkWatcher.isAvailable })
             postProcessingQueue = queue
+            watchForResumingPostProcessing(queue)
         }
         var configuration = SessionConfiguration(targetBundleIdentifiers: settings.targetBundleIdentifiers, audioRootDirectory: settings.audioRootDirectoryURL)
         configuration.includeMic = settings.includeMic
@@ -473,7 +479,9 @@ final class AppModel {
         let running = postProcessingJobs.filter { $0.jobStatus == .running }.count
         let queued = postProcessingJobs.filter { $0.jobStatus == .queued }.count
         guard running + queued > 0 else { return nil }
-        return "後処理: \(running) 件実行中・\(queued) 件待機"
+        // スリープ・回線で止めた依頼は、待っている理由を添える（SPEC §8.2）
+        let reason = postProcessingJobs.first { $0.jobStatus == .queued && $0.error != nil }?.error
+        return "後処理: \(running) 件実行中・\(queued) 件待機" + (reason.map { "（\($0)）" } ?? "")
     }
 
     /// 手動開始。開始できなければアラートで理由を示す（権限・対象アプリ未起動など）。
@@ -556,6 +564,11 @@ final class AppModel {
     }
 
     /// 後処理をやり直す。`reprocess` は完了済みの会議も対象にする（会議の言語を変えたとき）。
+    /// スリープ・回線で待っている後処理を、待たずにすぐ試す（SPEC §8.2）。
+    func retryWaitingPostProcessing(meetingId: String) {
+        Task { await postProcessingQueue?.retryNow(meetingId: meetingId) }
+    }
+
     func retryPipeline(meetingId: String, reprocess: Bool = false) {
         guard let session else { return }
         Task {
@@ -840,8 +853,24 @@ final class AppModel {
         }
     }
 
+    /// スリープ・回線で止めた後処理を、Mac が起きた・回線がつながったときに再開する（SPEC §8.2）。
+    /// 起動の知らせと画面の点灯の両方を使う（どちらかが届かなくても、キューは起きている時間で数えた待ちのあとに再開する）。
+    private func watchForResumingPostProcessing(_ queue: PostProcessingQueue) {
+        networkWatcher.onAvailable { [weak queue] in
+            Task { await queue?.networkBecameAvailable() }
+        }
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            queueWakeObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak queue] _ in
+                Task { await queue?.systemDidWake() }
+            })
+        }
+    }
+
     private func handlePostProcessing(_ event: PostProcessingQueue.Event) {
         switch event {
+        case let .deferred(id, message):
+            // 失敗の通知は出さない。会議は処理中のまま、条件がそろったら再開して「議事録ができました」を出す
+            appendEvent("後処理を一時停止: \(id): \(message)")
         case let .completed(id, warnings):
             appendEvent("後処理完了: \(id)")
             for (step, message) in warnings { appendEvent("後処理の警告 \(step.rawValue): \(message)") }

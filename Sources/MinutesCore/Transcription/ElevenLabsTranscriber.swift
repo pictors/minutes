@@ -168,11 +168,13 @@ public struct ElevenLabsTranscriber: BatchTranscriber {
 
 public extension URLSession {
     /// 長時間アップロード用（60 分の音声を送る）。
+    /// 回線がないときはすぐに失敗させる。回線を待つのは後処理のキュー（SPEC §8.2）で、ここで待つと、圏外やスリープのあいだ
+    /// 送信の待ち時間の上限（1 時間）まで後処理が止まったままになる（蓋を閉じて終えた会議で起きた）。
     static let longUpload: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 600
         configuration.timeoutIntervalForResource = 3600
-        configuration.waitsForConnectivity = true
+        configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
 }

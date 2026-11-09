@@ -465,9 +465,15 @@ struct MeetingDetailContent: View {
                 switch job.jobStatus {
                 case .queued, .running:
                     VStack(alignment: .leading, spacing: 8) {
-                        Banner(kind: .info, text: job.jobStatus == .queued
-                               ? "後処理の順番を待っています。次の会議は録音できます。"
-                               : "保存した音声から文字起こし・要約を作成しています。次の会議は録音できます。")
+                        // スリープ・回線で止めた依頼は、待っている理由と、待たずに試すボタンを出す（SPEC §8.2）
+                        if job.jobStatus == .queued, let reason = job.error {
+                            Banner(kind: .info, text: "\(reason)。次の会議は録音できます。", actionTitle: "今すぐやり直す",
+                                   action: { model.retryWaitingPostProcessing(meetingId: meeting.id) })
+                        } else {
+                            Banner(kind: .info, text: job.jobStatus == .queued
+                                   ? "後処理の順番を待っています。次の会議は録音できます。"
+                                   : "保存した音声から文字起こし・要約を作成しています。次の会議は録音できます。")
+                        }
                         StepProgressView(steps: detail.stepProgress)
                     }
                 case .failed:

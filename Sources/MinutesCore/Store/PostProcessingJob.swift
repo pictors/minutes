@@ -92,6 +92,16 @@ extension Store {
         }
     }
 
+    /// スリープ・回線・混雑で止めた依頼を待ちに戻す（SPEC §8）。失敗にはせず、会議も処理中のままにする。
+    /// `message` は待っている理由（画面に出す）。次に始めるときに消える。
+    func deferPostProcessing(meetingId: String, lease: MeetingLease, message: String) throws {
+        try validateMeetingLease(lease, meetingId: meetingId)
+        try writer.write { db in
+            try db.execute(sql: "UPDATE post_processing_jobs SET status = 'queued', started_at = NULL, error = ? WHERE meeting_id = ?", arguments: [message, meetingId])
+            try db.execute(sql: "UPDATE meetings SET status = 'finalizing', updated_at = ? WHERE id = ?", arguments: [Store.isoString(Date()), meetingId])
+        }
+    }
+
     func finishPostProcessing(meetingId: String, lease: MeetingLease, error: String? = nil) throws {
         try validateMeetingLease(lease, meetingId: meetingId)
         try writer.write { db in
