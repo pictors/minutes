@@ -27,7 +27,10 @@ struct MinutesApp: App {
         }
         .defaultSize(width: 1240, height: 780)
         .windowResizability(.contentMinSize)
-        .commands { ImportCommands(model: model) }
+        .commands {
+            UpdateCommands(updates: model.updates)
+            ImportCommands(model: model)
+        }
 
         Settings {
             SettingsView()
@@ -104,6 +107,22 @@ struct ImportCommands: Commands {
                 model.showingImportPicker = true
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
+        }
+    }
+}
+
+/// アプリのメニューの「アップデートを確認…」（「Minutes について」の下、Mac のアプリの慣例の位置）。メニューバーのパネルの
+/// 設定のメニューと同じく、自動更新を使うビルドだけに出し、見つけた新しい版があればその版を入れる操作にする。
+struct UpdateCommands: Commands {
+    let updates: UpdateController
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if updates.isAvailable {
+                Button(updates.pendingVersion.map { "新しい版（\($0)）を入れる…" } ?? "アップデートを確認…") {
+                    updates.checkForUpdates()
+                }
+            }
         }
     }
 }
