@@ -192,6 +192,11 @@ final class AppModel {
     @ObservationIgnored private let networkWatcher = NetworkPathWatcher()
     /// Mac が起きた知らせ（スリープで止めた後処理を再開する）。
     @ObservationIgnored private var queueWakeObservers: [NSObjectProtocol] = []
+    /// 終了のために録音を止めている（SPEC §6.4）。新しい録音を始めない。
+    @ObservationIgnored private var terminating = false
+    /// ログアウト・再起動・システム終了の知らせを受けた（終了の Apple イベントに理由がなくても、確認を出さない）。
+    @ObservationIgnored private var systemPowerOff = false
+    @ObservationIgnored private var powerOffObserver: NSObjectProtocol?
 
     init() {
         var settings = AppSettings.load()
@@ -233,6 +238,10 @@ final class AppModel {
         configureNotifications()
         startHousekeeping()
         startAutoRecordingChecks()
+        // ログアウト・システム終了は、終了を求められる前に知らせが来る。知らせはメインのキューで届くので、その場で覚える
+        powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemPowerOff = true }
+        }
         Task {
             // 初回の案内では、許可を案内の中で 1 つずつ求める
             guard !needsOnboarding else { return }
@@ -487,8 +496,9 @@ final class AppModel {
     /// 手動開始。開始できなければアラートで理由を示す（権限・対象アプリ未起動など）。
     /// タイトルが空なら、開始の時点で音を出している対象アプリから付ける（`defaultTitle`）。
     func startRecording(_ info: PendingMeetingInfo? = nil) {
-        guard let session, !startingRecording else { return }
+        guard let session, !startingRecording, !terminating else { return }
         startingRecording = true
+        refreshUpdateBusy()
         var pending = info ?? PendingMeetingInfo(title: "")
         if info == nil { pending.privacyMode = privacyModeForNextMeeting }
         if pending.language == nil { pending.language = languageForNextMeeting.language }
@@ -502,6 +512,7 @@ final class AppModel {
             var pending = pending
             defer {
                 startingRecording = false
+                refreshUpdateBusy()
                 if rebuildAfterRecording, !isRecording { rebuildPipeline() }
             }
             do {
@@ -651,7 +662,7 @@ final class AppModel {
 
     /// 対象アプリを起動済みでも、時計・起動・復帰・予定変更から同じ条件を再評価する。
     func checkArmCondition() async {
-        guard let session, let store, !checkingArm, !startingRecording,
+        guard let session, let store, !checkingArm, !startingRecording, !terminating,
               sessionState == .idle, settings.autoStartOnAudio, !needsOnboarding else { return }
         checkingArm = true
         defer { checkingArm = false }
@@ -733,6 +744,57 @@ final class AppModel {
         }
         if state != .armed, state != .recording, state != .finalizing, !startingRecording { liveLanguageChoice = nil }
         updateElapsedTicker()
+        refreshUpdateBusy()
+    }
+
+    /// 更新の再起動を待たせるか（録音・録音準備・後処理の実行中。回線・スリープで待っている後処理は数えない。SPEC §6.4）。
+    private func refreshUpdateBusy() {
+        let processing = postProcessingJobs.contains { $0.jobStatus == .running || ($0.jobStatus == .queued && $0.error == nil) }
+        updates.setBusy(isRecording || processing)
+    }
+
+    // MARK: - 終了（SPEC §6.4）
+
+    /// 終了を求められた（`applicationShouldTerminate`）。録音していなければすぐ終える。録音準備は確かめずに取りやめる。
+    /// 録音中・終了待ちは、利用者の終了なら確かめてから、ログアウト・システム終了なら確かめずに、録音を止めて保存してから終える。
+    func terminationReply(_ request: QuitRequest) -> NSApplication.TerminateReply {
+        // 止めている途中にもう一度求められた（⌘Q の二度押しなど）。最初の終了がそのまま進む
+        guard !terminating else { return .terminateCancel }
+        guard let session, sessionState == .armed || sessionState == .recording || sessionState == .finalizing else { return .terminateNow }
+        if sessionState != .armed, request == .user, !systemPowerOff, !confirmQuitWhileRecording() {
+            return .terminateCancel
+        }
+        terminating = true
+        // 返事はメインのキューに頼らない。終了の返事を待つ AppKit のループは、終了をメインのキューの処理の中から求めると
+        // （SwiftUI のメニューの項目など）、メインのキュー（MainActor の処理）を回さない。止める処理はメインの外で待ち、
+        // 返事はループの仕事（`RunLoop.perform`）として置く（テスト用のアプリで、MainActor の Task では返事が届かず止まった）。
+        Task.detached {
+            // 止める処理が戻らなくても終える（会議の行と依頼は残り、次の起動で復旧する）
+            let stopping = Task { await session.stopForTermination() }
+            await TaskDrain.wait([stopping], timeout: .seconds(10))
+            RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+                MainActor.assumeIsolated { NSApp.reply(toApplicationShouldTerminate: true) }
+            }
+            CFRunLoopWakeUp(CFRunLoopGetMain())
+        }
+        return .terminateLater
+    }
+
+    /// 録音中に終了しようとしたときの確認。⌘Q の押し間違いのあとで Return や Escape を押しても、録音を止めない。
+    /// メニューバーのパネルから選ぶと Minutes は前にいないので、先に前へ出す。
+    private func confirmQuitWhileRecording() -> Bool {
+        if NSApp.isActive { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "録音中です。Minutes を終了しますか？"
+        alert.informativeText = "終了すると、ここで録音を止めて保存します。議事録は、次に Minutes を開いたときに作ります。"
+        // 止めるボタンを既定（Return）にしない。最初のボタンを「キャンセル」にすると、日本語の環境では NSAlert がそれに Escape を
+        // 付け、Return で押すボタンはなくなる（macOS 26.5、テスト用のアプリで確認。既定のボタンを足すと Escape が外れる）。
+        // どちらのキーでも録音は止まらない
+        alert.addButton(withTitle: "キャンセル")
+        let stop = alert.addButton(withTitle: "録音を止めて終了")
+        stop.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     private func updateElapsedTicker() {
@@ -848,6 +910,7 @@ final class AppModel {
             do {
                 for try await jobs in store.postProcessingJobsObservation().values(in: store.writer) {
                     self?.postProcessingJobs = jobs
+                    self?.refreshUpdateBusy()
                 }
             } catch { self?.appendEvent("後処理一覧の監視に失敗: \(error.localizedDescription)") }
         }

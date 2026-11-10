@@ -112,6 +112,8 @@ public actor MeetingSessionController {
     static let detectedStartLeadIn: TimeInterval = 1
     private var finishing = false
     private var starting = false
+    /// アプリの終了のために止めている（SPEC §6.4）。新しい録音を始めず、後処理は次の起動まで始めない。
+    private var terminating = false
     private var captureFailure: CaptureFailure?
     private var meetingLease: MeetingLease?
     private var uiState: String?
@@ -171,13 +173,14 @@ public actor MeetingSessionController {
 
     /// 録音準備（カレンダー開始前 + 対象アプリ起動）。録音は始めるが、会議は system 音声の検知で開始扱いにする。
     public func arm(_ info: PendingMeetingInfo) async throws {
-        guard machine.state == .idle, !starting, !finishing else { throw AudioCaptureError.invalidState("録音の開始・停止処理中です") }
+        guard machine.state == .idle, !starting, !finishing, !terminating else { throw AudioCaptureError.invalidState("録音の開始・停止処理中です") }
         starting = true
         defer { starting = false }
         self.info = info
         do { try await beginRecording(info) }
         catch { await failRecording(error.localizedDescription); throw error }
         try apply(.armConditionMet)
+        markPhase(.armed)
         armedAt = Date()
         startMonitor()
         emit("armed: \(info.title)")
@@ -185,7 +188,7 @@ public actor MeetingSessionController {
 
     /// 手動開始（idle / armed から）。
     public func start(_ info: PendingMeetingInfo) async throws {
-        guard !starting, !finishing else { throw AudioCaptureError.invalidState("録音の開始・停止処理中です") }
+        guard !starting, !finishing, !terminating else { throw AudioCaptureError.invalidState("録音の開始・停止処理中です") }
         starting = true
         defer { starting = false }
         switch machine.state {
@@ -195,6 +198,7 @@ public actor MeetingSessionController {
             catch { await failRecording(error.localizedDescription); throw error }
             try apply(.manualStart)
             try createMeetingRow()
+            markPhase(.meeting)
             startMonitor()
         case .armed:
             self.info = info
@@ -231,6 +235,26 @@ public actor MeetingSessionController {
         default:
             break
         }
+    }
+
+    /// アプリを終える前に呼ぶ（SPEC §6.4）。録音準備は取りやめ、録音中・終了待ちの会議はここで止めて後処理の依頼だけを残す
+    /// （後処理は次に開いたときに始める。始めると送信の途中で終わる）。停止の処理が進んでいれば、それが終わるまで待つ。
+    /// 呼んだあとは新しい録音を始めない。
+    public func stopForTermination() async {
+        terminating = true
+        switch machine.state {
+        case .armed:
+            await disarm()
+        case .recording:
+            try? apply(.manualStop)
+            emit("アプリを終了するため録音を止めます")
+            await finishAndProcess()
+        case .finalizing:
+            await finishAndProcess()
+        default:
+            break
+        }
+        while finishing { try? await Task.sleep(for: .milliseconds(20)) }
     }
 
     public func disarm() async {
@@ -340,6 +364,14 @@ public actor MeetingSessionController {
         try createMeetingRow()
         try await session.start()
         if let captureFailure { throw captureFailure }
+        // 行の原点は録音を始める前の時刻。許可の確認などで待った分を、実際に録音が始まった時刻に直す（SPEC §6.4）
+        if let origin = session.startedAt, let current = meeting {
+            do {
+                try store.setRecordingOrigin(id: current.id, at: origin)
+                meeting = try store.meeting(id: current.id) ?? current
+                notifyState()
+            } catch { emit("録音の開始時刻を記録できません: \(error.localizedDescription)") }
+        }
         lastAudioAt = Date()
         if configuration.liveTranscription { startLive(session) }
     }
@@ -379,7 +411,15 @@ public actor MeetingSessionController {
         guard let current = meeting else { return }
         try store.setMeetingStarted(id: current.id, at: date)
         meeting = try store.meeting(id: current.id) ?? current
+        markPhase(.meeting)
         notifyState()
+    }
+
+    /// 会議が始まったかを録音のフォルダに残す（落ちたあとの起動で、録音準備だけの録音を送らずに消すため。SPEC §6.4）。
+    /// 書けなくても録音は続ける（落ちたときは、これまでどおり中断として残る）。
+    private func markPhase(_ phase: RecordingPhase) {
+        guard let directory = recordingDirectory else { return }
+        do { try phase.write(in: directory) } catch { emit("録音の状態を書けません: \(error.localizedDescription)") }
     }
 
     private func startLive(_ session: any MeetingRecording) {
@@ -530,10 +570,10 @@ public actor MeetingSessionController {
             failure = error.localizedDescription
             reportCaptureFailure(error.localizedDescription)
         }
-        // ストリーム終了 → SpeechAnalyzer の finalize を待つ（最大 20 秒）
+        // ストリーム終了 → SpeechAnalyzer の finalize を待つ（最大 20 秒。アプリの終了では 2 秒。確定した字幕はその都度保存済み）
         let tasks = liveTasks
         liveTasks = []
-        await TaskDrain.wait(tasks, timeout: .seconds(20))
+        await TaskDrain.wait(tasks, timeout: .seconds(terminating ? 2 : 20))
         self.recording = nil
         return failure
     }
@@ -575,7 +615,8 @@ public actor MeetingSessionController {
         finishing = false
         try? apply(.recordingFinished)
         emit("後処理を予約しました: \(current.id)")
-        Task { await postProcessingQueue.start() }
+        // アプリの終了では始めない（送信の途中で終わる）。依頼は DB に残り、次に開いたときに始まる
+        if !terminating { Task { await postProcessingQueue.start() } }
     }
 
     private func captureDidFail(_ failure: CaptureFailure, generation: String) async {

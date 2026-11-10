@@ -66,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.reopen()
         return false
     }
+
+    /// 終了の前に、録音を止めて保存する（SPEC §6.4）。⌘Q・メニュー・Dock・更新・ログアウトのどれもここを通る。
+    /// 終了の Apple イベント（ログアウトなどの理由）は、この中でだけ読める。
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        model.terminationReply(QuitRequest(event: NSAppleEventManager.shared().currentAppleEvent))
+    }
 }
 
 /// メニューバーのアイコン。録音中は経過時間を添えて、録り忘れ・止め忘れに気づけるようにする。

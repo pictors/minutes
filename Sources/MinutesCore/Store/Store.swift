@@ -117,7 +117,9 @@ public final class Store: Sendable {
         guard lease.meetingId == meetingId, lease.directory == leaseDirectory else { throw StoreError.meetingBusy(meetingId) }
     }
 
-    /// ファイルロックを取れる会議だけ中断扱いにする。成功済みステップと音声は残す。
+    /// ファイルロックを取れる会議だけ扱う（使用中の会議には触れない）。成功済みステップと音声は残す（SPEC §6.4）。
+    /// 後処理の途中で終わった会議は、依頼を待ちに戻して続きから再開する。録音の途中で終わった会議は `InterruptedRecording` で分ける
+    /// （録音準備だけ・何も録れていないなら消す、会議なら録れた長さで後処理を依頼する、分からなければ中断として残す）。
     @discardableResult
     public func recoverInterruptedMeetings() throws -> [String] {
         let ids = try writer.read { db in
@@ -133,7 +135,7 @@ public final class Store: Sendable {
             do { lease = try acquireMeetingLease(id) }
             catch StoreError.meetingBusy { continue }
             try withExtendedLifetime(lease) {
-                try writer.write { db in
+                let interrupted = try writer.write { db -> MeetingRecord? in
                     if let job = try PostProcessingJob.fetchOne(db, key: id), job.jobStatus != .failed {
                         if try MeetingRecord.fetchOne(db, key: id)?.meetingStatus == .done {
                             // パイプライン完了後、ジョブ削除前に終了した。API を再実行しない。
@@ -143,16 +145,53 @@ public final class Store: Sendable {
                             try db.execute(sql: "UPDATE post_processing_jobs SET status = 'queued', started_at = NULL, error = NULL WHERE meeting_id = ?", arguments: [id])
                             try db.execute(sql: "UPDATE meetings SET status = 'finalizing', updated_at = ? WHERE id = ?", arguments: [Store.isoString(Date()), id])
                         }
-                        return
+                        return nil
                     }
                     try db.execute(sql: "UPDATE pipeline_runs SET status = 'failed', finished_at = ?, error = '処理が中断されました。再実行できます' WHERE meeting_id = ? AND status = 'running'", arguments: [Store.isoString(Date()), id])
-                    try db.execute(sql: "INSERT INTO pipeline_runs(meeting_id, step, status, started_at, finished_at, error) SELECT id, 'recovery', 'failed', ?, ?, '前回の録音・処理が中断されました。保存済み音声から再実行できます' FROM meetings WHERE id = ? AND status IN ('recording', 'finalizing')", arguments: [Store.isoString(Date()), Store.isoString(Date()), id])
-                    try db.execute(sql: "UPDATE meetings SET status = 'failed', ended_at = COALESCE(ended_at, updated_at), updated_at = ? WHERE id = ? AND status IN ('recording', 'finalizing')", arguments: [Store.isoString(Date()), id])
+                    guard let meeting = try MeetingRecord.fetchOne(db, key: id),
+                          meeting.meetingStatus == .recording || meeting.meetingStatus == .finalizing else { return nil }
+                    return meeting
                 }
+                if let interrupted { try recoverInterruptedRecording(interrupted, lease: lease) }
             }
             recovered.append(id)
         }
         return recovered
+    }
+
+    /// 録音の途中で終わった会議（後処理の依頼がない）。会議のロックを持ったまま呼ぶ。
+    private func recoverInterruptedRecording(_ meeting: MeetingRecord, lease: MeetingLease) throws {
+        let hasSegments = try writer.read { db in
+            try SegmentRecord.filter(Column("meeting_id") == meeting.id).fetchCount(db) > 0
+        }
+        switch InterruptedRecording.plan(for: meeting, hasSegments: hasSegments) {
+        case .discard:
+            try performMeetingDeletion(id: meeting.id, lease: lease, allowStoppedRecording: true)
+        case let .process(endedAt):
+            try enqueuePostProcessing(meetingId: meeting.id, lease: lease, endedAt: endedAt)
+            // あとで経緯をたどれるように、復旧したことだけを残す（失敗ではない）
+            _ = try recordRun(meetingId: meeting.id, step: "recovery", status: .ok)
+        case let .keepFailed(endedAt):
+            let now = Store.isoString(Date())
+            try writer.write { db in
+                try db.execute(sql: "INSERT INTO pipeline_runs(meeting_id, step, status, started_at, finished_at, error) VALUES (?, 'recovery', 'failed', ?, ?, '前回の録音・処理が中断されました。保存済み音声から再実行できます')", arguments: [meeting.id, now, now])
+                try db.execute(sql: "UPDATE meetings SET status = 'failed', ended_at = COALESCE(ended_at, ?, updated_at), updated_at = ? WHERE id = ?", arguments: [endedAt.map(Store.isoString), now, meeting.id])
+            }
+        }
+    }
+
+    /// 録音が実際に始まった時刻（音声の時間軸の原点）を記録する（SPEC §6.4）。行は録音を始める前に作る（開始途中の異常終了も
+    /// 復旧するため）ので、マイクの許可の確認などで待った時間だけ原点が早すぎる。会議の開始がまだ原点と同じ（録音準備中・
+    /// 開始のボタンで始めた）なら、開始も合わせる。
+    public func setRecordingOrigin(id: String, at origin: Date) throws {
+        try writer.write { db in
+            guard var record = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound("meeting \(id)") }
+            let previous = record.recordingStartedAt ?? record.startedAt
+            if record.startedAt <= previous { record.startedAt = origin }
+            record.recordingStartedAt = origin
+            record.updatedAt = Date()
+            try record.update(db)
+        }
     }
 
     /// 先に下流の成功記録を無効化するため、途中で終了しても古い成功結果を再利用しない。

@@ -1,4 +1,5 @@
 import AppKit
+import MinutesCore
 import Observation
 import Sparkle
 
@@ -13,6 +14,8 @@ final class UpdateController: NSObject {
     /// 予定の確認で見つけたが、まだ見てもらっていない新しい版（表示用の版の番号）
     private(set) var pendingVersion: String?
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
+    /// 録音中・後処理の実行中は、更新の再起動（Minutes の終了）を待たせる（SPEC §6.4）
+    @ObservationIgnored private let relaunchGate = RelaunchGate()
 
     /// 自動更新を使うビルドか（使わないビルドでは更新の操作を出さない）
     var isAvailable: Bool { controller != nil }
@@ -35,7 +38,7 @@ final class UpdateController: NSObject {
         super.init()
         guard Bundle.main.bundleURL.pathExtension == "app",
               Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil else { return }
-        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: self)
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
     }
 
     /// 利用者が選んだ確認。メニューバーのアプリは前面にいないので、先に前へ出して Sparkle の窓を見えるようにする。
@@ -43,6 +46,23 @@ final class UpdateController: NSObject {
         guard let controller else { return }
         NSApp.activate()
         controller.checkForUpdates(nil)
+    }
+
+    /// 録音中・後処理の実行中か（AppModel が状態の変わるたびに知らせる）。空いたら、遅らせていた再起動を続ける。
+    func setBusy(_ busy: Bool) {
+        relaunchGate.setBusy(busy)
+    }
+}
+
+extension UpdateController: SPUUpdaterDelegate {
+    /// 録音中・後処理の実行中に「インストールして再起動」を選んだら、再起動（Minutes の終了）をそれが終わるまで遅らせる（SPEC §6.4）。
+    /// 確認済み（Sparkle 2.10.0 の SPUInstallerDriver.m）: true を返すと、インストーラに続き（Minutes の終了）を頼まない。
+    /// 預けた続きを呼ぶと、もう一度は聞かずに終了を求める（`NSRunningApplication.terminate()`。Minutes の終了の確認を通る）。
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        guard relaunchGate.shouldPostpone(installHandler) else { return false }
+        AppModel.postNotification(title: "録音のあとで Minutes を更新します",
+                                  body: "\(item.displayVersionString) は、録音と議事録づくりが終わってから入れて、Minutes を開き直します。")
+        return true
     }
 }
 
