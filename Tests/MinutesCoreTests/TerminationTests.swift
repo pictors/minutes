@@ -1,10 +1,70 @@
+import AVFoundation
 import CoreServices
 import Foundation
 import Synchronization
 import Testing
 @testable import MinutesCore
 
+/// マイクの許可の代役。録音準備が読む状態と、尋ねられた回数。尋ねられたら `respond` で答えるまで待つ（確認を出したまま）。
+private final class FakeMicrophone: Sendable {
+    let status: Mutex<AVAuthorizationStatus>
+    let asked = Mutex(0)
+    private let prompt = PermissionPrompt()
+
+    init(_ status: AVAuthorizationStatus) { self.status = Mutex(status) }
+
+    /// `MicCapture.requestPermission` と同じ: 許可済みならすぐ true、未決定なら尋ねて答えを待つ、断られていれば false。
+    func ask() async -> Bool {
+        switch status.withLock({ $0 }) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            asked.withLock { $0 += 1 }
+            let granted = await prompt.answer()
+            status.withLock { $0 = granted ? .authorized : .denied }
+            return granted
+        default:
+            return false
+        }
+    }
+
+    func respond(_ granted: Bool) { prompt.respond(granted) }
+}
+
+/// 許可の確認（利用者が答えるまで待つ）。待っているテストが時間切れで止められたら、断ったことにして戻す
+/// （録音準備が確認を待ってしまう誤りで、テストが終わらなくならないように）。
+private final class PermissionPrompt: Sendable {
+    private struct State {
+        var answer: Bool?
+        var waiters: [CheckedContinuation<Bool, Never>] = []
+    }
+    private let state = Mutex(State())
+
+    func answer() async -> Bool {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { waiter in
+                let answer = state.withLock { state -> Bool? in
+                    if let answer = state.answer { return answer }
+                    state.waiters.append(waiter)
+                    return nil
+                }
+                if let answer { waiter.resume(returning: answer) }
+            }
+        } onCancel: { respond(false) }
+    }
+
+    func respond(_ granted: Bool) {
+        let waiters = state.withLock { state -> [CheckedContinuation<Bool, Never>] in
+            state.answer = granted
+            defer { state.waiters = [] }
+            return state.waiters
+        }
+        for waiter in waiters { waiter.resume(returning: granted) }
+    }
+}
+
 /// 録音の代役。`start()` で録音の原点を決め、1 秒の WAV を書く。`active` で相手側の音声を検知した状態にする。
+/// マイクを録る録音は、`RecordingSession` と同じく start でマイクの許可を確かめ、未決定なら尋ねて答えを待つ。
 private final class TerminationFakeRecording: MeetingRecording, @unchecked Sendable {
     let options: RecordingOptions
     private(set) var startedAt: Date?
@@ -17,15 +77,24 @@ private final class TerminationFakeRecording: MeetingRecording, @unchecked Senda
     let stopped = Mutex(0)
     /// 録音の原点を、行を作った時刻からこの秒数だけずらす（許可の確認などで録音の開始が遅れた状態）。
     let originOffset: TimeInterval
+    let microphone: FakeMicrophone?
+    /// start の失敗（録音のフォルダを作ってから失敗する。会議アプリの音が見つからないなど）。
+    let startFailure: AudioCaptureError?
 
-    init(options: RecordingOptions, originOffset: TimeInterval = 0) {
+    init(options: RecordingOptions, originOffset: TimeInterval = 0, microphone: FakeMicrophone? = nil, startFailure: AudioCaptureError? = nil) {
         self.options = options
         self.originOffset = originOffset
+        self.microphone = microphone
+        self.startFailure = startFailure
     }
 
     func start() async throws {
+        if options.includeMic, let microphone {
+            guard await microphone.ask() else { throw AudioCaptureError.permissionDenied("マイクへのアクセスが許可されていません") }
+        }
         startedAt = Date().addingTimeInterval(originOffset)
         try FileManager.default.createDirectory(at: options.outputDirectory, withIntermediateDirectories: true)
+        if let startFailure { throw startFailure }
         try AudioFileTools.writeWAV(samples: Array(repeating: 0.1, count: 16_000), sampleRate: 16_000, to: options.outputDirectory.appendingPathComponent(RecordingSession.systemSTTName))
     }
 
@@ -48,24 +117,32 @@ private struct TerminationFixture {
     let recordings = RecordingList()
     let controller: MeetingSessionController
 
-    init(originOffset: TimeInterval = 0) throws {
+    /// `microphone` を渡すとマイクを録る設定にし、録音準備はその許可の状態を読む（実際の TCC は読まない）。
+    init(originOffset: TimeInterval = 0, microphone: FakeMicrophone? = nil, includeMic: Bool? = nil, startFailure: AudioCaptureError? = nil) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-termination-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         store = try Store.inMemory()
         var configuration = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
         configuration.liveTranscription = false
-        configuration.includeMic = false
+        configuration.includeMic = includeMic ?? (microphone != nil)
         configuration.monitorInterval = 0.05
         let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: FakeTranscriber(id: "local", runsLocally: true, segments: [.init(start: 0, end: 1, text: "本文")]), summarizer: nil, exportDirectory: root.appendingPathComponent("export")))
         let recordings = recordings
-        controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: configuration, makeRecording: { options in
-            let recording = TerminationFakeRecording(options: options, originOffset: originOffset)
+        controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: configuration,
+                                              micAuthorization: { microphone?.status.withLock { $0 } ?? .authorized },
+                                              makeRecording: { options in
+            let recording = TerminationFakeRecording(options: options, originOffset: originOffset, microphone: microphone, startFailure: startFailure)
             recordings.items.withLock { $0.append(recording) }
             return recording
         })
     }
 
     var lastRecording: TerminationFakeRecording? { recordings.items.withLock { $0.last } }
+
+    /// 録音のフォルダ（偽の録音の出力先）。後処理の書き出し先は数えない。
+    func recordingFolders() throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0 != "export" }
+    }
 
     func waitForState(_ state: SessionState) async throws {
         for _ in 0..<200 {
@@ -295,5 +372,105 @@ struct TerminationTests {
         gate.setBusy(false)
         try await Task.sleep(for: .milliseconds(150))
         #expect(calls.withLock { $0 } == 1)
+    }
+}
+
+/// 条件がそろうまで待つ（2 秒まで）。
+private func waitUntil(_ condition: @Sendable () async -> Bool) async throws {
+    for _ in 0..<200 {
+        if await condition() { return }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+/// 録音準備は利用者のいないときにも始まる。許可を尋ねると答えるまで戻らず、そのあいだほかの録音も始められなかった。
+/// 時間の上限は、録音準備が確認を待ってしまったときに、テストを止めずに失敗させるため。
+@Suite("録音準備とマイクの許可（SPEC §6.4）", .timeLimit(.minutes(1)))
+struct ArmPermissionTests {
+    @Test("許可が未決定なら、録音準備は尋ねずにすぐやめ、会議の行も録音のフォルダも残さない")
+    func armDoesNotAsk() async throws {
+        let microphone = FakeMicrophone(.notDetermined)
+        let f = try TerminationFixture(microphone: microphone); defer { f.cleanup() }
+        let states = Mutex<[SessionState]>([])
+        await f.controller.setHandlers(state: { state, _ in states.withLock { $0.append(state) } }, live: nil, event: nil)
+        #expect(f.controller.armPermissionProblem == .microphoneNotDetermined)
+        await #expect(throws: ArmPermissionError.microphoneNotDetermined) {
+            try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        }
+        #expect(microphone.asked.withLock { $0 } == 0)
+        #expect(f.lastRecording == nil)
+        #expect(try f.store.listMeetings().isEmpty)
+        #expect(try f.recordingFolders().isEmpty)
+        #expect(await f.controller.state == .idle)
+        #expect(states.withLock { $0 }.isEmpty)
+    }
+
+    @Test("許可が断られている・制限されているときも、尋ねずにすぐやめる", arguments: [AVAuthorizationStatus.denied, .restricted])
+    func armDeniedDoesNotAsk(status: AVAuthorizationStatus) async throws {
+        let microphone = FakeMicrophone(status)
+        let f = try TerminationFixture(microphone: microphone); defer { f.cleanup() }
+        await #expect(throws: ArmPermissionError.microphoneDenied) {
+            try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        }
+        #expect(f.lastRecording == nil)
+        #expect(try f.store.listMeetings().isEmpty)
+        #expect(await f.controller.state == .idle)
+    }
+
+    @Test("マイクを録らない設定なら、マイクの許可を見ない")
+    func armWithoutMicIgnoresPermission() async throws {
+        let microphone = FakeMicrophone(.notDetermined)
+        let f = try TerminationFixture(microphone: microphone, includeMic: false); defer { f.cleanup() }
+        #expect(f.controller.armPermissionProblem == nil)
+        try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        #expect(await f.controller.state == .armed)
+        #expect(microphone.asked.withLock { $0 } == 0)
+        await f.controller.disarm()
+    }
+
+    @Test("録音準備が許可を待たないので、ほかの録音を妨げない。手動の開始は、これまでどおり尋ねて答えを待つ")
+    func manualStartStillAsks() async throws {
+        let microphone = FakeMicrophone(.notDetermined)
+        let f = try TerminationFixture(microphone: microphone); defer { f.cleanup() }
+        await #expect(throws: ArmPermissionError.self) {
+            try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        }
+        // 以前は、録音準備が確認を待つあいだ、手動の開始を「録音の開始・停止処理中です」で断った
+        let start = Task { try await f.controller.start(.init(title: "架空の 1on1", privacyMode: .localOnly)) }
+        try await waitUntil { microphone.asked.withLock { $0 } == 1 }
+        #expect(microphone.asked.withLock { $0 } == 1)
+        // 答えるまで録音は始まらない
+        #expect(await f.controller.state == .idle)
+        microphone.respond(true)
+        try await start.value
+        #expect(await f.controller.state == .recording)
+        let id = try #require(await f.controller.currentMeeting?.id)
+        #expect(try f.store.meeting(id: id)?.meetingStatus == .recording)
+        await f.controller.stop()
+        // 許可されたあとの録音準備は、尋ねずに始まる
+        #expect(f.controller.armPermissionProblem == nil)
+        try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        #expect(await f.controller.state == .armed)
+        #expect(microphone.asked.withLock { $0 } == 1)
+        await f.controller.disarm()
+    }
+
+    @Test("録音準備を始められなかったら（許可のほかの理由）、失敗の会議を残さず、録音を閉じてフォルダを消す")
+    func armStartFailureLeavesNoRow() async throws {
+        let f = try TerminationFixture(startFailure: .noMatchingProcess(targets: ["com.example.meeting"])); defer { f.cleanup() }
+        let states = Mutex<[SessionState]>([])
+        await f.controller.setHandlers(state: { state, _ in states.withLock { $0.append(state) } }, live: nil, event: nil)
+        await #expect(throws: AudioCaptureError.self) {
+            try await f.controller.arm(.init(title: "架空の定例", privacyMode: .localOnly))
+        }
+        let recording = try #require(f.lastRecording)
+        #expect(recording.stopped.withLock { $0 } == 1)
+        #expect(!FileManager.default.fileExists(atPath: recording.options.outputDirectory.path))
+        #expect(try f.store.listMeetings().isEmpty)
+        #expect(await f.controller.state == .idle)
+        #expect(await f.controller.lastError != nil)
+        // 失敗の会議（failed）として知らせない。アプリが理由を通知する
+        #expect(!states.withLock { $0 }.contains(.failed))
+        #expect(await f.controller.currentMeeting == nil)
     }
 }

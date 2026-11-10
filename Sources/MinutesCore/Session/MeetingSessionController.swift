@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// 録音開始前に分かっている会議情報（カレンダー候補または手動入力）。
@@ -95,6 +96,8 @@ public actor MeetingSessionController {
 
     private var recording: (any MeetingRecording)?
     private let makeRecording: @Sendable (RecordingOptions) -> any MeetingRecording
+    /// マイクの許可の状態（録音準備が、尋ねずに確かめる。テストでは差し込む）。
+    private let micAuthorization: @Sendable () -> AVAuthorizationStatus
     private var pendingMeetingId: String?
     private var info: PendingMeetingInfo?
     private var meeting: MeetingRecord?
@@ -123,8 +126,12 @@ public actor MeetingSessionController {
     private var livePreparation: LivePreparation?
     public private(set) var lastError: String?
 
-    public init(store: Store, pipeline: PostProcessPipeline, configuration: SessionConfiguration, postProcessingQueue: PostProcessingQueue? = nil, makeRecording: @escaping @Sendable (RecordingOptions) -> any MeetingRecording = { RecordingSession(options: $0) }) {
+    /// `micAuthorization` の既定は実際の許可（TCC）を読む。偽の録音を使うテストで、マイクを録る設定のまま録音準備をするなら差し込む。
+    public init(store: Store, pipeline: PostProcessPipeline, configuration: SessionConfiguration, postProcessingQueue: PostProcessingQueue? = nil,
+                micAuthorization: @escaping @Sendable () -> AVAuthorizationStatus = { MicCapture.authorizationStatus() },
+                makeRecording: @escaping @Sendable (RecordingOptions) -> any MeetingRecording = { RecordingSession(options: $0) }) {
         self.makeRecording = makeRecording
+        self.micAuthorization = micAuthorization
         self.store = store
         self.postProcessingQueue = postProcessingQueue ?? PostProcessingQueue(store: store, pipeline: pipeline)
         self.configuration = configuration
@@ -132,6 +139,11 @@ public actor MeetingSessionController {
 
     public var state: SessionState { machine.state }
     public var currentMeeting: MeetingRecord? { meeting }
+
+    /// 録音準備をしない許可の理由（なければ nil）。録音準備は許可を尋ねないので、マイクを録る設定なら先に確かめる（SPEC §6.4）。
+    public nonisolated var armPermissionProblem: ArmPermissionError? {
+        configuration.includeMic ? ArmPermissionError(microphone: micAuthorization()) : nil
+    }
 
     public func setHandlers(state: StateHandler?, live: LiveHandler?, event: EventHandler?) {
         stateHandler = state
@@ -172,13 +184,16 @@ public actor MeetingSessionController {
     // MARK: - Commands
 
     /// 録音準備（カレンダー開始前 + 対象アプリ起動）。録音は始めるが、会議は system 音声の検知で開始扱いにする。
+    /// 許可は尋ねない。許可がなければ、行も録音のフォルダも作らずに `ArmPermissionError` で終える（SPEC §6.4）。
     public func arm(_ info: PendingMeetingInfo) async throws {
         guard machine.state == .idle, !starting, !finishing, !terminating else { throw AudioCaptureError.invalidState("録音の開始・停止処理中です") }
+        // 尋ねると答えるまで戻らず、そのあいだ手動の開始もほかの録音準備も断る（許可が消えたあとの録音準備が、確認を 1 日待った）
+        if let armPermissionProblem { throw armPermissionProblem }
         starting = true
         defer { starting = false }
         self.info = info
         do { try await beginRecording(info) }
-        catch { await failRecording(error.localizedDescription); throw error }
+        catch { await abandonArm(error.localizedDescription); throw error }
         try apply(.armConditionMet)
         markPhase(.armed)
         armedAt = Date()
@@ -266,17 +281,19 @@ public actor MeetingSessionController {
             await failRecording(error)
             return
         }
-        do {
-            if let meeting, let lease = meetingLease {
-                try store.discardStoppedRecording(id: meeting.id, lease: lease)
-            }
-        } catch {
-            emit("録音準備の削除に失敗: \(error.localizedDescription)")
-            if let meeting { try? store.setMeetingStatus(id: meeting.id, status: .failed, endedAt: Date()) }
-        }
+        discardArmedRecording()
         cleanupAfterMeeting()
         try? apply(.disarm)
         emit("disarmed")
+    }
+
+    /// 会議になる前の録音（録音準備）を、行と音声ごと消す。消せなければ failed で残す（音声を失わない）。
+    private func discardArmedRecording() {
+        guard let meeting, let lease = meetingLease else { return }
+        do { try store.discardStoppedRecording(id: meeting.id, lease: lease) } catch {
+            emit("録音準備の削除に失敗: \(error.localizedDescription)")
+            try? store.setMeetingStatus(id: meeting.id, status: .failed, endedAt: Date())
+        }
     }
 
     /// 対象アプリ（会議アプリ）のプロセスが終了した。
@@ -666,6 +683,22 @@ public actor MeetingSessionController {
         cleanupAfterMeeting()
         try? apply(.reset)
         finishing = false
+    }
+
+    /// 録音準備を始められなかった（会議アプリの音が見つからない、入力を開けないなど）。会議になる前なので、行と録音のフォルダを
+    /// 消し、失敗の会議として残さない（以前は中身のない failed の行が残った。SPEC §6.4）。理由は呼び出し元が知らせる。
+    private func abandonArm(_ message: String) async {
+        guard !finishing else { return }
+        finishing = true
+        lastError = message
+        // start の途中で失敗した録音は、start が入力とファイルを閉じている。始まってから失敗を受けた録音は、ここで止める
+        try? recording?.finishRecording()
+        recording = nil
+        discardArmedRecording()
+        cleanupAfterMeeting()
+        finishing = false
+        try? apply(.reset)
+        emit("録音準備を始められません: \(message)")
     }
 
     private func cleanupAfterMeeting() {

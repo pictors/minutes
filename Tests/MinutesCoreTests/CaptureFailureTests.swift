@@ -174,7 +174,8 @@ struct CaptureFailureTests {
         let capture = FakeRecording(options: RecordingOptions(outputDirectory: root))
         var config = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
         config.liveTranscription = false
-        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, makeRecording: { _ in capture })
+        // 録音準備はマイクの許可を確かめる（実際の TCC を読まない）
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, micAuthorization: { .authorized }, makeRecording: { _ in capture })
         try await controller.arm(PendingMeetingInfo(title: "armed"))
         #expect(await controller.state == .armed)
         capture.onFailure?(CaptureFailure(track: "system", operation: CaptureWatchdog.failureOperation, message: "すべての音声入力が 5 秒以上届いていません。"))
@@ -209,7 +210,7 @@ struct CaptureFailureTests {
         let capture = FakeRecording(options: RecordingOptions(outputDirectory: root), startGate: gate)
         var config = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
         config.liveTranscription = false
-        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, makeRecording: { _ in capture })
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, micAuthorization: { .authorized }, makeRecording: { _ in capture })
         let first = Task { try await controller.arm(PendingMeetingInfo(title: "one")) }
         for _ in 0..<100 {
             if capture.started.withLock({ $0 }) > 0 { break }

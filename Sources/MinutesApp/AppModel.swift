@@ -89,6 +89,8 @@ enum SidebarItem: Hashable, Sendable {
 final class AppModel {
     nonisolated static let startRecordingActionIdentifier = "jp.pictors.minutes.action.start-recording"
     nonisolated static let confirmStartCategoryIdentifier = "jp.pictors.minutes.category.confirm-start"
+    /// 押すと初回の案内（許可の確認）を開く通知の印（userInfo のキー）。
+    nonisolated static let opensOnboardingKey = "opensOnboarding"
 
     private(set) var settings: AppSettings
     private(set) var store: Store?
@@ -186,6 +188,8 @@ final class AppModel {
     private var autoStartObservers: [NSObjectProtocol] = []
     /// 自動録音判定の再入防止。UI の「録音中」判定には使わない。
     private var checkingArm = false
+    /// 録音準備をしなかった許可の理由を知らせた（同じ理由では、許可されるまで知らせ直さない。SPEC §6.4）。
+    @ObservationIgnored private var notedArmPermission: ArmPermissionError?
     private var startingRecording = false
     @ObservationIgnored private let notificationDelegate = NotificationDelegate()
     /// 回線の見張り。回線を待っている後処理を、つながったら再開する（SPEC §8.2）。
@@ -670,10 +674,19 @@ final class AppModel {
         refreshCandidates()
         let now = Date()
         let scheduler = AutoRecordingScheduler(store: store)
+        let appRunning = detector.isTargetRunning()
         for candidate in candidates where candidate.startDate <= now.addingTimeInterval(300) && candidate.endDate > now {
+            // 録音準備では許可を尋ねない（SPEC §6.4）。許可がなければ予定回を使わずに知らせ、許可されたら次の確認で準備する
+            if appRunning {
+                if let problem = session.armPermissionProblem {
+                    noteArmPermission(problem, meetingTitle: candidate.title)
+                    return
+                }
+                notedArmPermission = nil
+            }
             do {
                 guard try scheduler.claim(eventId: candidate.id, start: candidate.startDate, end: candidate.endDate,
-                                          enabled: settings.autoStartOnAudio, appRunning: detector.isTargetRunning(), idle: true) else { continue }
+                                          enabled: settings.autoStartOnAudio, appRunning: appRunning, idle: true) else { continue }
                 var info = candidate.pendingInfo
                 info.privacyMode = privacyModeForNextMeeting
                 info.language = languageForNextMeeting.language
@@ -682,11 +695,33 @@ final class AppModel {
                 AppModel.postNotification(title: "録音準備", body: settings.confirmBeforeAutoStart
                     ? "\(candidate.title) の音声を検知したら開始を確認します"
                     : "\(candidate.title) の音声を検知したら録音を開始します")
+            } catch let problem as ArmPermissionError {
+                noteArmPermission(problem, meetingTitle: candidate.title)  // 確かめたあとで許可が変わった
+            } catch AudioCaptureError.invalidState(let reason) {
+                // 手動の開始・停止と重なった（行は作っていない）。これまでどおり知らせない
+                appendEvent("録音準備をしません: \(reason)")
             } catch {
+                // 会議になる前なので、行は残らない（失敗の会議の知らせも出ない）。理由はここで知らせる
                 appendEvent("録音準備に失敗: \(error.localizedDescription)。手動で開始し直してください")
+                AppModel.postNotification(title: "録音準備に失敗しました",
+                                          body: "\(candidate.title): " + SetupMessages.describe(error, targets: settings.targetBundleIdentifiers))
             }
             return
         }
+    }
+
+    /// 録音準備をしなかった許可の理由を、通知で 1 度だけ知らせる。押すと初回の案内（許可の確認）を開く（SPEC §6.4）。
+    private func noteArmPermission(_ problem: ArmPermissionError, meetingTitle: String) {
+        guard notedArmPermission != problem else { return }
+        notedArmPermission = problem
+        appendEvent("録音準備をしません: \(problem.localizedDescription)")
+        let guidance = switch problem {
+        case .microphoneNotDetermined:
+            "マイクの許可がまだありません。録音を手動で始めると許可を求めます。初回の案内（設定 > 診断）からも許可できます。"
+        case .microphoneDenied:
+            "マイクの許可がありません。システム設定 > プライバシーとセキュリティ > マイク で Minutes を許可してください。"
+        }
+        AppModel.postNotification(title: "録音準備をしませんでした", body: "\(meetingTitle): \(guidance)", opensOnboarding: true)
     }
 
     func refreshCandidates() {
@@ -1285,15 +1320,19 @@ final class AppModel {
         notificationDelegate.onStartRecording = { [weak self] in
             Task { @MainActor in self?.startNow() }
         }
+        notificationDelegate.onOpenOnboarding = { [weak self] in
+            Task { @MainActor in self?.showOnboarding() }
+        }
         center.delegate = notificationDelegate
     }
 
-    static func postNotification(title: String, body: String, meetingId: String? = nil, category: String? = nil) {
+    static func postNotification(title: String, body: String, meetingId: String? = nil, category: String? = nil, opensOnboarding: Bool = false) {
         guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         if let meetingId { content.userInfo["meetingId"] = meetingId }
+        if opensOnboarding { content.userInfo[AppModel.opensOnboardingKey] = true }
         if let category { content.categoryIdentifier = category }
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
@@ -1304,15 +1343,21 @@ final class AppModel {
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     var onOpenMeeting: (@Sendable (String?) -> Void)?
     var onStartRecording: (@Sendable () -> Void)?
+    var onOpenOnboarding: (@Sendable () -> Void)?
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let meetingId = response.notification.request.content.userInfo["meetingId"] as? String
+        let userInfo = response.notification.request.content.userInfo
+        let meetingId = userInfo["meetingId"] as? String
         if response.actionIdentifier == AppModel.startRecordingActionIdentifier {
             onStartRecording?()
+            return
+        }
+        if userInfo[AppModel.opensOnboardingKey] as? Bool == true {
+            onOpenOnboarding?()
             return
         }
         onOpenMeeting?(meetingId)
