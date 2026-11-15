@@ -34,9 +34,12 @@ public final class ProcessTap: SystemAudioTap, @unchecked Sendable {
         /// aggregate の入力 AudioBufferList 内で tap のデータが始まるバッファ index。
         public var bufferIndex: Int
         public var aggregateInputStreamCount: Int
+        /// tap ストリームの virtualFormat が報告したレート。aggregate の実レート（`sampleRate`）と違うときだけ入る。
+        public var reportedStreamSampleRate: Double? = nil
 
         public var description: String {
-            "\(Int(sampleRate)) Hz, \(channels) ch, \(isFloat ? "float" : "int")\(bitsPerChannel), \(isNonInterleaved ? "planar" : "interleaved"), bufferIndex=\(bufferIndex)/\(aggregateInputStreamCount)"
+            let reported = reportedStreamSampleRate.map { " (stream reports \(Int($0)) Hz)" } ?? ""
+            return "\(Int(sampleRate)) Hz\(reported), \(channels) ch, \(isFloat ? "float" : "int")\(bitsPerChannel), \(isNonInterleaved ? "planar" : "interleaved"), bufferIndex=\(bufferIndex)/\(aggregateInputStreamCount)"
         }
     }
 
@@ -215,12 +218,19 @@ public final class ProcessTap: SystemAudioTap, @unchecked Sendable {
     /// IOProc のデータ形式は tap 作成時の format ではなく、aggregate の現在の virtualFormat。
     /// SDK AudioHardwareBase.h の kAudioStreamPropertyVirtualFormat を確認（2026-09-19）。
     /// sub-device の入力が先、mixdown tap が後。stereo が mono stream 2 本になる構成も扱う。
+    ///
+    /// レートだけは virtualFormat を信じない。tap（例 48 kHz）とクロックのデバイス（例 内蔵スピーカー 44.1 kHz）の
+    /// レートが違うと、tap は drift compensation で aggregate のクロックへ変換されて届く（IO のフレーム数と
+    /// sampleTime は aggregate の 44.1 kHz で進む）のに、tap ストリームの virtualFormat は 48 kHz のまま報告される
+    /// （macOS 26.6 で確認、2026-11-13）。これをラベルにすると音声クロックの検証が「実測 44099 Hz」で録音を止める。
     static func computeStreamInfo(aggregate: AudioHardwareAggregateDevice, tapChannels: Int) throws -> StreamInfo {
         let inputs = try aggregate.streams.filter { try $0.direction == .input }
-        return try streamInfo(formats: inputs.map { try $0.virtualFormat }, tapChannels: tapChannels)
+        return try streamInfo(formats: inputs.map { try $0.virtualFormat }, tapChannels: tapChannels,
+                              deviceSampleRate: try? aggregate.nominalSampleRate)
     }
 
-    static func streamInfo(formats: [AudioStreamBasicDescription], tapChannels: Int) throws -> StreamInfo {
+    /// `deviceSampleRate` は aggregate の実レート（nominalSampleRate）。読めないときは virtualFormat のレートを使う。
+    static func streamInfo(formats: [AudioStreamBasicDescription], tapChannels: Int, deviceSampleRate: Double? = nil) throws -> StreamInfo {
         var first = formats.count
         var channels = 0
         while first > 0, channels < tapChannels {
@@ -239,14 +249,16 @@ public final class ProcessTap: SystemAudioTap, @unchecked Sendable {
             throw AudioCaptureError.conversionFailed("aggregate の音声形式が無効、または不一致です")
         }
         let index = formats.prefix(first).reduce(0) { $0 + bufferCount(for: $1) }
+        let rate = deviceSampleRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? format.mSampleRate
         return StreamInfo(
-            sampleRate: format.mSampleRate,
+            sampleRate: rate,
             channels: channels,
             isNonInterleaved: separateMono || format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0,
             isFloat: format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
             bitsPerChannel: Int(format.mBitsPerChannel),
             bufferIndex: index,
-            aggregateInputStreamCount: formats.count
+            aggregateInputStreamCount: formats.count,
+            reportedStreamSampleRate: rate == format.mSampleRate ? nil : format.mSampleRate
         )
     }
 
