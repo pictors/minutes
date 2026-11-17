@@ -58,9 +58,13 @@ public enum StoreError: Error, LocalizedError {
     case notFound(String)
     case meetingBusy(String)
     case audioDeletionPending(String)
+    case databaseMissing(String)
+    case databaseOutdated
 
     public var errorDescription: String? {
         switch self {
+        case let .databaseMissing(path): return "Minutes の DB がありません（\(path)）。一度 Minutes を起動してください"
+        case .databaseOutdated: return "Minutes の DB が古い形のままです。Minutes を起動して DB を更新してください"
         case let .notFound(what): return "\(what) が見つかりません"
         case .meetingBusy: return "この会議は別の録音・処理で使用中です"
         case let .audioDeletionPending(detail): return "会議の削除は保存しましたが、音声ファイルが残っています。自動で再試行します: \(detail)"
@@ -92,6 +96,20 @@ public final class Store: Sendable {
         try StoreSchema.migrator().migrate(pool)
         try store.recoverInterruptedMeetings()
         return store
+    }
+
+    /// 読むだけの接続（MCP サーバー）。マイグレーションも中断した会議の回復もせず、書き込みは SQLite が断る。
+    /// アプリが動いていても WAL のスナップショットを読むので、録音・後処理を止めない。
+    public static func openReadOnly(at url: URL = defaultURL()) throws -> Store {
+        guard FileManager.default.fileExists(atPath: url.path) else { throw StoreError.databaseMissing(url.path) }
+        var configuration = Configuration()
+        configuration.readonly = true
+        let pool = try DatabasePool(path: url.path, configuration: configuration)
+        // アプリより古い DB（マイグレーション前）は列が足りず読めない。アプリより新しい DB は、知っている列だけを読む。
+        guard try pool.read({ db in try StoreSchema.migrator().hasCompletedMigrations(db) }) else {
+            throw StoreError.databaseOutdated
+        }
+        return Store(writer: pool, leaseDirectory: url.resolvingSymlinksInPath().appendingPathExtension("locks"))
     }
 
     /// テスト用のインメモリ DB。

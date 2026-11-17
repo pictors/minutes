@@ -25,6 +25,7 @@ struct MinutesCLI {
             case "devices": try DevicesCommand.run(rest)
             case "assets": try await AssetsCommand.run(rest)
             case "bench": try BenchCommand.run(rest)
+            case "mcp": try McpCommand.run(rest)
             case "help", "--help", "-h": printUsage()
             case "version", "--version": Console.out(version)
             default:
@@ -102,6 +103,10 @@ struct MinutesCLI {
 
           minutes-cli bench [--seconds 60] [--keep]
               録音中の書き出し処理（整合・AAC・16 kHz WAV）の CPU を合成音声で測る（G7 の内訳。デバイス・許可は不要）。
+
+          minutes-cli mcp [--db <path>] [--export-dir <dir>]
+              MCP サーバー（stdio、読み取りだけ）。Claude Code なら claude mcp add minutes -- <このバイナリの絶対パス> mcp
+              ツール: list_meetings / get_meeting / get_transcript / search_meetings。ローカル専用の会議は出さない。
 
         API キー: 環境変数または .env の ELEVENLABS_API_KEY / OPENAI_API_KEY
         """)
