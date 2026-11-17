@@ -474,6 +474,14 @@ protocol SyncTarget {
 - 受け側は `meeting.md` と `summary.json` を読み、`action_items` を `kind` ごとに扱う（§8.1）。`transcript.json` は根拠の確認が必要なときだけ読む。
 - 根拠へは `minutes://meeting/<id>?seg=<segment_id>` のディープリンクで戻れる。`minutes://` は Minutes.app が登録し（`CFBundleURLTypes`）、該当の発言にジャンプして再生する。
 
+### 9.3 MCP サーバー（2026-11-17）
+
+- 会議のあとの作業（議事録にまとめる、アクションを Backlog・Notion などのチケットにする）は、Claude などのエージェントをハブにして行う。Minutes は会議を読む口を MCP（stdio）で出し、チケットの作成はエージェントがほかの MCP で行う。
+- `minutes-cli mcp`。SQLite を読み取り専用で開き（マイグレーション・回復処理なし）、アプリと同時に動かせる。ツールは `list_meetings` / `get_meeting`（省くと直前の会議）/ `get_transcript` / `search_meetings`、プロンプトは `minutes`（議事録）と `tasks`（チケット化）。
+- 返す本文は Markdown。発言に `#<segment_id>` を付け、要約の根拠（evidence）と `minutes://` のディープリンクに使えるようにする。
+- `local_only` の会議と、除外した話者の発言は出さない（§14）。
+- 書き込み（アクションの完了、チケットの URL を会議に残す、話者の名前付けなど）は次の段階。アプリの画面は DB を監視しているので、書いた内容はそのまま画面に出る。
+
 ---
 
 ## 10. UI
@@ -593,7 +601,7 @@ minutes/
 
 - API キーは Keychain。CLI は `.env`（`.gitignore`）。
 - ログにキー・音声・本文を出さない（debug でも本文は先頭 40 文字まで）。
-- `privacy_mode = local_only` の会議は、いかなるステップでも外部送信しない。Summarizer も呼ばない（要約は空。人間が後で `cloud_ok` に切り替えたときに実行）。書き出し・同期もしない。
+- `privacy_mode = local_only` の会議は、いかなるステップでも外部送信しない。Summarizer も呼ばない（要約は空。人間が後で `cloud_ok` に切り替えたときに実行）。書き出し・同期もしない。MCP サーバー（§9.3）からも読めない。
 - 音声ファイルは既定 30 日で削除。削除は export 済みを確認してから。
 - Webhook（Phase 2）は共有トークンで認証し、manifest の sha256 で改ざんを検知できるようにする。
 - 診断情報の書き出しには本文・音声・キーを入れず、会議名とカレンダーの件名は会議の ID に置き換える。利用状況の送信（テレメトリ）は入れない。

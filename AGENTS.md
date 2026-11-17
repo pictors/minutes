@@ -21,6 +21,7 @@ swift build -c release --product minutes-cli # 60 分録音や CER 計算は rel
 scripts/build-cli.sh                         # CLI の release ビルド + 署名（.env / 環境変数の CODESIGN_IDENTITY で固定 ID 署名すると TCC 許可が持続する）
 scripts/build-app.sh                         # Minutes.app を組み立てて署名 → open .build/Minutes.app
 scripts/build-app.sh --install               # 組み立てて /Applications/Minutes.app へ移す（Minutes の起動中は中止。API キーは Keychain から読む）
+.build/release/minutes-cli mcp               # MCP サーバー（stdio、読み取りだけ）。claude mcp add minutes -- <絶対パス> mcp で Claude Code に登録（docs/CLI.md）
 python3 scripts/check-public.py              # 禁止語の検査（個人環境・実会議の情報・秘密情報）。--all-history で全履歴とコミットメッセージ
 (cd site && npm ci && npm run build)        # 公開ページの CSS（Tailwind CSS）を site/assets/site.css に作る。直しながら見るときは npm run dev
 python3 -m http.server 8787 --directory site   # 公開ページを手元で見る（外部のフォント・解析は読み込まない。画面の写真は架空の会議で撮る）
@@ -87,6 +88,7 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）
   Summarize/                 MinutesSummary、CodexSummarizer、ClaudeCodeSummarizer（claude -p）、ClaudeSummarizer（API）、Resources/Prompts/summarize_ja.md
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
+  MCP/                       MCPServer（stdio の JSON-RPC）、MinutesMCPHandler（会議を読むツールとプロンプト。読み取りだけ、ローカル専用の会議は出さない）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）
 Sources/MinutesApp/          SwiftUI アプリ（AppModel、OnboardingModel・SetupChecks（初回の案内）、CalendarService、MeetingDetector、GlobalHotKey、Views/）。Info.plist と entitlements は build-app.sh が使う
 Tests/MinutesCoreTests/      単体テスト（golden JSON は Fixtures/）

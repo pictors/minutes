@@ -88,3 +88,28 @@ $CLI process recordings/2026-09-16_weekly --summary-only --summary-model <model-
 ```
 
 `--db` で別の DB を使える。CLI の `record` / `live` は録音の失敗を受けたら停止・ファイルの終了処理をして、0 以外で終わる。`transcribe` は送信前に、空の音声と、manifest がある場合の録音失敗・時間の不一致・欠けたトラックを確かめる。
+
+## MCP サーバー（Claude などから会議を読む）
+
+会議のあとに Claude Code・Claude Desktop などへ「直前の会議を議事録にして」「アクションを Backlog のチケットにして」と頼めるよう、会議を MCP（stdio）で読めるようにする。読み取りだけで、DB には書かない（SQLite を読み取り専用で開き、マイグレーションも回復処理もしない）。アプリが動いていても使える。
+
+```bash
+scripts/build-cli.sh                                   # release ビルド（バイナリは .build/release/minutes-cli）
+claude mcp add --scope user minutes -- "$PWD/.build/release/minutes-cli" mcp   # Claude Code に登録（パスは絶対パスで）
+```
+
+Claude Desktop は `claude_desktop_config.json` の `mcpServers` に `{"minutes": {"command": "<minutes-cli の絶対パス>", "args": ["mcp"]}}` を足す。`--db <path>` で別の DB、`--export-dir <dir>` で meeting.md の場所の案内に使う書き出し先を変えられる。
+
+| ツール | 中身 |
+|---|---|
+| `list_meetings` | 会議の一覧（新しい順）。`since` / `until`（YYYY-MM-DD か ISO 8601）・`tag`・`limit` |
+| `get_meeting` | 要約・決定事項・アクション（担当・種別・期限・ID・根拠の発言 ID）・未決の論点・メモ・参加者。`meeting_id` を省くと直前の会議（録音中の会議より、終わった直後の会議を優先）。`include_transcript` で全文も |
+| `get_transcript` | 全文（`[時刻] #発言 ID 話者: 本文`）。`start` / `limit` で分けて読む |
+| `search_meetings` | 本文・要約・メモ・タイトル・参加者・タグの検索（アプリの検索と同じ） |
+
+プロンプト（Claude Code では `/mcp__minutes__minutes`・`/mcp__minutes__tasks`）: `minutes` は議事録にまとめて置き場所を聞く、`tasks` はアクションをチケットの案にして、利用者が OK したものだけを作る。どちらも `meeting_id` と `destination`（例: Backlog のプロジェクト）を省ける。
+
+- `privacy_mode = local_only` の会議は、一覧・検索・読み取りのどれにも出さない（SPEC §14）。
+- 背景の声として除外した話者の発言は出さない（書き出しと同じ）。
+- 後処理中の会議は、どのステップかを返す。モデルはそれを見て待つ。
+- stdout には JSON-RPC だけを書く。stderr には起動の 1 行だけを出し、本文は出さない。
