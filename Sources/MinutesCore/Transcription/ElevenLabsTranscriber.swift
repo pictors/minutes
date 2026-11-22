@@ -129,8 +129,15 @@ public struct ElevenLabsTranscriber: BatchTranscriber {
     }
 
     /// words[] を TranscriptWord / TranscriptSegment に畳む。audio_event は除外する。
+    /// 長い音声のつなぎ目で、時刻の潰れた（幅 0 の）発言がすぐ後ろと重なっていたら、その重なりを除く（`CollapsedDuplicateFilter`）。
     public static func makeResult(from response: Response, foldingOptions: SegmentFoldingOptions = SegmentFoldingOptions(), meta: [String: String] = [:]) -> TranscriptionResult {
-        ElevenLabsScribe.makeResult(from: response, foldingOptions: foldingOptions, meta: meta)
+        let result = ElevenLabsScribe.makeResult(from: response, foldingOptions: foldingOptions, meta: meta)
+        let filtered = CollapsedDuplicateFilter.apply(to: result.words ?? [])
+        guard filtered.removed > 0 else { return result }
+        var providerMeta = result.providerMeta
+        providerMeta["collapsed_duplicate_words_removed"] = String(filtered.removed)
+        Log.transcription.info("ElevenLabs: removed \(filtered.removed, privacy: .public) collapsed duplicate words")
+        return TranscriptionResult(segments: SegmentFolder.fold(words: filtered.words, options: foldingOptions), words: filtered.words, providerMeta: providerMeta)
     }
 }
 
