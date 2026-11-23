@@ -12,6 +12,10 @@ struct MeetingDetailView: View {
     @State private var loadError: String?
     @State private var confirmingDelete = false
     @State private var player = AudioPlayback()
+    @State private var renaming = false
+    @State private var titleDraft = ""
+    @State private var editingSpeakers = false
+    @State private var actionError: String?
 
     private var item: MeetingItem? { model.meetings.first { $0.id == clientId } }
 
@@ -27,7 +31,20 @@ struct MeetingDetailView: View {
                 if let loadError {
                     Section { Text(loadError).foregroundStyle(.red) }
                 }
+                if let actionError {
+                    Section { Text(actionError).foregroundStyle(.red) }
+                }
                 audioSection(item)
+                if let transcript, !transcript.speakers.isEmpty {
+                    Section {
+                        ForEach(transcript.speakers, id: \.label) { speaker in
+                            LabeledContent(Formatting.speaker(speaker.label, in: nil), value: speaker.name ?? "—")
+                        }
+                        Button("話者の名前を変える") { editingSpeakers = true }
+                    } header: {
+                        Text("話者")
+                    }
+                }
                 if let transcript, !transcript.segments.isEmpty {
                     Section("全文") {
                         ForEach(transcript.segments, id: \.id) { segment in
@@ -48,13 +65,45 @@ struct MeetingDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) {
-                    confirmingDelete = true
+                Menu {
+                    if item?.server != nil {
+                        Button {
+                            titleDraft = item?.title ?? ""
+                            renaming = true
+                        } label: {
+                            Label("名前を変える", systemImage: "pencil")
+                        }
+                    }
+                    if let transcript, !transcript.speakers.isEmpty {
+                        Button {
+                            editingSpeakers = true
+                        } label: {
+                            Label("話者の名前", systemImage: "person.2")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        confirmingDelete = true
+                    } label: {
+                        Label("会議を消す", systemImage: "trash")
+                    }
+                    .disabled(item?.id == model.recorder.clientId)
                 } label: {
-                    Image(systemName: "trash")
+                    Image(systemName: "ellipsis")
                 }
-                .accessibilityLabel("会議を消す")
-                .disabled(item == nil || item?.id == model.recorder.clientId)
+                .accessibilityLabel("会議の操作")
+                .disabled(item == nil)
+            }
+        }
+        .alert("会議の名前", isPresented: $renaming) {
+            TextField("会議の名前", text: $titleDraft)
+            Button("保存") { rename() }
+            Button("やめる", role: .cancel) {}
+        }
+        .sheet(isPresented: $editingSpeakers) {
+            if let transcript {
+                SpeakerNamesView(transcript: transcript) { names in
+                    try await saveSpeakerNames(names)
+                }
             }
         }
         .confirmationDialog("この会議を消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -180,6 +229,25 @@ struct MeetingDetailView: View {
         } catch {
             loadError = "議事録を読めませんでした（\(error.localizedDescription)）"
         }
+    }
+
+    private func rename() {
+        guard let item else { return }
+        let title = titleDraft
+        Task {
+            do {
+                try await model.rename(item, title: title)
+                actionError = nil
+            } catch {
+                actionError = "名前を変えられませんでした（\(error.localizedDescription)）"
+            }
+        }
+    }
+
+    private func saveSpeakerNames(_ names: [String: String]) async throws {
+        guard let item, let server = item.server else { return }
+        try await model.renameSpeakers(item, names: names)
+        transcript = try await model.client.transcript(recordingID: server.id)
     }
 
     private func delete() {

@@ -155,6 +155,30 @@ struct MinutesCloudDeviceClientTests {
         #expect(bodyObject(request)["apple_authorization_code"] as? String == "kakuu-code")
     }
 
+    @Test("題名と話者の名前を直す（PATCH。渡したものだけを送る）")
+    func updateRecording() async throws {
+        let seen = Mutex<[StubURLProtocol.Request]>([])
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0.append(request) }
+            if bodyObject(request)["speaker_names"] != nil, (bodyObject(request)["speaker_names"] as? [String: String])?["spk_9"] != nil {
+                return json(["error": "unknown_speaker"], status: 400)
+            }
+            return json(["recording": ["id": "r1", "client_id": "iphone-01kakuu", "status": "done", "title": "架空の定例（直した）"]])
+        }
+        let client = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "t" })
+        let recording = try await client.updateRecording(id: "r1", title: "架空の定例（直した）")
+        #expect(recording.title == "架空の定例（直した）")
+        _ = try await client.updateRecording(id: "r1", speakerNames: ["spk_0": "架空の佐藤", "spk_1": ""])
+        await #expect(throws: MinutesCloudError.http(status: 400, code: "unknown_speaker", requestID: nil)) {
+            _ = try await client.updateRecording(id: "r1", speakerNames: ["spk_9": "架空"])
+        }
+        let requests = seen.withLock { $0 }
+        #expect(requests.allSatisfy { $0.method == "PATCH" && $0.path == "/v1/recordings/r1" })
+        #expect(bodyObject(requests[0]).keys.sorted() == ["title"])
+        #expect(bodyObject(requests[1]).keys.sorted() == ["speaker_names"])
+        #expect((bodyObject(requests[1])["speaker_names"] as? [String: String]) == ["spk_0": "架空の佐藤", "spk_1": ""])
+    }
+
     @Test("音声を取りに行き、期限を過ぎていれば誤りの名前を返す")
     func downloadAudio() async throws {
         let base = StubURLProtocol.host { request in

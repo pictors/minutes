@@ -87,6 +87,8 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
         case "too_large": return "録音が大きすぎて送れません"
         case "not_ready": return "議事録はまだできていません"
         case "audio_not_available": return "音声は保存の期間（30 日）を過ぎて消えました"
+        case "unknown_speaker": return "文字起こしにない話者です"
+        case "bad_speaker_names": return "話者の名前は 50 文字までにしてください"
         case "not_found": return "サーバーに見つかりません（消えたか、別のアカウントのものです）"
         case "TOO_MANY_CODES": return "コードを送りすぎました。しばらくしてからもう一度試してください"
         case "INVALID_OTP": return "コードが違います"
@@ -457,6 +459,16 @@ public struct MinutesCloudClient: Sendable {
         }
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: location, to: destination)
+    }
+
+    /// 会議の題名と話者の名前を直す（PATCH /v1/recordings/:id、iPhone・Watch）。title が nil なら変えない（空なら消す）。
+    /// speakerNames はラベル（"spk_0" など）→ 名前（空なら消す）。話者の名前は文字起こしのあとだけ（前は 409 not_ready）。
+    public func updateRecording(id: String, title: String? = nil, speakerNames: [String: String]? = nil) async throws -> MinutesCloudRecording {
+        var body: [String: Any] = [:]
+        if let title { body["title"] = title }
+        if let speakerNames { body["speaker_names"] = speakerNames }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try decode(RecordingEnvelope.self, from: try await send("PATCH", "/v1/recordings/\(id)", body: data).0).recording
     }
 
     public func deleteRecording(id: String) async throws {

@@ -223,6 +223,19 @@ final class PhoneModel {
         reloadLocal()
     }
 
+    /// 会議の題名を直す（サーバーにある会議）。空なら題名を消す。
+    func rename(_ item: MeetingItem, title: String) async throws {
+        guard let server = item.server else { return }
+        let updated = try await client.updateRecording(id: server.id, title: title)
+        if let index = serverRecordings.firstIndex(where: { $0.id == server.id }) { serverRecordings[index] = updated }
+    }
+
+    /// 話者の名前を直す（文字起こしのあと）。ラベル → 名前（空なら消す）。
+    func renameSpeakers(_ item: MeetingItem, names: [String: String]) async throws {
+        guard let server = item.server, !names.isEmpty else { return }
+        _ = try await client.updateRecording(id: server.id, speakerNames: names)
+    }
+
     func retryUpload(_ item: MeetingItem) {
         uploads.retry(item.id)
     }
