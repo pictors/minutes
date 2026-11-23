@@ -105,6 +105,7 @@ private final class FakeServer: Sendable {
         var recordingStatus = "uploading"
         var failNextComplete: (Int, String)?
         var existingFailed = false
+        var sttMissingOnce = false
     }
 
     let state = Mutex<State>(State())
@@ -142,6 +143,10 @@ private final class FakeServer: Sendable {
                 s.recordingStatus = s.statusPolls >= 2 ? "done" : "transcribing"
                 return json(recordingJSON(id: id, clientID: clientID, status: s.recordingStatus))
             case ("GET", "/v1/recordings/\(id)/stt"):
+                if s.sttMissingOnce {
+                    s.sttMissingOnce = false
+                    return json(["error": "not_found"], status: 404)
+                }
                 return (200, ["content-type": "application/json"], stt)
             default:
                 return json(["error": "not_found"], status: 404)
@@ -267,6 +272,17 @@ struct MinutesCloudClientTests {
 
         let signedOut = MinutesCloudTranscriber(client: MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { nil }))
         await #expect(throws: TranscriptionError.self) { _ = try await signedOut.transcribe(request) }
+
+        // 終わった録音の文字起こしが消えていた（30 日を過ぎた）: 消して、もう一度上げる
+        server.state.withLock {
+            $0.recordingStatus = "done"
+            $0.statusPolls = 0
+            $0.sttMissingOnce = true
+            $0.requests = []
+        }
+        _ = try await transcriber.transcribe(request)
+        let requests = server.state.withLock { $0.requests }
+        #expect(requests.contains("DELETE /v1/recordings/\(server.id)") && requests.contains("PUT /v1/recordings/\(server.id)/audio"))
     }
 
     @Test("要約: 組がなければ頼まない。組があれば Mac の SummaryInput をそのまま送り、終わった要約を受け取る")

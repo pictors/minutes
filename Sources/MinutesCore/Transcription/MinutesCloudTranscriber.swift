@@ -89,12 +89,25 @@ public struct MinutesCloudTranscriber: BatchTranscriber {
             keyterms: Self.keyterms(request.keyterms),
             group: request.groupKey
         )
-        var recording = try await client.createRecording(options)
-        if recording.status == "failed" {
-            // 前の失敗は消して作り直す（同じ client_id で作れるように。組の 2 本にも数えない）
-            try await client.deleteRecording(id: recording.id)
-            recording = try await client.createRecording(options)
+        // 文字起こしそのものが消えていたら（30 日を過ぎた）、1 回だけ作り直す
+        for attempt in 0..<2 {
+            var recording = try await client.createRecording(options)
+            if recording.status == "failed" {
+                // 前の失敗は消して作り直す（同じ client_id で作れるように。組の 2 本にも数えない）
+                try await client.deleteRecording(id: recording.id)
+                recording = try await client.createRecording(options)
+            }
+            do {
+                return try await finish(recording, request: request, started: started)
+            } catch let error as MinutesCloudError where error.status == 404 && attempt == 0 && recording.status == "done" {
+                try await client.deleteRecording(id: recording.id)
+            }
         }
+        throw MinutesCloudError.failed("文字起こしを読めない")
+    }
+
+    private func finish(_ created: MinutesCloudRecording, request: TranscriptionRequest, started: Date) async throws -> TranscriptionResult {
+        var recording = created
         var meta: [String: String] = ["provider": id, "server_recording_id": recording.id]
         if let group = request.groupKey { meta[Self.groupMetaKey] = group }
         if recording.status == "uploading" {
