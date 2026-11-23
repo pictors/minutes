@@ -74,7 +74,10 @@ for required in \
   "$APP/Contents/Resources/NOTICE" \
   "$SPARKLE/Versions/B/Sparkle" \
   "$SPARKLE/Versions/B/Autoupdate"; do
-  if [[ ! -f "$required" ]]; then
+  # Swift 6.4 の SwiftPM はリソースバンドルを macOS の形（X.bundle/Contents/Resources/…）で作る。
+  # アプリは Bundle の API で探すので、どちらの形でも読める
+  nested_path="${required/.bundle\//.bundle/Contents/Resources/}"
+  if [[ ! -f "$required" && ! -f "$nested_path" ]]; then
     echo "リソースが .app に入っていません: ${required#$APP/}" >&2
     exit 1
   fi
