@@ -48,6 +48,8 @@ final class PhoneModel {
         recoverUnfinished()
         reloadLocal()
         uploads.restore()
+        // Watch にログインを渡す（Watch は受け取った印で録音を直接上げる）
+        LoginRelay.shared.activate()
         Task { await refresh() }
     }
 
@@ -172,6 +174,7 @@ final class PhoneModel {
         isSignedIn = true
         banner = nil
         uploads.kickAll()
+        LoginRelay.shared.sendLogin()
         Task { await refresh() }
     }
 
@@ -186,6 +189,7 @@ final class PhoneModel {
         user = nil
         account = nil
         serverRecordings = []
+        LoginRelay.shared.sendLogin()
     }
 
     /// アカウントを消す（サーバーの録音・文字起こし・要約も消える）。この端末の録音も消す。
