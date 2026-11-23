@@ -90,10 +90,16 @@ final class WatchModel {
         recordings.first { $0.clientId == clientId }
     }
 
-    /// この Watch とサーバーから消す。
-    func delete(_ upload: MinutesCloudUpload) async {
+    /// この Watch とサーバーから消す。サーバーで消せなければ（回線など）、この Watch の録音も残して誤りを返す。
+    func delete(_ upload: MinutesCloudUpload) async throws {
+        if let serverId = upload.serverId {
+            do {
+                try await CloudEnvironment.client().deleteRecording(id: serverId)
+            } catch let error as MinutesCloudError where error.status == 404 {
+                // サーバーにはもうない
+            }
+        }
         uploads.cancel(upload.clientId)
-        if let serverId = upload.serverId { try? await CloudEnvironment.client().deleteRecording(id: serverId) }
         try? store.delete(clientId: upload.clientId)
         reload()
     }

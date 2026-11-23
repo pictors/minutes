@@ -140,8 +140,12 @@ final class MeetingRecorder {
             return (upload, run)
         }
         let capture: AudioCapture = fixture ?? MicrophoneCapture()
-        capture.onStopped = { [weak self] in
-            Task { @MainActor in self?.captureStopped() }
+        // 前の走の入力から遅れて届いた知らせで、いまの走を閉じない
+        capture.onStopped = { [weak self, weak capture] in
+            Task { @MainActor in
+                guard let self, let capture, let current = self.capture, current === capture else { return }
+                self.captureStopped()
+            }
         }
         do {
             if fixture == nil { try AVAudioSession.sharedInstance().setActive(true) }

@@ -171,6 +171,7 @@ struct WatchRecordingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var player = RunPlayback()
     @State private var confirmingDelete = false
+    @State private var deleteError: String?
 
     var body: some View {
         if let upload = model.recording(clientId) {
@@ -199,6 +200,11 @@ struct WatchRecordingDetailView: View {
                     if upload.lastError != nil {
                         Button("もう一度送る") { model.retry(upload) }
                     }
+                    if let deleteError {
+                        Text(deleteError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                     Button(role: .destructive) {
                         confirmingDelete = true
                     } label: {
@@ -211,8 +217,12 @@ struct WatchRecordingDetailView: View {
                 Button("消す", role: .destructive) {
                     player.stop()
                     Task {
-                        await model.delete(upload)
-                        dismiss()
+                        do {
+                            try await model.delete(upload)
+                            dismiss()
+                        } catch {
+                            deleteError = "サーバーで消せませんでした（\(error.localizedDescription)）。つながってからもう一度消してください"
+                        }
                     }
                 }
             } message: {

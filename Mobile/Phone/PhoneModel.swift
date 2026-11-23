@@ -213,7 +213,10 @@ final class PhoneModel {
             try await client.deleteRecording(id: server.id)
             serverRecordings.removeAll { $0.id == server.id }
         } else if let serverId = item.local?.serverId {
-            try? await client.deleteRecording(id: serverId)
+            // 一覧にない送り済みの録音: サーバーにもうなければ（404）そのまま消す。ほかの失敗は消さずに返す
+            do {
+                try await client.deleteRecording(id: serverId)
+            } catch let error as MinutesCloudError where error.status == 404 {}
         }
         uploads.cancel(item.id)
         try? store.delete(clientId: item.id)
