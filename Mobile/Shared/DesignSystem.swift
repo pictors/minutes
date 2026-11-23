@@ -41,11 +41,12 @@ enum Palette {
     static let record = Color(light: 0xD92D22, dark: 0xFF4A3D)
 }
 
+/// 面の色。公開ページ（site/src/site.css の canvas・card）と同じ値。
 enum Surface {
     /// 画面の地
-    static let page = Color(light: 0xF6F6F8, dark: 0x0B0B0D)
+    static let page = Color(light: 0xF5F5F7, dark: 0x000000)
     /// カード（地より 1 段だけ違う面。枠線は使わない）
-    static let card = Color(light: 0xFFFFFF, dark: 0x1A1A1E)
+    static let card = Color(light: 0xFFFFFF, dark: 0x131316)
     /// ボタン
     static let raised = Color.primary.opacity(0.09)
     static let pressed = Color.primary.opacity(0.16)
@@ -62,6 +63,26 @@ enum SpeakerPalette {
         var hash: UInt64 = 5381
         for byte in label.utf8 { hash = (hash &* 33) &+ UInt64(byte) }
         return colors[Int(hash % UInt64(colors.count))]
+    }
+}
+
+// MARK: - ことば・文字
+
+/// ブランドのことば（公開ページの見出しと同じ調子: 短い 2 つの句、句点で終える）。
+enum BrandCopy {
+    /// 公開ページの最初の見出し
+    static let promise = "会議は、\n話すことに集中しよう。"
+    static let promiseDetail = "録音するだけ。議事録は、Minutes が書きます。"
+    static let emptyTitle = "録音するだけ。"
+    static let emptyDetail = "終わったら、議事録は Minutes が書きます。"
+}
+
+extension View {
+    /// 大きな見出し（公開ページの display: 太く、少し詰める）。
+    func brandDisplay(size: CGFloat = 34) -> some View {
+        font(.system(size: size, weight: .bold))
+            .tracking(-size * 0.012)
+            .lineSpacing(size * 0.06)
     }
 }
 

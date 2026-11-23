@@ -12,10 +12,12 @@ struct RecordingView: View {
         let recorder = model.recorder
         let recording = recorder.phase == .recording
         VStack(spacing: 0) {
+            MinutesMark(height: 18, color: Color.primary.opacity(0.25))
+                .padding(.top, 14)
             StatusPill(text: recording ? "録音中" : "止まっています", tint: recording ? Palette.record : Palette.amber,
                        systemImage: recording ? "record.circle.fill" : "pause.circle.fill", isBusy: recording)
                 .scaleEffect(1.15)
-                .padding(.top, 28)
+                .padding(.top, 22)
                 .animation(Motion.symbol, value: recording)
 
             Text(recorder.title ?? "無題の会議")

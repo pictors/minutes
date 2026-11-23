@@ -119,7 +119,7 @@ struct MeetingDetailView: View {
     private func header(_ item: MeetingItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(item.title ?? "無題の会議")
-                .font(.title.bold())
+                .brandDisplay(size: 30)
                 .fixedSize(horizontal: false, vertical: true)
             Text("\(Formatting.dayTitle(item.startedAt)) \(Formatting.timeOfDay(item.startedAt))")
                 .font(.subheadline)

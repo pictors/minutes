@@ -22,6 +22,7 @@ scripts/build-cli.sh                         # CLI の release ビルド + 署�
 scripts/build-app.sh                         # Minutes.app を組み立てて署名 → open .build/Minutes.app
 scripts/build-app.sh --install               # 組み立てて /Applications/Minutes.app へ移す（Minutes の起動中は中止。API キーは Keychain から読む）
 (cd Mobile && xcodebuild -project Minutes.xcodeproj -scheme Minutes -destination 'generic/platform=iOS Simulator' -derivedDataPath ../.build/xcode build)   # iPhone と Watch のアプリをシミュレータ向けに（署名は「Sign to Run Locally」。CODE_SIGNING_ALLOWED=NO にすると裏の送信が動かない）
+swift scripts/build-mobile-brand.swift       # iPhone と Watch のアイコン・起動画面の素材を、ロゴの輪郭から描き直す（Mobile/*/Assets.xcassets）
 python3 scripts/check-public.py              # 禁止語の検査（個人環境・実会議の情報・秘密情報）。--all-history で全履歴とコミットメッセージ
 (cd site && npm ci && npm run build)        # 公開ページの CSS（Tailwind CSS）を site/assets/site.css に作る。直しながら見るときは npm run dev
 python3 -m http.server 8787 --directory site   # 公開ページを手元で見る（外部のフォント・解析は読み込まない。画面の写真は架空の会議で撮る）

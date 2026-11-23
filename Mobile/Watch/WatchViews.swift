@@ -40,6 +40,9 @@ struct WatchRootView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
+                    MinutesBrandLockup(height: 13)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 6)
                     Button {
                         start()
                     } label: {
@@ -85,7 +88,6 @@ struct WatchRootView: View {
                 }
                 .padding(.horizontal, 2)
             }
-            .navigationTitle("Minutes")
             .navigationDestination(for: String.self) { clientId in
                 WatchRecordingDetailView(clientId: clientId)
             }

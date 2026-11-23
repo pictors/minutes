@@ -20,15 +20,16 @@ struct SignInView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                TintedTile(systemImage: "waveform", tint: Palette.periwinkle, size: 64)
+                MinutesBrandLockup(height: 30)
                     .padding(.top, 56)
-                Text("Minutes")
-                    .font(.system(size: 40, weight: .bold))
-                    .padding(.top, 20)
-                Text("会議を録音すると、文字起こしと議事録（要約・決まったこと・やること）ができます。")
+                Text(BrandCopy.promise)
+                    .brandDisplay(size: 36)
+                    .padding(.top, 36)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(BrandCopy.promiseDetail)
                     .font(.body)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
                     .fixedSize(horizontal: false, vertical: true)
 
                 SignInWithAppleButton(.signIn) { request in

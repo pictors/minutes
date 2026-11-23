@@ -7,9 +7,11 @@ struct RecordingNoticeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            MinutesMark(height: 26)
+                .padding(.top, 32)
             Text("録音の前に")
-                .font(.largeTitle.bold())
-                .padding(.top, 36)
+                .brandDisplay(size: 34)
+                .padding(.top, 18)
             Text("一度だけ確かめます。")
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)

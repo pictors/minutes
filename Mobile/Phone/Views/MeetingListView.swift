@@ -26,6 +26,24 @@ struct MeetingListView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
+                    // 上端: ロゴ（Mac のパネルと同じ組み）と、アカウント
+                    HStack {
+                        MinutesBrandLockup(height: 22)
+                        Spacer()
+                        Button {
+                            showingAccount = true
+                        } label: {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 38, height: 38)
+                                .background(Surface.raised, in: .circle)
+                        }
+                        .buttonStyle(CardPressStyle())
+                        .accessibilityLabel("アカウント")
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 2)
                     if let banner = model.banner {
                         Label(banner, systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
@@ -66,21 +84,11 @@ struct MeetingListView: View {
                 .animation(Motion.layout, value: model.meetings.map(\.id))
             }
             .background(Surface.page.ignoresSafeArea())
-            .navigationTitle("会議")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { id in
                 MeetingDetailView(clientId: id)
             }
             .refreshable { await model.refresh() }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingAccount = true
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                    }
-                    .accessibilityLabel("アカウント")
-                }
-            }
             .safeAreaInset(edge: .bottom) {
                 Button {
                     if model.noticeAccepted {
@@ -177,16 +185,17 @@ private struct MeetingCard: View {
 private struct EmptyMeetings: View {
     var body: some View {
         VStack(spacing: 14) {
-            TintedTile(systemImage: "waveform", tint: Palette.periwinkle, size: 64)
-            Text("会議はまだありません")
-                .font(.title3.weight(.semibold))
-            Text("下の「録音」から始めると、終わったあとに\n文字起こしと議事録ができます。")
+            MinutesMark(height: 52, color: Palette.periwinkle.opacity(0.9))
+                .padding(.bottom, 6)
+            Text(BrandCopy.emptyTitle)
+                .brandDisplay(size: 28)
+            Text(BrandCopy.emptyDetail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 56)
+        .padding(.vertical, 72)
     }
 }
 
