@@ -3,8 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "minutes",
-    platforms: [.macOS("26.0")],
+    // MinutesKit（機種に依らない型・JSON・サーバーとのやり取り）は iOS・watchOS でも使う（製品版の P3・P4）。ほかの対象は macOS だけで使う
+    platforms: [.macOS("26.0"), .iOS("26.0"), .watchOS("26.0")],
     products: [
+        .library(name: "MinutesKit", targets: ["MinutesKit"]),
         .library(name: "MinutesCore", targets: ["MinutesCore"]),
         .executable(name: "minutes-cli", targets: ["minutes-cli"]),
         .executable(name: "MinutesApp", targets: ["MinutesApp"]),
@@ -19,9 +21,15 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
     ],
     targets: [
+        // 依存なし。Mac・iPhone・Watch で共通の型（文字起こし・要約・会議の言語）、JSON、ログ、Pictors のサーバー（キーなし）とのやり取り
+        .target(
+            name: "MinutesKit",
+            path: "Sources/MinutesKit"
+        ),
         .target(
             name: "MinutesCore",
             dependencies: [
+                "MinutesKit",
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
@@ -67,7 +75,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MinutesCoreTests",
-            dependencies: ["MinutesCore"],
+            dependencies: ["MinutesCore", "MinutesKit"],
             path: "Tests/MinutesCoreTests",
             resources: [.copy("Fixtures")]
         ),

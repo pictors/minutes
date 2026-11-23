@@ -1,0 +1,38 @@
+{
+  "attendees" : [
+    {
+      "name" : "架空の山田"
+    },
+    {
+      "email" : "kakuu@example.test",
+      "name" : "架空の佐藤"
+    }
+  ],
+  "meeting_language" : "ja",
+  "meeting_title" : "架空の Mac の会議",
+  "output_language" : "ja",
+  "segments" : [
+    {
+      "confidence" : 0.9,
+      "id" : 0,
+      "speaker" : "spk_0",
+      "t_end" : 3.2,
+      "t_start" : 0,
+      "text" : "架空の議題を始めます。",
+      "track" : "system"
+    },
+    {
+      "id" : 1,
+      "speaker" : "me",
+      "t_end" : 6.4,
+      "t_start" : 3.5,
+      "text" : "架空の資料を共有します。",
+      "track" : "mic"
+    }
+  ],
+  "speaker_names" : {
+    "me" : "自分",
+    "spk_0" : "架空の山田"
+  },
+  "started_at" : "2026-11-20T01:00:00Z"
+}

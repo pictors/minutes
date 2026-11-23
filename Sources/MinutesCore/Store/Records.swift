@@ -20,16 +20,6 @@ public enum SegmentSource: String, Codable, Sendable {
     case live, final
 }
 
-public struct Attendee: Codable, Sendable, Equatable, Hashable {
-    public var name: String
-    public var email: String?
-
-    public init(name: String, email: String? = nil) {
-        self.name = name
-        self.email = email
-    }
-}
-
 /// GRDB レコード共通設定（snake_case 列、ISO 8601 日時）。
 public protocol MinutesRecord: Codable, FetchableRecord, PersistableRecord, Sendable {}
 

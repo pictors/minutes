@@ -39,7 +39,7 @@ public struct UploadTiming: Sendable, Equatable {
         return meta
     }
 
-    var summary: String {
+    package var summary: String {
         String(format: "upload %.1f s (%@), server %.1f s", uploadSeconds,
                megabitsPerSecond.map { String(format: "%.1f Mbps", $0) } ?? "?", serverSeconds)
     }
@@ -52,14 +52,14 @@ public struct UploadTiming: Sendable, Equatable {
 }
 
 /// タスク単位の delegate で計測値を受け取る。
-final class UploadTimingDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+package final class UploadTimingDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var collected: UploadTiming?
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+    package func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
         let timing = UploadTiming(metrics)
         lock.withLock { collected = timing }
     }
 
-    var timing: UploadTiming? { lock.withLock { collected } }
+    package var timing: UploadTiming? { lock.withLock { collected } }
 }

@@ -24,13 +24,6 @@ public enum MeetingLanguage: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    /// ライブ字幕とこの Mac の中の文字起こし（SpeechAnalyzer）のロケール。
-    public var locale: Locale {
-        switch self {
-        case .ja: SpeechAssets.defaultLocale
-        case .en: Locale(identifier: "en-US")
-        }
-    }
 }
 
 /// 新しい会議の言語の選び方（設定と、次の録音の選択）。
