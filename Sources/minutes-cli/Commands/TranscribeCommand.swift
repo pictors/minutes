@@ -149,8 +149,12 @@ enum TranscribeCommand {
             return OpenAITranscriber(apiKey: key)
         case "local", "apple", "speechanalyzer":
             return LocalTranscriber(locale: locale, numSpeakers: numSpeakers, clusteringThreshold: clusterThreshold, onStatus: status)
+        case "minutes", "minutes-cloud", MinutesCloudTranscriber.providerID:
+            // Minutes（キーなし）。ログインは minutes-cli account login（印は Keychain）か、環境変数 MINUTES_CLOUD_TOKEN
+            guard MinutesCloudCredentials.isSignedIn else { throw MinutesCloudError.notSignedIn }
+            return MinutesCloudTranscriber(client: .standard())
         default:
-            throw ArgumentError.invalidValue(option: "provider", value: name, expected: "elevenlabs | openai | local")
+            throw ArgumentError.invalidValue(option: "provider", value: name, expected: "elevenlabs | openai | local | minutes")
         }
     }
 

@@ -138,7 +138,7 @@ public final class PostProcessPipeline: Sendable {
         guard !input.segments.isEmpty else { throw PipelineError.summaryUnavailable }
         let run = try store.recordRun(meetingId: meetingId, step: PipelineStep.summarize.rawValue, status: .running)
         do {
-            let summary = try await summarizer.summarize(input)
+            let summary = try await summarizer.summarize(input, context: SummaryContext(meetingID: meetingId, cloudGroup: cloudGroup(directory: meeting.audioDirectoryURL)))
             guard let current = try store.meeting(id: meetingId), current.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
             let inputFingerprint = try PipelineFingerprint.encoded(input)
             guard try PipelineFingerprint.encoded(summaryInput(current)) == inputFingerprint else { throw PipelineError.staleSummary }
@@ -361,8 +361,11 @@ public final class PostProcessPipeline: Sendable {
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
         let language = try resolveLanguage(meeting)
+        // キーなし（Pictors のサーバー）なら、この文字起こしの組を決める（2 本を 1 つの会議として数える。SPEC §5.6）
+        let cloudGroup = providers.cloud?.id == MinutesCloudTranscriber.providerID && meeting.privacy != .localOnly
+            ? try cloudGroupKey(meeting: meeting, directory: directory, language: language) : nil
         let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms, language: language,
-                                        manifest: try? RecordingManifest.read(from: directory), policy: policy)
+                                        manifest: try? RecordingManifest.read(from: directory), policy: policy, cloudGroup: cloudGroup)
         async let system = transcribeTrack(job, track: "system", sttName: RecordingSession.systemSTTName, artifact: PostProcessPipeline.systemArtifact, diarize: true)
         async let mic = transcribeTrack(job, track: "mic", sttName: RecordingSession.micSTTName, artifact: PostProcessPipeline.micArtifact, diarize: false)
         let notes = try await [system, mic].compactMap { $0 }
@@ -397,6 +400,35 @@ public final class PostProcessPipeline: Sendable {
         var language: MeetingLanguage
         var manifest: RecordingManifest?
         var policy: RetryPolicy
+        var cloudGroup: String?
+    }
+
+    /// キーなしで送る文字起こしの組。同じ会議の同じ入力なら同じ組（後処理のやり直しで上げ直さず、二重に数えない）、
+    /// 入力が変わった文字起こしし直しは別の組（サーバーでは新しい会議として数える）。
+    /// 入力は文字起こしの指紋（stepFingerprint）と同じもの: 音声・参加者・手で足した用語・言語・会議の始まり。
+    /// 要約から覚えた用語は入れない（要約のたびに組が変わり、やり直しで上げ直すことになる）。
+    func cloudGroupKey(meeting: MeetingRecord, directory: URL, language: MeetingLanguage) throws -> String {
+        let inputs = [
+            try PipelineFingerprint.file(directory.appendingPathComponent(RecordingSession.systemSTTName)),
+            try PipelineFingerprint.file(directory.appendingPathComponent(RecordingSession.micSTTName)),
+            meeting.attendeesJson ?? "",
+            try PipelineFingerprint.encoded(store.manualKeyterms()),
+            language.rawValue,
+            String(format: "%.3f", meeting.meetingStartOffsetSeconds),
+        ]
+        return MinutesCloudGroup.key(meetingID: meeting.id, run: inputs.joined(separator: "\n"))
+    }
+
+    /// キーなしで文字起こしした会議の組（トラックの成果物の providerMeta に残る）。ほかの手段で文字起こしした会議は nil。
+    func cloudGroup(directory: URL?) -> String? {
+        guard let directory else { return nil }
+        for name in [Self.systemArtifact, Self.micArtifact] {
+            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
+                  let result = try? JSONCoding.decoder().decode(TranscriptionResult.self, from: data),
+                  let group = result.providerMeta[MinutesCloudTranscriber.groupMetaKey] else { continue }
+            return group
+        }
+        return nil
     }
 
     /// 1 トラック分の final を作って成果物に書き、pipeline_runs に残す説明を返す（音声がなければ nil）。
@@ -425,7 +457,7 @@ public final class PostProcessPipeline: Sendable {
             audioURL = trimmed
             timeOffset = startOffset
         }
-        let request = TranscriptionRequest(audioURL: audioURL, language: job.language.rawValue, diarize: diarize, keyterms: job.keyterms, knownSpeakers: [])
+        let request = TranscriptionRequest(audioURL: audioURL, language: job.language.rawValue, diarize: diarize, keyterms: job.keyterms, knownSpeakers: [], groupKey: job.cloudGroup)
         var result: TranscriptionResult
         let note: String
         guard let current = try store.meeting(id: meeting.id) else { throw PipelineError.meetingNotFound(meeting.id) }
@@ -549,7 +581,7 @@ public final class PostProcessPipeline: Sendable {
         let input = try summaryInput(current)
         guard !input.segments.isEmpty else { return "skipped (empty transcript)" }
         let fingerprint = try PipelineFingerprint.encoded(input)
-        let summary = try await summarizer.summarize(input)
+        let summary = try await summarizer.summarize(input, context: SummaryContext(meetingID: meeting.id, cloudGroup: cloudGroup(directory: directory)))
         guard let latest = try store.meeting(id: meeting.id), latest.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
         guard try PipelineFingerprint.encoded(summaryInput(latest)) == fingerprint else { throw PipelineError.staleSummary }
         let artifact = SummaryArtifact(summary: summary, model: summarizer.modelDescription, inputFingerprint: fingerprint)

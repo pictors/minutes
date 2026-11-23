@@ -81,7 +81,7 @@ enum ProcessCommand {
         var settings = AppSettings.load()
         if let raw = parsed.value("summary-provider") {
             guard let provider = SummaryProvider(rawValue: raw) else {
-                throw ArgumentError.invalidValue(option: "summary-provider", value: raw, expected: "codex | claude-code | anthropic | none")
+                throw ArgumentError.invalidValue(option: "summary-provider", value: raw, expected: "codex | claude-code | anthropic | minutes-cloud | none")
             }
             settings.summaryProvider = provider
         }
@@ -90,7 +90,7 @@ enum ProcessCommand {
             case .codex: settings.codexModel = model
             case .claudeCode: settings.claudeCodeModel = model
             case .anthropic: settings.summaryModel = model
-            case .none: break
+            case .minutesCloud, .none: break
             }
         }
         if let path = parsed.value("codex-path") { settings.codexExecutablePath = path }

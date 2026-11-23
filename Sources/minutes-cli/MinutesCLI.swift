@@ -25,6 +25,7 @@ struct MinutesCLI {
             case "devices": try DevicesCommand.run(rest)
             case "assets": try await AssetsCommand.run(rest)
             case "bench": try BenchCommand.run(rest)
+            case "account": try await AccountCommand.run(rest)
             case "help", "--help", "-h": printUsage()
             case "version", "--version": Console.out(version)
             default:
@@ -63,7 +64,7 @@ struct MinutesCLI {
               録音せず音声ファイルを実時間ペースで流して同じ計測をする（--fast で最速）。
               --fast-results で SpeechTranscriber の fastResults を有効化、--no-volatile で途中結果を止める。
 
-          minutes-cli transcribe <dir|file> --provider elevenlabs|openai|local [options]
+          minutes-cli transcribe <dir|file> --provider elevenlabs|openai|local|minutes [options]
               録音フォルダ（system_16k.wav / mic_16k.wav）から transcript.<provider>.json を作る。
               --mic-provider same|local|none   mic トラックのプロバイダ（既定 same）
               --language ja  --locale ja-JP  --keyterms a,b  --num-speakers N  --no-diarize
@@ -81,7 +82,8 @@ struct MinutesCLI {
               Phase 1 の後処理パイプライン（final → マージ → 要約 → 保存 → 書き出し）を録音フォルダに掛ける。
               --db <path>（既定: ~/Library/Application Support/Minutes/minutes.sqlite）--export-dir --sync-dir --no-summary
               --force step,step で完了済みステップを再実行（例: --force summarize,store,export）
-              --summary-provider codex|claude-code|anthropic|none（既定: codex）--summary-model <model>
+              --summary-provider codex|claude-code|anthropic|minutes-cloud|none（既定: codex）--summary-model <model>
+              --provider minutes と --summary-provider minutes-cloud は Minutes（キーなし。account login でログイン）
               --codex-path <absolute-path> --claude-path <absolute-path>
               --summary-only で保存済み本文から要約だけを更新（本文・根拠 ID は保持）
               --language ja|en で会議の言語を決める（省略すると新しい会議はライブ字幕から自動判定）。--summary-language ja|en で要約の言語
@@ -102,6 +104,10 @@ struct MinutesCLI {
 
           minutes-cli bench [--seconds 60] [--keep]
               録音中の書き出し処理（整合・AAC・16 kHz WAV）の CPU を合成音声で測る（G7 の内訳。デバイス・許可は不要）。
+
+          minutes-cli account login --email <address> | status [--json] | logout
+              Minutes（キーなし）のアカウント。メールに届くコードでログインし、印はアプリと同じ Keychain に置く。
+              MINUTES_CLOUD_BASE_URL でサーバーの場所を変えられる（既定 https://api.minutes.tools）。
 
         API キー: 環境変数または .env の ELEVENLABS_API_KEY / OPENAI_API_KEY
         """)

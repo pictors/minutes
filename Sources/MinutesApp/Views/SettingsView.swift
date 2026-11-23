@@ -579,7 +579,9 @@ struct ProviderSettingsPane: View {
                         Text(entry.title).tag(entry.id)
                     }
                 }
-                if let entry = finalEntry, let key = entry.keyName {
+                if let entry = finalEntry, entry.usesMinutesAccount {
+                    LabeledContent("状態") { MinutesCloudStatusLabel() }
+                } else if let entry = finalEntry, let key = entry.keyName {
                     APIKeyRow(name: key, provider: entry.title)
                         .id(key)
                 } else {
@@ -593,6 +595,7 @@ struct ProviderSettingsPane: View {
                 Text((finalEntry.map { $0.detail + "。" } ?? "")
                      + "ローカルのみの会議とクラウド失敗時は常にローカルを使います。"
                      + (finalEntry?.keyName == nil ? "" : "キーは Keychain に保存し、.env / 環境変数より優先します。")
+                     + (finalEntry?.usesMinutesAccount == true ? "ログインは下の「Minutes（キーなし）のアカウント」で行います。" : "")
                      + "変更は次の後処理から適用されます。学習した用語は「人物と用語」で確認・削除できます。")
             }
             Section {
@@ -600,6 +603,7 @@ struct ProviderSettingsPane: View {
                     Text("Codex app server（既定）").tag(SummaryProvider.codex)
                     Text("Claude Code").tag(SummaryProvider.claudeCode)
                     Text("Anthropic API").tag(SummaryProvider.anthropic)
+                    Text("Minutes（キーなし）").tag(SummaryProvider.minutesCloud)
                     Divider()
                     Text("要約しない").tag(SummaryProvider.none)
                 }
@@ -638,6 +642,8 @@ struct ProviderSettingsPane: View {
                 case .anthropic:
                     TextField("モデル", text: $draft.summaryModel)
                     APIKeyRow(name: APIKeys.anthropic, provider: "Anthropic")
+                case .minutesCloud:
+                    LabeledContent("状態") { MinutesCloudStatusLabel() }
                 case .none:
                     EmptyView()
                 }
@@ -651,9 +657,14 @@ struct ProviderSettingsPane: View {
                     Text("Claude Code のログインを使用し、利用量は Claude のプランの上限に数えられます。未ログインならターミナルで claude auth login を実行してください。「Claude Code の既定」は Claude Code の設定（/model や settings.json）のモデルに従います。一覧にないモデル名は「その他…」で指定できます。モデルの変更は次の要約から使われます。ツール・CLAUDE.md・MCP は使いません。要約時は会議の文字起こしを Anthropic に送信します。ローカルのみの会議では要約しません。")
                 case .anthropic:
                     Text("キーは Keychain に保存し、.env / 環境変数より優先します。要約時は会議の文字起こしを Anthropic に送信します。ローカルのみの会議では要約しません。")
+                case .minutesCloud:
+                    Text("Minutes のアカウントで、Pictors のサーバーが要約します（有料）。キーなしで文字起こしした会議（30 日以内）だけで使えます。要約時は会議の文字起こし（話者の名前を含む）を Pictors のサーバーに送り、サーバーは Anthropic に送ります。ローカルのみの会議では要約しません。")
                 case .none:
                     Text("要約を作らず、文字起こしまでの議事録を作ります。Codex か Claude Code にログインするか、Anthropic の API キーを登録すると要約できます。")
                 }
+            }
+            if draft.finalProviderId == MinutesCloudTranscriber.providerID || draft.resolvedSummaryProvider == .minutesCloud {
+                MinutesCloudAccountSection()
             }
             Section {
                 Picker("会議の言語", selection: $draft.meetingLanguage) {

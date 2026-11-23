@@ -59,6 +59,8 @@ public enum SummaryProvider: String, Codable, Sendable, CaseIterable {
     case codex
     case claudeCode = "claude-code"
     case anthropic
+    /// Minutes（キーなし）: Pictors のサーバーで要約する（有料、ログインが要る。キーなしで文字起こしした会議だけ。SPEC §5.6）
+    case minutesCloud = "minutes-cloud"
     /// 要約しない（文字起こしまでの議事録を作る）。Codex にも Claude Code にもログインしておらず、キーもない人向け（2026-10-05 決定）
     case none
 }
@@ -74,6 +76,8 @@ public enum SummaryProviders {
         case .anthropic:
             guard let key = APIKeys.resolve(APIKeys.anthropic) else { throw SummarizerError.missingAPIKey }
             return try ClaudeSummarizer(apiKey: key, model: settings.summaryModel)
+        case .minutesCloud:
+            return MinutesCloudSummarizer(client: .standard())
         case .none:
             return nil
         }

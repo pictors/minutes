@@ -56,7 +56,8 @@ CLI の実行例（release ビルド後、バイナリは `.build/release/minute
 # アプリと同じ後処理パイプラインを録音フォルダに掛ける（--db で別 DB も可）
 .build/release/minutes-cli process recordings/2026-09-16_weekly --provider elevenlabs --title "週次定例"
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-only   # 保存済み本文から要約だけやり直す（編集・根拠 ID を保持）
-.build/release/minutes-cli process recordings/2026-09-16_weekly --summary-provider claude-code   # 要約の手段: codex（既定）/ claude-code / anthropic / none
+.build/release/minutes-cli process recordings/2026-09-16_weekly --summary-provider claude-code   # 要約の手段: codex（既定）/ claude-code / anthropic / minutes-cloud / none
+.build/release/minutes-cli account login --email you@example.com      # Minutes（キーなし、SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
 
 # 既存の録音（ほかのサービスで録ったものなど）から評価区間を切り出して 3 プロバイダを比較する
 .build/release/minutes-cli cut recordings/external/meeting.m4a recordings/external/cut/system_16k.wav --start 10:00 --duration 600
@@ -76,6 +77,7 @@ python3 scripts/make-fixtures.py
 ## レイアウト
 
 ```
+Sources/MinutesKit/          機種に依らない型・JSON・ログ・Minutes（キーなし）のサーバーとのやり取り（依存なし。macOS・iOS・watchOS。MinutesCore が @_exported で含める）
 Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方から使う）
   Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList, AudioImport（外部の録音の取り込み、SPEC §4.4）
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument

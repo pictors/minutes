@@ -139,11 +139,13 @@ public struct DiagnosticsReport: Encodable, Sendable {
             "global_shortcut": settings.globalShortcut?.display ?? "なし",
             "appearance": settings.appearance.rawValue,
             "onboarding_completed": settings.onboardingCompletedAt == nil ? "未" : "済",
+            "minutes_cloud_signed_in": String(MinutesCloudCredentials.isSignedIn),
         ]
         switch settings.resolvedSummaryProvider {
         case .codex: result["summary_model"] = settings.codexModel ?? "Codex の既定"
         case .claudeCode: result["summary_model"] = settings.claudeCodeModel ?? "Claude Code の既定"
         case .anthropic: result["summary_model"] = settings.summaryModel
+        case .minutesCloud: result["summary_model"] = "Minutes（キーなし）"
         case .none: break
         }
         return result

@@ -87,4 +87,18 @@ $CLI process recordings/2026-09-16_weekly --summary-only --summary-provider clau
 $CLI process recordings/2026-09-16_weekly --summary-only --summary-model <model-id> --codex-path /absolute/path/to/codex
 ```
 
+## Minutes（キーなし）
+
+自分の API キーなしで、Pictors のサーバーが文字起こしと要約をする有料の手段（SPEC §5.6）。ログインはアプリと同じ Keychain の印を使う。
+
+```bash
+$CLI account login --email you@example.com      # メールに届く 6 桁を入れてログイン（アカウントがなければ作る）
+$CLI account status                             # プランと今月の量（--json）
+$CLI process recordings/2026-09-16_weekly --provider minutes --summary-provider minutes-cloud --title "週次定例"
+$CLI transcribe recordings/2026-09-16_weekly --provider minutes
+$CLI account logout
+```
+
+`MINUTES_CLOUD_BASE_URL` でサーバーの場所を変えられる（既定 `https://api.minutes.tools`）。`MINUTES_CLOUD_TOKEN` でログインの印を渡せる（テスト用）。
+
 `--db` で別の DB を使える。CLI の `record` / `live` は録音の失敗を受けたら停止・ファイルの終了処理をして、0 以外で終わる。`transcribe` は送信前に、空の音声と、manifest がある場合の録音失敗・時間の不一致・欠けたトラックを確かめる。

@@ -164,6 +164,48 @@ public enum AudioFileTools {
 
     // MARK: - AAC
 
+    /// キーなしのサーバーへ送るために AAC（.m4a）へ写した一時ファイルを作る（サーバーは AAC・M4A だけを受ける）。呼び出し側がフォルダごと消す。
+    /// 少しずつ読んで書く（60 分の音声を一度にメモリへ載せない）。ビットレートを受け付けない形式なら、エンコーダーに任せる。
+    public static func aacCopy(of url: URL, bitrate: Int = 32_000) throws -> URL {
+        let input = try AVAudioFile(forReading: url)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-aac-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let output = directory.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".m4a")
+        do {
+            var settings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: input.fileFormat.sampleRate,
+                AVNumberOfChannelsKey: input.fileFormat.channelCount,
+                AVEncoderBitRateKey: bitrate,
+            ]
+            let open = { (settings: [String: Any]) in
+                try AVAudioFile(forWriting: output, settings: settings, commonFormat: input.processingFormat.commonFormat, interleaved: input.processingFormat.isInterleaved)
+            }
+            let writer: AVAudioFile
+            do {
+                writer = try open(settings)
+            } catch {
+                settings.removeValue(forKey: AVEncoderBitRateKey)
+                try? FileManager.default.removeItem(at: output)
+                writer = try open(settings)
+            }
+            let chunkFrames: AVAudioFrameCount = 65_536
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: chunkFrames) else {
+                throw AudioCaptureError.conversionFailed("AAC 変換のバッファを作れません")
+            }
+            while input.framePosition < input.length {
+                try input.read(into: buffer, frameCount: chunkFrames)
+                if buffer.frameLength == 0 { break }
+                try writer.write(from: buffer)
+            }
+            writer.close()
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+        return output
+    }
+
     /// mono Float32 サンプル列を AAC (.m4a) に書き出す。
     public static func writeAAC(samples: [Float], sampleRate: Double, to url: URL, bitrate: Int) throws {
         let settings: [String: Any] = [

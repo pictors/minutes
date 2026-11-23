@@ -148,12 +148,16 @@ enum ProviderCatalog {
         let shortTitle: String
         let detail: String
         let keyName: String?
+        /// Minutes（キーなし）: キーの代わりに Minutes のアカウントでログインする
+        var usesMinutesAccount = false
     }
 
     static let finalProviders: [Entry] = [
         Entry(id: "elevenlabs.scribe_v2", title: "ElevenLabs Scribe v2", shortTitle: "Scribe v2", detail: "既定。話者分離込みで最も自然な日本語", keyName: APIKeys.elevenLabs),
         Entry(id: "openai.gpt-4o-transcribe-diarize", title: "OpenAI gpt-4o-transcribe-diarize", shortTitle: "gpt-4o", detail: "処理が遅く発話を落とすことがある", keyName: APIKeys.openAI),
         Entry(id: "local.speechanalyzer+fluidaudio", title: "ローカル（SpeechAnalyzer + FluidAudio）", shortTitle: "ローカル", detail: "端末内で処理。クラウド失敗時のフォールバックにも使う", keyName: nil),
+        Entry(id: MinutesCloudTranscriber.providerID, title: "Minutes（キーなし）", shortTitle: "キーなし",
+              detail: "API キーなしで Pictors のサーバーが文字起こしする（有料。Minutes のアカウントでログイン）", keyName: nil, usesMinutesAccount: true),
     ]
 
     static func final(_ id: String) -> Entry? { finalProviders.first { $0.id == id } }

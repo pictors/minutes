@@ -159,6 +159,8 @@ final class AppModel {
     var requestedSettingsTab: SettingsTab?
     /// Keychain の API キーを保存・削除するたびに増える（キーの有無で変わる表示の更新用）。
     private(set) var apiKeysRevision = 0
+    /// Minutes（キーなし）にログインしているメールアドレス（表示用）。ログイン・ログアウトで変わり、プロバイダの状態の表示を更新する
+    private(set) var minutesCloudEmail: String? = MinutesCloudCredentials.isSignedIn ? (MinutesCloudCredentials.email() ?? "") : nil
     /// armed 中に音声を検知し、設定により開始の確認を待っている。
     private(set) var awaitingStartConfirmation = false
     /// 録音中の経過時間。表示する場所ごとに分け、見えていない場所は更新しない。閉じたパネルやウィンドウも、値が替わるたびに
@@ -344,6 +346,9 @@ final class AppModel {
             cloud = APIKeys.resolve(APIKeys.openAI).map { OpenAITranscriber(apiKey: $0) }
         case "local.speechanalyzer+fluidaudio":
             cloud = nil
+        case MinutesCloudTranscriber.providerID:
+            // ログインの印は呼ぶたびに読む（ログアウト・ログインし直しで作り直さなくてよい）
+            cloud = MinutesCloudTranscriber(client: .standard())
         default:
             cloud = APIKeys.resolve(APIKeys.elevenLabs).map { ElevenLabsTranscriber(apiKey: $0) }
         }
@@ -428,6 +433,7 @@ final class AppModel {
         switch settings.resolvedSummaryProvider {
         case .codex, .claudeCode: true
         case .anthropic: hasKey(APIKeys.anthropic)
+        case .minutesCloud: minutesCloudEmail != nil
         case .none: false
         }
     }
@@ -436,6 +442,7 @@ final class AppModel {
         case .codex: "Codex / \(settings.codexModel.flatMap { $0.isEmpty ? nil : $0 } ?? "既定モデル")"
         case .claudeCode: "Claude Code / \(settings.claudeCodeModel.flatMap { $0.isEmpty ? nil : $0 } ?? "既定モデル")"
         case .anthropic: settings.summaryModel
+        case .minutesCloud: "Minutes（キーなし）"
         case .none: "要約しない"
         }
     }
@@ -450,8 +457,35 @@ final class AppModel {
     /// 選択中の確定プロバイダが使えるか（ローカルは常に可、クラウドは対応するキーがあるとき）。
     var finalProviderReady: Bool {
         guard let entry = ProviderCatalog.final(settings.finalProviderId) else { return hasCloudTranscriber }
+        if entry.usesMinutesAccount { return minutesCloudEmail != nil }
         guard let key = entry.keyName else { return true }
         return hasKey(key)
+    }
+
+    // MARK: - Minutes（キーなし）のアカウント
+
+    /// ログイン（なければ登録）のコードをメールに送る。
+    func sendMinutesCloudCode(email: String) async throws {
+        try await MinutesCloudClient.standard().sendSignInCode(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// メールのコードでログインし、印を Keychain に置く。
+    func signInToMinutesCloud(email: String, code: String) async throws {
+        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = try await MinutesCloudClient.standard().signIn(email: address, code: code.trimmingCharacters(in: .whitespacesAndNewlines))
+        try MinutesCloudCredentials.save(session, email: address)
+        minutesCloudEmail = address
+    }
+
+    /// この Mac のログインを取り消す（サーバーに伝えられなくても、手元の印は消す）。
+    func signOutOfMinutesCloud() async {
+        try? await MinutesCloudClient.standard().signOut()
+        try? MinutesCloudCredentials.clear()
+        minutesCloudEmail = nil
+    }
+
+    func minutesCloudAccount() async throws -> MinutesCloudAccount {
+        try await MinutesCloudClient.standard().account()
     }
 
     // MARK: - API キー

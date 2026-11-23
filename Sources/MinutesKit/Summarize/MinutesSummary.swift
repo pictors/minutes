@@ -130,15 +130,33 @@ public struct SummaryInput: Codable, Sendable {
     }
 }
 
+/// 要約の入力のほかに、要約の手段が使ってよいこと（入力そのものには入れない。入力は要約の指紋に入るため）。
+public struct SummaryContext: Sendable, Equatable {
+    public var meetingID: String
+    /// キーなしで文字起こしした組（MinutesCloudGroup）。キーなしの要約はこの組の文字起こしがあるときだけ使える。
+    public var cloudGroup: String?
+
+    public init(meetingID: String, cloudGroup: String? = nil) {
+        self.meetingID = meetingID
+        self.cloudGroup = cloudGroup
+    }
+}
+
 public protocol Summarizing: Sendable {
     /// notes.model に記録する文字列（'claude-sonnet-5 / prompt v1' など）。
     var modelDescription: String { get }
     var cacheIdentity: String { get }
     func summarize(_ input: SummaryInput) async throws -> MinutesSummary
+    /// 後処理はこちらを呼ぶ。会議を知る必要のない手段は、既定のまま summarize(_:) になる。
+    func summarize(_ input: SummaryInput, context: SummaryContext) async throws -> MinutesSummary
 }
 
 public extension Summarizing {
     var cacheIdentity: String { modelDescription }
+
+    func summarize(_ input: SummaryInput, context: SummaryContext) async throws -> MinutesSummary {
+        try await summarize(input)
+    }
 }
 
 public enum SummarizerError: Error, LocalizedError, Equatable {
