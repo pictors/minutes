@@ -92,7 +92,7 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）
 Mobile/                      iPhone と Watch のアプリ（製品版、SPEC §5.7）。Minutes.xcodeproj（フォルダと同期するグループ。ファイルを足してもプロジェクトを直さなくてよい）
-  Shared/                    iPhone と Watch で共通: 録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
+  Shared/                    iPhone と Watch で共通: 見た目の決まり（DesignSystem: Palette・Surface・Motion・BigTimerText・PillButtonStyle・SectionCard。Mac の DesignSystem と同じ言葉。system の赤・橙を直接使わない）、録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
   Phone/                     iPhone のアプリ（PhoneModel、Views/）
   Watch/                     Watch のアプリ（WatchModel、WatchViews。ログインは iPhone から LoginRelay で受け取る）
   Support/                   設定（Base.xcconfig）、Info.plist、entitlements。署名のチーム ID は Signing.xcconfig（git に入れない。.example を写す）

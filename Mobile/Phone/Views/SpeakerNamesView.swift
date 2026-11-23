@@ -15,8 +15,11 @@ struct SpeakerNamesView: View {
             Form {
                 Section {
                     ForEach(transcript.speakers, id: \.label) { speaker in
-                        TextField(Formatting.speaker(speaker.label, in: nil), text: binding(speaker.label))
-                            .textContentType(.name)
+                        HStack(spacing: 12) {
+                            SpeakerBadge(label: speaker.label, name: Formatting.speaker(speaker.label, in: nil), size: 28)
+                            TextField(Formatting.speaker(speaker.label, in: nil), text: binding(speaker.label))
+                                .textContentType(.name)
+                        }
                     }
                 } footer: {
                     Text("議事録と全文で、話者がこの名前で出ます。")

@@ -12,6 +12,8 @@ struct RootView: View {
                 SignInView()
             }
         }
+        .tint(Palette.periwinkle)
+        .animation(Motion.layout, value: model.isSignedIn)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.becameActive() }
         }

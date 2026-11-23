@@ -2,6 +2,7 @@
 import Foundation
 import MinutesKit
 import Observation
+import SwiftUI
 
 /// Watch のアプリの状態（録音・この Watch の録音の一覧・送信・ログイン）。
 @MainActor
@@ -120,6 +121,32 @@ final class WatchModel {
         if !isSignedIn { return "iPhone の Minutes でログインすると送ります" }
         if let error = upload.lastError { return "送れていません: \(error)" }
         return upload.stopped ? "送っています" : "録音中"
+    }
+
+    /// 状態の見せ方（一覧は短い文言、詳細は全文）。
+    struct RecordingState {
+        var text: String
+        var short: String
+        var tint: Color
+        var systemImage: String
+        var isBusy: Bool
+    }
+
+    func state(_ upload: MinutesCloudUpload) -> RecordingState {
+        let text = status(upload)
+        if upload.clientId == recorder.clientId || !upload.stopped {
+            return RecordingState(text: text, short: "録音中", tint: Palette.record, systemImage: "record.circle.fill", isBusy: true)
+        }
+        if upload.lastError != nil {
+            return RecordingState(text: text, short: "送れていません", tint: Palette.rose, systemImage: "exclamationmark.triangle.fill", isBusy: false)
+        }
+        if upload.completed {
+            return RecordingState(text: text, short: "送りました", tint: Palette.mint, systemImage: "checkmark.circle.fill", isBusy: false)
+        }
+        if !CloudEnvironment.uploadsAllowed || !isSignedIn {
+            return RecordingState(text: text, short: "この Watch に保存", tint: .secondary, systemImage: "internaldrive", isBusy: false)
+        }
+        return RecordingState(text: text, short: "送っています", tint: Palette.periwinkle, systemImage: "arrow.up.circle.fill", isBusy: true)
     }
 }
 

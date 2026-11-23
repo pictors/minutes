@@ -5,19 +5,25 @@ import SwiftUI
 struct WatchRootView: View {
     @Environment(WatchModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingNotice = false
     @State private var startError: String?
     @State private var starting = false
 
     var body: some View {
         // 録音中は一覧の代わりに録音の画面を出す（全画面のシートは watchOS が閉じるボタンを付け、録音したまま画面だけ消せてしまう）
-        Group {
+        ZStack {
             if model.recorder.isActive {
                 WatchRecordingView()
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 list
+                    .transition(.opacity)
             }
         }
+        .animation(Motion.layout, value: model.recorder.isActive)
+        .tint(Palette.periwinkle)
+        .sensoryFeedback(trigger: model.recorder.isActive) { _, active in active ? .start : .stop }
         .sheet(isPresented: $showingNotice) {
             WatchNoticeView {
                 model.noticeAccepted = true
@@ -32,49 +38,52 @@ struct WatchRootView: View {
 
     private var list: some View {
         NavigationStack {
-            List {
-                Section {
+            ScrollView {
+                VStack(spacing: 10) {
                     Button {
                         start()
                     } label: {
-                        Label("録音", systemImage: "record.circle")
-                            .font(.headline)
-                            .foregroundStyle(.red)
+                        VStack(spacing: 6) {
+                            PillGlyph(kind: .record, size: 64)
+                            Text("録音")
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
                     }
+                    .buttonStyle(CardPressStyle())
                     .disabled(starting)
+                    .accessibilityLabel("録音を始める")
+
                     if !model.isSignedIn && CloudEnvironment.uploadsAllowed {
-                        Text("iPhone の Minutes でログインすると、録音を送れます")
+                        Label("iPhone の Minutes でログインすると、録音を送れます", systemImage: "iphone")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .cardBackground(cornerRadius: 14)
                     }
                     if let startError {
                         Text(startError)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Palette.rose)
                     }
-                }
-                if !model.recordings.isEmpty {
-                    Section("この Watch の録音") {
+                    if !model.recordings.isEmpty {
+                        Text("この Watch の録音")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 6)
+                            .padding(.leading, 4)
                         ForEach(model.recordings, id: \.clientId) { upload in
                             NavigationLink(value: upload.clientId) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(upload.title ?? Formatting.meetingDate(upload.startedAt))
-                                        .font(.headline)
-                                        .lineLimit(2)
-                                    if let duration = upload.durationSeconds {
-                                        Text(Formatting.duration(duration))
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(model.status(upload))
-                                        .font(.footnote)
-                                        .foregroundStyle(upload.lastError != nil ? .red : .secondary)
-                                        .lineLimit(2)
-                                }
+                                WatchRecordingRow(upload: upload)
                             }
+                            .buttonStyle(CardPressStyle())
                         }
                     }
                 }
+                .padding(.horizontal, 2)
             }
             .navigationTitle("Minutes")
             .navigationDestination(for: String.self) { clientId in
@@ -101,6 +110,42 @@ struct WatchRootView: View {
     }
 }
 
+private struct WatchRecordingRow: View {
+    let upload: MinutesCloudUpload
+    @Environment(WatchModel.self) private var model
+
+    var body: some View {
+        let state = model.state(upload)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(upload.title ?? Formatting.dayTitle(upload.startedAt))
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(Formatting.timeOfDay(upload.startedAt))
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 6) {
+                if let duration = upload.durationSeconds {
+                    Text(Formatting.duration(duration))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Label(state.short, systemImage: state.systemImage)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(state.tint)
+                    .symbolEffect(.pulse, options: .repeating, isActive: state.isBusy)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardBackground(cornerRadius: 14)
+    }
+}
+
 /// 最初の録音の前に一度だけ: 参加者への告知と、音声の送り先（ガイドライン 2.5.14）。
 struct WatchNoticeView: View {
     let onAccept: () -> Void
@@ -110,11 +155,12 @@ struct WatchNoticeView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("録音の前に")
                     .font(.headline)
-                Text("録音することを参加者に伝え、了承を得てください。")
-                Text("音声は Pictors のサーバーに送り、文字起こしと議事録を作ります。音声は 30 日で消えます。")
+                Label("録音することを参加者に伝え、了承を得てください。", systemImage: "person.2.wave.2.fill")
+                Label("音声は Pictors のサーバーに送り、文字起こしと議事録を作ります。音声は 30 日で消えます。", systemImage: "icloud.and.arrow.up.fill")
                     .foregroundStyle(.secondary)
                 Button("わかりました", action: onAccept)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(FilledPillButtonStyle(height: 40))
+                    .padding(.top, 4)
             }
             .font(.footnote)
         }
@@ -125,42 +171,57 @@ struct WatchNoticeView: View {
 struct WatchRecordingView: View {
     @Environment(WatchModel.self) private var model
     @State private var confirmingStop = false
+    @State private var history = LevelHistory()
 
     var body: some View {
         let recorder = model.recorder
-        VStack(spacing: 6) {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(recorder.phase == .recording ? .red : .orange)
-                    .frame(width: 8, height: 8)
-                Text(recorder.phase == .recording ? "録音中" : "止まっています")
-                    .font(.footnote.bold())
-                    .foregroundStyle(recorder.phase == .recording ? .red : .orange)
-            }
+        let recording = recorder.phase == .recording
+        VStack(spacing: 4) {
+            StatusPill(text: recording ? "録音中" : "止まっています", tint: recording ? Palette.record : Palette.amber,
+                       systemImage: recording ? "record.circle.fill" : "pause.circle.fill", isBusy: recording)
             TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                Text(Formatting.clock(recorder.elapsed(at: context.date)))
-                    .font(.system(size: 36, weight: .light, design: .rounded).monospacedDigit())
+                BigTimerText(seconds: recorder.elapsed(at: context.date), size: 46, isDimmed: !recording)
             }
+            LevelWaveform(levels: history.levels, tint: recording ? Palette.record : .secondary, barWidth: 2, spacing: 2)
+                .frame(height: 18)
+                .padding(.horizontal, 16)
+                .opacity(recording ? 1 : 0.35)
             if let notice = recorder.notice {
                 Text(notice)
                     .font(.caption2)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.amber)
+                    .lineLimit(3)
             }
+            Spacer(minLength: 2)
             if recorder.phase == .interrupted {
-                Button("再開") { recorder.resume() }
+                Button {
+                    recorder.resume()
+                } label: {
+                    HStack(spacing: 8) {
+                        PillGlyph(kind: .resume, size: 24)
+                        Text("再開")
+                    }
+                }
+                .buttonStyle(PillButtonStyle(height: 38))
             }
-            Button(role: .destructive) {
+            Button {
                 confirmingStop = true
             } label: {
-                Label("止める", systemImage: "stop.fill")
+                HStack(spacing: 8) {
+                    PillGlyph(kind: .stop, size: 26)
+                    Text("止める")
+                }
             }
-            .tint(.red)
+            .buttonStyle(PillButtonStyle(height: 42))
         }
+        .padding(.top, 2)
         .confirmationDialog("録音を止めますか？", isPresented: $confirmingStop) {
             Button("止めて送る", role: .destructive) { recorder.stop() }
             Button("続ける", role: .cancel) {}
         }
+        .onAppear { history.start(capacity: 48) { model.recorder.phase == .recording ? model.recorder.level : 0 } }
+        .onDisappear { history.stop() }
     }
 }
 
@@ -175,41 +236,65 @@ struct WatchRecordingDetailView: View {
 
     var body: some View {
         if let upload = model.recording(clientId) {
-            List {
-                Section {
-                    Text(Formatting.meetingDate(upload.startedAt))
-                    if let duration = upload.durationSeconds {
-                        Text(Formatting.duration(duration))
-                    }
-                    Text(model.status(upload))
-                        .font(.footnote)
-                        .foregroundStyle(upload.lastError != nil ? .red : .secondary)
-                    if !upload.gaps.isEmpty {
-                        Text("録れていない時間が \(upload.gaps.count) か所あります")
+            let state = model.state(upload)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(Formatting.dayTitle(upload.startedAt)) \(Formatting.timeOfDay(upload.startedAt))")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                        if let duration = upload.durationSeconds {
+                            DurationText(seconds: duration, size: 26)
+                        }
+                        Label(state.text, systemImage: state.systemImage)
+                            .font(.footnote)
+                            .foregroundStyle(state.tint)
+                            .symbolEffect(.pulse, options: .repeating, isActive: state.isBusy)
+                        if !upload.gaps.isEmpty {
+                            Text("録れていない時間が \(upload.gaps.count) か所あります")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                Section {
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .cardBackground(cornerRadius: 14)
+
                     Button {
                         if player.isPlaying { player.stop() } else { player.play(model.runURLs(upload)) }
                     } label: {
-                        Label(player.isPlaying ? "止める" : "再生", systemImage: player.isPlaying ? "stop.fill" : "play.fill")
+                        HStack(spacing: 8) {
+                            Image(systemName: player.isPlaying ? "stop.fill" : "play.fill")
+                                .contentTransition(.symbolEffect(.replace))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(Palette.periwinkle, in: .circle)
+                            Text(player.isPlaying ? "止める" : "再生")
+                        }
                     }
+                    .buttonStyle(PillButtonStyle(height: 40))
                     .disabled(model.runURLs(upload).isEmpty || upload.clientId == model.recorder.clientId)
+
                     if upload.lastError != nil {
                         Button("もう一度送る") { model.retry(upload) }
+                            .buttonStyle(FilledPillButtonStyle(height: 38))
                     }
                     if let deleteError {
                         Text(deleteError)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Palette.rose)
                     }
                     Button(role: .destructive) {
                         confirmingDelete = true
                     } label: {
                         Label("消す", systemImage: "trash")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(Palette.rose)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
                     }
+                    .buttonStyle(.plain)
                     .disabled(upload.clientId == model.recorder.clientId)
                 }
             }
