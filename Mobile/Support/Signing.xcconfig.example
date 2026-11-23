@@ -1,0 +1,2 @@
+// 実機に入れるときの署名（このファイルを Signing.xcconfig に写し、自分のチーム ID を入れる。Signing.xcconfig は git に入れない）
+DEVELOPMENT_TEAM = XXXXXXXXXX

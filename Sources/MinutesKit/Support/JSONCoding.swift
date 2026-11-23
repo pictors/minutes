@@ -15,8 +15,25 @@ public enum JSONCoding {
     public static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let text = try container.decode(String.self)
+            guard let date = parseISO8601(text) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "ISO 8601 の日時ではない: \(text)")
+            }
+            return date
+        }
         return decoder
+    }
+
+    /// ISO 8601 の日時（秒の小数のあり・なしの両方）。Pictors のサーバー（JavaScript の toISOString）はミリ秒を付ける
+    /// （transcript.json の created_at・録音の一覧の日時）。小数なしは今までの `.iso8601` と同じ読み方。
+    public static func parseISO8601(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text)
     }
 
     /// ミリ秒なしの ISO 8601（ローカルタイムゾーン付き）。ファイル名や frontmatter 用。

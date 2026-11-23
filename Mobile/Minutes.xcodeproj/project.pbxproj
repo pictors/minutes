@@ -1,0 +1,447 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7B0000000000000000000061 /* MinutesWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 7B0000000000000000000032 /* MinutesWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7B0000000000000000000062 /* MinutesKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B00000000000000000000A2 /* MinutesKit */; };
+		7B0000000000000000000063 /* MinutesKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B00000000000000000000A3 /* MinutesKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7B0000000000000000000071 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7B0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7B0000000000000000000042;
+			remoteInfo = MinutesWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7B0000000000000000000054 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				7B0000000000000000000061 /* MinutesWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		7B0000000000000000000021 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		7B0000000000000000000022 /* Phone-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Phone-Info.plist"; sourceTree = "<group>"; };
+		7B0000000000000000000023 /* Watch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Watch-Info.plist"; sourceTree = "<group>"; };
+		7B0000000000000000000024 /* Phone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Phone.entitlements; sourceTree = "<group>"; };
+		7B0000000000000000000031 /* Minutes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Minutes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B0000000000000000000032 /* MinutesWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinutesWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7B0000000000000000000011 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000012 /* Phone */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Phone;
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000013 /* Watch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Watch;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7B0000000000000000000052 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B0000000000000000000062 /* MinutesKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B0000000000000000000056 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B0000000000000000000063 /* MinutesKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7B0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				7B0000000000000000000011 /* Shared */,
+				7B0000000000000000000012 /* Phone */,
+				7B0000000000000000000013 /* Watch */,
+				7B0000000000000000000004 /* Support */,
+				7B0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7B0000000000000000000031 /* Minutes.app */,
+				7B0000000000000000000032 /* MinutesWatch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000004 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				7B0000000000000000000021 /* Base.xcconfig */,
+				7B0000000000000000000022 /* Phone-Info.plist */,
+				7B0000000000000000000023 /* Watch-Info.plist */,
+				7B0000000000000000000024 /* Phone.entitlements */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7B0000000000000000000041 /* Minutes */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B0000000000000000000082 /* Build configuration list for PBXNativeTarget "Minutes" */;
+			buildPhases = (
+				7B0000000000000000000051 /* Sources */,
+				7B0000000000000000000052 /* Frameworks */,
+				7B0000000000000000000053 /* Resources */,
+				7B0000000000000000000054 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7B0000000000000000000072 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7B0000000000000000000011 /* Shared */,
+				7B0000000000000000000012 /* Phone */,
+			);
+			name = Minutes;
+			packageProductDependencies = (
+				7B00000000000000000000A2 /* MinutesKit */,
+			);
+			productName = Minutes;
+			productReference = 7B0000000000000000000031 /* Minutes.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7B0000000000000000000042 /* MinutesWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B0000000000000000000083 /* Build configuration list for PBXNativeTarget "MinutesWatch" */;
+			buildPhases = (
+				7B0000000000000000000055 /* Sources */,
+				7B0000000000000000000056 /* Frameworks */,
+				7B0000000000000000000057 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7B0000000000000000000011 /* Shared */,
+				7B0000000000000000000013 /* Watch */,
+			);
+			name = MinutesWatch;
+			packageProductDependencies = (
+				7B00000000000000000000A3 /* MinutesKit */,
+			);
+			productName = MinutesWatch;
+			productReference = 7B0000000000000000000032 /* MinutesWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7B0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2720;
+				LastUpgradeCheck = 2720;
+				TargetAttributes = {
+					7B0000000000000000000041 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					7B0000000000000000000042 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+				};
+			};
+			buildConfigurationList = 7B0000000000000000000081 /* Build configuration list for PBXProject "Minutes" */;
+			developmentRegion = ja;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ja,
+				en,
+				Base,
+			);
+			mainGroup = 7B0000000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7B00000000000000000000A1 /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7B0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7B0000000000000000000041 /* Minutes */,
+				7B0000000000000000000042 /* MinutesWatch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7B0000000000000000000053 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B0000000000000000000057 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7B0000000000000000000051 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B0000000000000000000055 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7B0000000000000000000072 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7B0000000000000000000042 /* MinutesWatch */;
+			targetProxy = 7B0000000000000000000071 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7B0000000000000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7B0000000000000000000021 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7B0000000000000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7B0000000000000000000021 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7B0000000000000000000093 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Support/Phone.entitlements;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/Phone-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "会議を録音して議事録にするために、マイクを使います。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		7B0000000000000000000094 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Support/Phone.entitlements;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/Phone-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "会議を録音して議事録にするために、マイクを使います。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		7B0000000000000000000095 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/Watch-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "会議を録音して議事録にするために、マイクを使います。";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = jp.pictors.minutes;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		7B0000000000000000000096 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/Watch-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "会議を録音して議事録にするために、マイクを使います。";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = jp.pictors.minutes;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7B0000000000000000000081 /* Build configuration list for PBXProject "Minutes" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B0000000000000000000091 /* Debug */,
+				7B0000000000000000000092 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B0000000000000000000082 /* Build configuration list for PBXNativeTarget "Minutes" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B0000000000000000000093 /* Debug */,
+				7B0000000000000000000094 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B0000000000000000000083 /* Build configuration list for PBXNativeTarget "MinutesWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B0000000000000000000095 /* Debug */,
+				7B0000000000000000000096 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7B00000000000000000000A1 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7B00000000000000000000A2 /* MinutesKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MinutesKit;
+		};
+		7B00000000000000000000A3 /* MinutesKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MinutesKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7B0000000000000000000001 /* Project object */;
+}

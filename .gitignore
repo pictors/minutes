@@ -32,3 +32,7 @@ CLAUDE.local.md
 # 公開ページ（site/）: 依存と、npm run build で作る CSS
 site/node_modules/
 site/assets/site.css
+
+# iPhone と Watch のアプリ（Mobile/）: プロジェクトは入れる。署名のチーム ID（Signing.xcconfig）は入れない
+!Mobile/Minutes.xcodeproj/
+Mobile/Support/Signing.xcconfig

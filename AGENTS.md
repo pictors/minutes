@@ -21,6 +21,7 @@ swift build -c release --product minutes-cli # 60 分録音や CER 計算は rel
 scripts/build-cli.sh                         # CLI の release ビルド + 署名（.env / 環境変数の CODESIGN_IDENTITY で固定 ID 署名すると TCC 許可が持続する）
 scripts/build-app.sh                         # Minutes.app を組み立てて署名 → open .build/Minutes.app
 scripts/build-app.sh --install               # 組み立てて /Applications/Minutes.app へ移す（Minutes の起動中は中止。API キーは Keychain から読む）
+(cd Mobile && xcodebuild -project Minutes.xcodeproj -scheme Minutes -destination 'generic/platform=iOS Simulator' -derivedDataPath ../.build/xcode build)   # iPhone と Watch のアプリをシミュレータ向けに（署名は「Sign to Run Locally」。CODE_SIGNING_ALLOWED=NO にすると裏の送信が動かない）
 python3 scripts/check-public.py              # 禁止語の検査（個人環境・実会議の情報・秘密情報）。--all-history で全履歴とコミットメッセージ
 (cd site && npm ci && npm run build)        # 公開ページの CSS（Tailwind CSS）を site/assets/site.css に作る。直しながら見るときは npm run dev
 python3 -m http.server 8787 --directory site   # 公開ページを手元で見る（外部のフォント・解析は読み込まない。画面の写真は架空の会議で撮る）
@@ -90,6 +91,11 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Summarize/                 MinutesSummary、CodexSummarizer、ClaudeCodeSummarizer（claude -p）、ClaudeSummarizer（API）、Resources/Prompts/summarize_ja.md
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）
+Mobile/                      iPhone と Watch のアプリ（製品版、SPEC §5.7）。Minutes.xcodeproj（フォルダと同期するグループ。ファイルを足してもプロジェクトを直さなくてよい）
+  Shared/                    iPhone と Watch で共通: 録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
+  Phone/                     iPhone のアプリ（PhoneModel、Views/）
+  Watch/                     Watch のアプリ
+  Support/                   設定（Base.xcconfig）、Info.plist、entitlements。署名のチーム ID は Signing.xcconfig（git に入れない。.example を写す）
 Sources/MinutesApp/          SwiftUI アプリ（AppModel、OnboardingModel・SetupChecks（初回の案内）、CalendarService、MeetingDetector、GlobalHotKey、Views/）。Info.plist と entitlements は build-app.sh が使う
 Tests/MinutesCoreTests/      単体テスト（golden JSON は Fixtures/）
 fixtures/                    TTS 生成の模擬会議（実会議の音声は入れない）
@@ -108,6 +114,8 @@ site/                        公開ページ（minutes.tools、日本語と英�
 - 性能のために UI の動きを削らない。止まらないアニメーションは、同じ見た目のまま AppKit / Core Animation で描く（`AnimatedSymbol`・`LevelMeter`・`RollingTimerView`）。SwiftUI の状態は表示が変わるときだけ替える（`LevelFeed`）。
 
 ## 実行時の注意
+
+- iPhone と Watch のアプリ（Mobile/）: シミュレータでは録音にマイクを使わず、本番（api.minutes.tools）にも送らない（シミュレータのマイクは Mac のマイク）。開発のビルドは `xcrun simctl launch` の前に `SIMCTL_CHILD_MINUTES_CLOUD_BASE_URL`・`SIMCTL_CHILD_MINUTES_CLOUD_TOKEN`（手元のサーバー）と `SIMCTL_CHILD_MINUTES_FIXTURE_AUDIO=<fixtures/sample_meeting/system_16k.wav の絶対パス>`・`SIMCTL_CHILD_MINUTES_FIXTURE_SPEED`（録音の代わりに書く架空の会議）を付ける。実機に入れるには Signing.xcconfig にチーム ID を書く（初めての実機のビルドで、Xcode が Apple Developer に App ID と開発用のプロファイルを作る）。
 
 - TCC: `record` / `live` はマイクと「システムオーディオ録音」の許可が必要。ターミナルから起動した場合、許可はターミナルアプリ（責任プロセス）に紐づく。ad-hoc 署名のバイナリはビルドごとに許可がリセットされるので、継続利用は `CODESIGN_IDENTITY`（`.env` か環境変数。Apple Development 証明書で可）を設定した `scripts/build-cli.sh` / `scripts/build-app.sh` で。無効な ID はビルド前に止まる（`scripts/codesign-identity.sh`）。
 - Process Tap は「タブ単位」の切り出しができない。会議は専用ブラウザで開く運用（初回の案内と README）。
