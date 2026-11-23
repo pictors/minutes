@@ -19,6 +19,8 @@ final class UploadEngine: NSObject, @unchecked Sendable {
     private var bodies: [Int: Data] = [:]
     /// 閉じたファイルと区切りを比べ終えた走（client_id/走）
     private var verified: Set<String> = []
+    /// 「届いていない区切りがある」で、すべて上げ直したことのある録音（自動の上げ直しは 1 回だけ。モバイル通信で会議全体を何度も送らない）
+    private var resentAfterMissing: Set<String> = []
     private var session: URLSession!
     /// 裏で起こされたときに OS へ返す完了の知らせ（iPhone: application(_:handleEventsForBackgroundURLSession:completionHandler:)）
     @MainActor var backgroundCompletion: (() -> Void)?
@@ -55,6 +57,12 @@ final class UploadEngine: NSObject, @unchecked Sendable {
 
     func kick(_ clientId: String) {
         queue.async { [self] in step(clientId: clientId) }
+    }
+
+    /// 利用者の「もう一度送る」: 自動の上げ直しの回数を戻して続ける。
+    func retry(_ clientId: String) {
+        lock.withLock { _ = resentAfterMissing.remove(clientId) }
+        kick(clientId)
     }
 
     /// この録音の送っている途中の送信をやめる（録音を消すとき）。
@@ -207,11 +215,13 @@ final class UploadEngine: NSObject, @unchecked Sendable {
             if ok {
                 upload.completed = true
                 upload.lastError = nil
+                resentAfterMissing.remove(key.clientId)
                 store.removeParts(clientId: key.clientId)
                 return false
             }
-            if status == 400, code == "parts_missing" {
-                // サーバーに届いていない区切りがある: すべて上げ直す（同じ境目なので重なるだけ）
+            if status == 400, code == "parts_missing", !resentAfterMissing.contains(key.clientId) {
+                // サーバーに届いていない区切りがある: 一度だけ、すべて上げ直す（同じ境目なので重なるだけ）
+                resentAfterMissing.insert(key.clientId)
                 for run in upload.runs { upload.resendRun(run.index) }
                 verified = verified.filter { !$0.hasPrefix(key.clientId + "/") }
                 upload.lastError = MinutesCloudError.http(status: status, code: code, requestID: nil).localizedDescription

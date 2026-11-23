@@ -91,23 +91,43 @@ final class PhoneModel {
             serverRecordings = try await recordings
             self.account = try await account
             banner = nil
+            await resolveMissingServerRecordings()
             if let user = try? await client.currentUser() {
                 self.user = user
                 TokenStore.shared.update(user: user)
             }
         } catch let error as MinutesCloudError where error.status == 401 {
-            signedOutLocally()
             banner = error.localizedDescription
+            // 録音中は録音の画面を消さない（録音は端末に残り、ログインし直したら送る）
+            if !recorder.isActive { signedOutLocally() }
         } catch {
             banner = "一覧を読めませんでした（\(error.localizedDescription)）"
         }
     }
 
+    /// 送り終えたのに一覧（新しい 100 件）にない会議は、1 件ずつ読む。サーバーにない（別のアカウント・ほかの端末で消した）なら、その旨を残して読み直しをやめる。
+    private func resolveMissingServerRecordings() async {
+        let known = Set(serverRecordings.map(\.id))
+        for upload in localUploads {
+            guard upload.completed, upload.lastError == nil, let id = upload.serverId, !known.contains(id) else { continue }
+            do {
+                serverRecordings.append(try await client.recording(id: id))
+            } catch let error as MinutesCloudError where error.status == 404 {
+                try? store.update(clientId: upload.clientId) { $0.lastError = "このアカウントのサーバーにはありません" }
+            } catch {
+                continue
+            }
+        }
+        reloadLocal()
+    }
+
     /// 送っている・サーバーで処理している会議があるか（あれば一覧を読み直し続ける）。
     var hasWorkInProgress: Bool {
         meetings.contains { item in
+            // 録音中の会議は数えない（録っているあいだずっと読み直さない）
+            if item.id == recorder.clientId { return false }
             if let local = item.local, !local.completed, local.lastError == nil { return true }
-            if item.local?.completed == true, item.server == nil { return true }
+            if item.local?.completed == true, item.local?.lastError == nil, item.server == nil { return true }
             return ["uploading", "queued", "transcribing", "summarizing"].contains(item.server?.status ?? "")
         }
     }
@@ -197,7 +217,7 @@ final class PhoneModel {
     }
 
     func retryUpload(_ item: MeetingItem) {
-        uploads.kick(item.id)
+        uploads.retry(item.id)
     }
 
     func localAudioURL(_ item: MeetingItem) -> URL? {

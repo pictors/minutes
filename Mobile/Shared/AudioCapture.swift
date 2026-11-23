@@ -1,5 +1,6 @@
 @preconcurrency import AVFAudio
 import Foundation
+import MinutesKit
 
 /// 録音の形。サーバーが受け取る形と同じ AAC 16 kHz mono 32 kbps で、拡張子 .aac に書くと ADTS になる
 /// （書いている途中も前から足していくだけなので、増えた分を区切りにして送れる。2026-11-22 の確認と MinutesCloudUploadTests）。
@@ -40,6 +41,8 @@ protocol AudioCapture: AnyObject, Sendable {
     func stop() -> Double
     /// 今の音量（0〜1、表示用）
     var level: Float { get }
+    /// 録音が途中で止まった（音声の経路の変化・書き込みの失敗）。録音する側は走を閉じて、新しい走で続ける
+    var onStopped: (@Sendable () -> Void)? { get set }
 }
 
 /// 入力の音声を録音の形に変換してファイルに書く（マイクと開発用の音声で共通）。
@@ -49,6 +52,8 @@ private final class EncodingWriter: @unchecked Sendable {
     private(set) var frames: AVAudioFramePosition = 0
     private(set) var level: Float = 0
     private(set) var failure: Error?
+    /// 初めて失敗したときに一度だけ呼ぶ
+    var onFailure: (@Sendable () -> Void)?
 
     init(url: URL, inputFormat: AVAudioFormat) throws {
         file = try RecordingFormat.makeFile(at: url)
@@ -75,7 +80,7 @@ private final class EncodingWriter: @unchecked Sendable {
             return buffer
         }
         if let error {
-            failure = error
+            fail(error)
             return
         }
         guard output.frameLength > 0 else { return }
@@ -84,8 +89,15 @@ private final class EncodingWriter: @unchecked Sendable {
             frames += AVAudioFramePosition(output.frameLength)
             level = Self.level(output)
         } catch {
-            failure = error
+            fail(error)
         }
+    }
+
+    private func fail(_ error: Error) {
+        guard failure == nil else { return }
+        failure = error
+        Log.audio.error("recording_write_failed \(String(describing: type(of: error)), privacy: .public)")
+        onFailure?()
     }
 
     func close() {
@@ -112,13 +124,21 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let lock = NSLock()
     private var writer: EncodingWriter?
+    private var configurationObserver: NSObjectProtocol?
+    var onStopped: (@Sendable () -> Void)?
 
     func start(writingTo url: URL) throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.noInput }
         let writer = try EncodingWriter(url: url, inputFormat: format)
+        writer.onFailure = { [weak self] in self?.onStopped?() }
         lock.withLock { self.writer = writer }
+        // 音声の経路が変わる（AirPods をつないだなど）と、エンジンは止まる。走を閉じて新しい形で録り直してもらう
+        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            Log.audio.notice("recording_engine_configuration_change")
+            self?.onStopped?()
+        }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self else { return }
             self.lock.withLock { self.writer?.write(buffer) }
@@ -137,6 +157,8 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     }
 
     func stop() -> Double {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         return lock.withLock {
@@ -162,6 +184,7 @@ final class FixtureCapture: AudioCapture, @unchecked Sendable {
     private let lock = NSLock()
     private var writer: EncodingWriter?
     private var timer: DispatchSourceTimer?
+    var onStopped: (@Sendable () -> Void)?
 
     init(sourceURL: URL, speed: Double) throws {
         guard FileManager.default.fileExists(atPath: sourceURL.path) else { throw CaptureError.fixtureMissing(sourceURL.path) }

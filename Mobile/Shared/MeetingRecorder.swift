@@ -140,6 +140,9 @@ final class MeetingRecorder {
             return (upload, run)
         }
         let capture: AudioCapture = fixture ?? MicrophoneCapture()
+        capture.onStopped = { [weak self] in
+            Task { @MainActor in self?.captureStopped() }
+        }
         do {
             if fixture == nil { try AVAudioSession.sharedInstance().setActive(true) }
             try capture.start(writingTo: store.runURL(upload, run))
@@ -240,6 +243,15 @@ final class MeetingRecorder {
     private func removeObservers() {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
+    }
+
+    /// 入力が途中で止まった（経路の変化・書き込みの失敗）: 走を閉じ、新しい走で録り直す。録れなかった時間は gaps に残る。
+    private func captureStopped() {
+        guard phase == .recording else { return }
+        finishRun()
+        phase = .interrupted
+        notice = "録音が途切れました。続きを録ります"
+        scheduleResume(attempts: 5, firstDelay: .milliseconds(500))
     }
 
     private func interrupted() {
