@@ -126,6 +126,34 @@ struct AudioClockTests {
         #expect(throws: AudioCaptureError.self) { try ProcessTap.streamInfo(formats: [mono], tapChannels: 2) }
     }
 
+    @Test("tap ストリームが 48 kHz と報告しても、aggregate が 44.1 kHz で動くならそのレートをラベルにする")
+    func aggregateRateWins() throws {
+        let tapFormat = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
+        let tap = withExtendedLifetime(tapFormat) { tapFormat.streamDescription.pointee }
+        let mismatched = try ProcessTap.streamInfo(formats: [tap], tapChannels: 2, deviceSampleRate: 44_100)
+        #expect(mismatched.sampleRate == 44_100)
+        #expect(mismatched.reportedStreamSampleRate == 48_000)
+        let matched = try ProcessTap.streamInfo(formats: [tap], tapChannels: 2, deviceSampleRate: 48_000)
+        #expect(matched.sampleRate == 48_000)
+        #expect(matched.reportedStreamSampleRate == nil)
+        // 実レートを読めなかったときは従来どおり virtualFormat を使う。
+        for unreadable in [nil, 0, .nan] as [Double?] {
+            #expect(try ProcessTap.streamInfo(formats: [tap], tapChannels: 2, deviceSampleRate: unreadable).sampleRate == 48_000)
+        }
+    }
+
+    @Test("内蔵スピーカー（44.1 kHz）をクロックにした実レートのラベルなら、検証で止めない")
+    func builtInSpeakerClock() {
+        var monitor = AudioClockMonitor()
+        let t0 = HostClock.now()
+        for i in 0..<300 {
+            let chunk = PCMChunk(channels: [Array(repeating: 0.1, count: 441)], sampleRate: 44_100,
+                                 hostTime: t0 + HostClock.hostTime(fromSeconds: Double(i) * 0.01), sampleTime: Double(i * 441))
+            #expect(monitor.observe(chunk) == nil)
+        }
+        #expect(abs((monitor.observedSampleRate ?? 0) - 44_100) < 1)
+    }
+
     @Test("旧 manifest の半分の音声を正常とせず、空でない WAV でも STT 前に止める")
     func rejectLegacyRecording() async throws {
         let root = try temporaryDirectory()
