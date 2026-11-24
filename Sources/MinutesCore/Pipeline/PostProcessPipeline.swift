@@ -724,8 +724,10 @@ public final class PostProcessPipeline: Sendable {
                 try store.logExport(meetingId: meeting.id, target: target.id, status: .ok, checksum: receipt.checksum)
                 statuses.append("\(target.id): ok")
             } catch {
-                try store.logExport(meetingId: meeting.id, target: target.id, status: .pending, checksum: folder.manifest.checksum)
-                statuses.append("\(target.id): pending (\(Log.preview(error.localizedDescription, limit: 60)))")
+                // 送り直しても通らない会議は待たせない（直して書き出し直せば、また送る）
+                let status: ExportStatus = target.isPermanentFailure(error) ? .failed : .pending
+                try store.logExport(meetingId: meeting.id, target: target.id, status: status, checksum: folder.manifest.checksum)
+                statuses.append("\(target.id): \(status.rawValue) (\(Log.preview(error.localizedDescription, limit: 60)))")
             }
         }
         try store.logExport(meetingId: meeting.id, target: "local_export", status: .ok, checksum: folder.manifest.checksum)
@@ -778,8 +780,9 @@ public final class PostProcessPipeline: Sendable {
             } catch StoreError.meetingBusy {
                 continue
             } catch {
-                _ = try? store.logExport(meetingId: entry.meetingId, target: entry.target, status: .pending, checksum: entry.checksum)
-                report.append("\(entry.meetingId) → \(entry.target): still pending (\(error.localizedDescription))")
+                let permanent = target.isPermanentFailure(error)
+                _ = try? store.logExport(meetingId: entry.meetingId, target: entry.target, status: permanent ? .failed : .pending, checksum: entry.checksum)
+                report.append("\(entry.meetingId) → \(entry.target): \(permanent ? "failed" : "still pending") (\(error.localizedDescription))")
                 if target.haltsRetries(error) { halted.insert(entry.target) }
             }
         }

@@ -178,6 +178,8 @@ public struct MinutesCloudRecording: Decodable, Sendable, Equatable, Identifiabl
 public enum MinutesCloudRecordingScope: String, Sendable {
     /// iPhone の一覧: iPhone・Watch の録音と、同期した Mac の会議（Mac の Minutes クラウドの文字起こしの録音は入れない）
     case meetings
+    /// iPhone・Watch の録音だけ（Mac の取り込み。Mac の録音や同期した会議が増えても押し出されない）
+    case mobile
 }
 
 /// 同期する Mac の会議（PUT /v1/meetings/:id、P7）。文字起こしは話者をラベル（"me"・"spk_0" など）で指し、名前は speakers[].name に置く

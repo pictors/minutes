@@ -11,6 +11,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         var path: String
         var headers: [String: String]
         var body: Data?
+        var query: String? = nil
     }
 
     typealias Handler = @Sendable (Request) -> (status: Int, headers: [String: String], body: Data)
@@ -53,7 +54,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
             body = data
         }
         let headers = (request.allHTTPHeaderFields ?? [:]).reduce(into: [String: String]()) { $0[$1.key.lowercased()] = $1.value }
-        let answer = handler(Request(method: request.httpMethod ?? "GET", path: url.path, headers: headers, body: body))
+        let answer = handler(Request(method: request.httpMethod ?? "GET", path: url.path, headers: headers, body: body, query: url.query))
         let response = HTTPURLResponse(url: url, statusCode: answer.status, httpVersion: "HTTP/1.1", headerFields: answer.headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: answer.body)

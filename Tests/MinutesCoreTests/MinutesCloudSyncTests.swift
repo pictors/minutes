@@ -151,6 +151,43 @@ struct MinutesCloudSyncTests {
         #expect(!target.haltsRetries(MinutesCloudError.http(status: 400, code: "bad_meeting", requestID: nil)))
     }
 
+    @Test("送り直しても通らない会議（400・413）は failed にして待たせない。404（同期のないサーバー）はその回の残りを送らない")
+    func permanentFailures() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let puts = Mutex(0)
+        let base = StubURLProtocol.host { _ in
+            puts.withLock { $0 += 1 }
+            return Self.reply(["error": "bad_meeting", "message": "transcript.segments"], status: 400)
+        }
+        let store = try Store.inMemory()
+        let meeting = try seed(store)
+        let pipe = pipeline(store, base: base, export: root)
+        try await pipe.refreshExport(meetingId: meeting.id)
+        #expect(try latestStatus(store, meeting.id) == ExportStatus.failed.rawValue)
+        _ = await pipe.retryPendingExports()
+        #expect(puts.withLock { $0 } == 1)
+
+        let target = MinutesCloudSyncTarget(client: MinutesCloudClient(baseURL: base, token: { nil }), uploads: true)
+        #expect(target.isPermanentFailure(MinutesCloudError.http(status: 413, code: "too_large", requestID: nil)))
+        #expect(!target.isPermanentFailure(MinutesCloudError.http(status: 503, code: nil, requestID: nil)))
+        #expect(target.haltsRetries(MinutesCloudError.http(status: 404, code: "not_found", requestID: nil)))
+    }
+
+    @Test("Mac の取り込みは iPhone・Watch の録音だけを読む（scope=mobile。同期した会議や Mac の録音に押し出されない）")
+    func importReadsMobileScope() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queries = Mutex<[String]>([])
+        let base = StubURLProtocol.host { request in
+            queries.withLock { $0.append("\(request.path)?\(request.query ?? "")") }
+            return Self.reply(["recordings": []])
+        }
+        let client = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" })
+        _ = try await CloudMeetingImport.pull(client: client, store: try Store.inMemory(), audioRoot: root)
+        #expect(queries.withLock { $0 } == ["/v1/recordings?scope=mobile"])
+    }
+
     @Test("ローカルのみにすると、サーバーから消す（送ったことのある会議だけ）")
     func localOnlyRemoves() async throws {
         let root = try temporaryDirectory()

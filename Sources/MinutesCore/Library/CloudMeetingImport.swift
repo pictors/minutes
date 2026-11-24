@@ -53,7 +53,8 @@ public enum CloudMeetingImport {
     /// 一覧を読めなければ投げる。途中の回線・ログイン切れは `interruption` に残してそこでやめ、1 つの録音だけの誤りは覚えて次へ進む。
     /// 音声全体を読み込むので、main の外で呼ぶ。同じプロセスで同時に 2 つ走らせない（呼び出し側が 1 つにする）。
     public static func pull(client: MinutesCloudClient, store: Store, audioRoot: URL, now: Date = Date()) async throws -> Report {
-        let recordings = try await client.recordings()
+        // iPhone・Watch の録音だけを読む（古いサーバーは scope を見ないので、下でも出どころで選ぶ）
+        let recordings = try await client.recordings(scope: .mobile)
         let skip = try store.cloudRecordingsToSkip(now: now)
         var report = Report()
         // 一覧は新しい順。古い順に取り込む

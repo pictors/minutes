@@ -18,6 +18,8 @@ struct MeetingDetailView: View {
     @State private var titleDraft = ""
     @State private var editingSpeakers = false
     @State private var sharing = false
+    /// 読み込んだ結果、議事録がなかった（要約しなかった会議）
+    @State private var summaryMissing = false
 
     private var item: MeetingItem? { model.meetings.first { $0.id == clientId } }
 
@@ -57,7 +59,7 @@ struct MeetingDetailView: View {
                         if let summary {
                             summaryCards(summary)
                                 .transition(Motion.content(reduceMotion: reduceMotion))
-                        } else if item.isDone, loadError == nil, item.server?.summaryError == nil {
+                        } else if item.isDone, loadError == nil, item.server?.summaryError == nil, !summaryMissing {
                             HStack(spacing: 10) {
                                 ProgressView()
                                 Text("議事録を読んでいます").foregroundStyle(.secondary)
@@ -120,7 +122,7 @@ struct MeetingDetailView: View {
         }
         .sheet(isPresented: $sharing) {
             if let server = shareableRecording {
-                ShareLinksView(recordingID: server.id, hasSummary: server.summaryError == nil)
+                ShareLinksView(recordingID: server.id, hasSummary: server.summaryError == nil && !summaryMissing)
             }
         }
         .task(id: item?.server?.status) { await load() }
@@ -365,15 +367,25 @@ struct MeetingDetailView: View {
     private func load() async {
         guard let server = item?.server, server.status == "done" else { return }
         do {
-            async let summary = server.summaryError == nil ? model.client.summary(recordingID: server.id) : nil
+            async let summary = server.summaryError == nil ? Self.summaryIfAny(model.client, recordingID: server.id) : nil
             async let transcript = model.client.transcript(recordingID: server.id)
             self.transcript = try await transcript
             self.summary = try await summary
+            summaryMissing = self.summary == nil
             loadError = nil
         } catch where PhoneModel.isCancellation(error) {
             // 画面を離れた・読み直しに替わった（誤りとして出さない）
         } catch {
             loadError = "議事録を読めませんでした（\(error.localizedDescription)）"
+        }
+    }
+
+    /// 議事録。ない（404。要約しなかった Mac の会議など）なら nil
+    private static func summaryIfAny(_ client: MinutesCloudClient, recordingID: String) async throws -> MinutesSummary? {
+        do {
+            return try await client.summary(recordingID: recordingID)
+        } catch let error as MinutesCloudError where error.status == 404 {
+            return nil
         }
     }
 

@@ -50,12 +50,19 @@ public struct MinutesCloudSyncTarget: SyncTarget {
     }
 
     /// ログイン切れ・有料でない・混雑・サーバーの誤り・回線は、ほかの会議でも同じなので、この回の残りを送らない。
+    /// 404 も同じ（会議の ID の形はいつも通るので、404 はサーバーにこの道がない＝同期のないサーバー）。
     public func haltsRetries(_ error: Error) -> Bool {
         if error is URLError || error is CancellationError { return true }
         guard let cloud = error as? MinutesCloudError else { return false }
         if case .notSignedIn = cloud { return true }
         guard let status = cloud.status else { return false }
-        return status == 401 || status == 402 || status == 429 || status >= 500
+        return status == 401 || status == 402 || status == 404 || status == 429 || status >= 500
+    }
+
+    /// この会議の形をサーバーが受けない（400 bad_meeting・413 大きすぎる・409）。送り直しても通らない。
+    public func isPermanentFailure(_ error: Error) -> Bool {
+        guard let status = (error as? MinutesCloudError)?.status else { return false }
+        return status == 400 || status == 409 || status == 413 || status == 422
     }
 
     /// サーバーへ送る本文。文字起こしは iPhone・Watch の録音の transcript.json と同じ形（話者はラベルで指す）。

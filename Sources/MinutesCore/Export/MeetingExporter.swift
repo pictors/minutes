@@ -324,6 +324,8 @@ public protocol SyncTarget: Sendable {
     func removeDeleted(meetingID: String) async throws
     /// この誤りなら、同じ同期先への残りの再送をこの回はやめる（ログイン切れ・有料でない・混雑・回線。会議ごとの誤りではない）。
     func haltsRetries(_ error: Error) -> Bool
+    /// この会議は、送り直しても通らない（形が違う・大きすぎる）。待たせずに failed にする（会議を直して書き出し直せば、また送る）。
+    func isPermanentFailure(_ error: Error) -> Bool
 }
 
 public extension SyncTarget {
@@ -333,6 +335,7 @@ public extension SyncTarget {
     func remove(meeting: MeetingRecord) async throws -> [String] { [] }
     func removeDeleted(meetingID: String) async throws {}
     func haltsRetries(_ error: Error) -> Bool { false }
+    func isPermanentFailure(_ error: Error) -> Bool { false }
 }
 
 public extension MeetingExporter {
