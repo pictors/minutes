@@ -29,6 +29,28 @@ public extension Store {
         }
     }
 
+    /// Minutes クラウドへ送れなかった会議: 最新の記録が failed（送り直しても通らない誤り）で、今も送る会議（終わった・クラウド OK・取り込んだ会議でない）。新しい順。
+    /// 消した会議（行がない）は数えない。アプリは設定のアカウントのタブに数を出し、起動のたびと「送り直す」で送り直す。
+    func failedCloudSyncMeetingIds() throws -> [String] {
+        try writer.read { db in try Store.fetchFailedCloudSyncMeetingIds(db) }
+    }
+
+    func failedCloudSyncObservation() -> ValueObservation<ValueReducers.Fetch<[String]>> {
+        ValueObservation.tracking { db in try Store.fetchFailedCloudSyncMeetingIds(db) }
+    }
+
+    internal static func fetchFailedCloudSyncMeetingIds(_ db: Database) throws -> [String] {
+        let target = MinutesCloudSyncTarget.targetID
+        return try String.fetchAll(db, sql: """
+        SELECT m.id FROM meetings m
+        JOIN export_log e ON e.meeting_id = m.id AND e.target = ?
+        WHERE e.id = (SELECT MAX(id) FROM export_log WHERE meeting_id = m.id AND target = ?)
+          AND e.status = 'failed'
+          AND m.status = 'done' AND m.privacy_mode = 'cloud_ok' AND m.cloud_recording_id IS NULL
+        ORDER BY m.started_at DESC
+        """, arguments: [target, target])
+    }
+
     /// 会議をまとめて送る（pending にする。送るのは `PostProcessPipeline.retryPendingExports`）。
     func queueExports(meetingIds: [String], target: String) throws {
         try writer.write { db in

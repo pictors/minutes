@@ -168,6 +168,12 @@ final class AppModel {
     private(set) var apiKeysRevision = 0
     /// Minutes クラウドにログインしているメールアドレス（表示用）。ログイン・ログアウトで変わり、プロバイダの状態の表示を更新する
     private(set) var minutesCloudEmail: String? = MinutesCloudCredentials.isSignedIn ? (MinutesCloudCredentials.email() ?? "") : nil
+    /// Minutes クラウドへ送れなかった会議の数（P7。設定のアカウントのタブに出す。DB を監視して変わる）
+    private(set) var cloudSyncFailedCount = 0
+    /// 送れなかった会議を「送り直す」で送っているあいだ
+    private(set) var isRetryingCloudSync = false
+    /// 送れなかった会議を、この起動で送り直したか（起動のたびに 1 回）
+    @ObservationIgnored private var requeuedFailedCloudSync = false
     /// armed 中に音声を検知し、設定により開始の確認を待っている。
     private(set) var awaitingStartConfirmation = false
     /// 録音中の経過時間。表示する場所ごとに分け、見えていない場所は更新しない。閉じたパネルやウィンドウも、値が替わるたびに
@@ -185,6 +191,7 @@ final class AppModel {
     private var panelObservation: Task<Void, Never>?
     private var tagsObservation: Task<Void, Never>?
     private var jobsObservation: Task<Void, Never>?
+    private var cloudSyncFailuresObservation: Task<Void, Never>?
     @ObservationIgnored private let hotKeys = GlobalHotKeyCenter()
     /// ショートカットの登録失敗（設定画面に表示）。
     private(set) var shortcutError: String?
@@ -238,6 +245,7 @@ final class AppModel {
             observePanelMeetings()
             observeTags()
             observePostProcessingJobs()
+            observeCloudSyncFailures()
         }
         applyGlobalShortcut()
         // NSApplication の起動処理が終わってから外観を当てる
@@ -537,6 +545,18 @@ final class AppModel {
         Task { [weak self] in
             guard let pipeline = self?.pipeline else { return }
             let report = await pipeline.retryPendingExports()
+            for line in report { self?.appendEvent("sync: \(line)") }
+        }
+    }
+
+    /// 設定の「送り直す」: Minutes クラウドへ送れなかった会議を、いま送り直す（通らなければ、また数に出る）。
+    func retryFailedCloudSync() {
+        guard !isRetryingCloudSync, let pipeline, let count = pipeline.requeueFailedCloudSync(), count > 0 else { return }
+        isRetryingCloudSync = true
+        appendEvent("Minutes クラウドへ送れなかった会議を送り直します: \(count) 件")
+        Task { [weak self] in
+            let report = await pipeline.retryPendingExports()
+            self?.isRetryingCloudSync = false
             for line in report { self?.appendEvent("sync: \(line)") }
         }
     }
@@ -1159,6 +1179,19 @@ final class AppModel {
         }
     }
 
+    /// Minutes クラウドへ送れなかった会議の数を、設定のアカウントのタブに出す（P7）。
+    private func observeCloudSyncFailures() {
+        cloudSyncFailuresObservation?.cancel()
+        guard let store else { return }
+        cloudSyncFailuresObservation = Task { [weak self] in
+            do {
+                for try await ids in store.failedCloudSyncObservation().values(in: store.writer) {
+                    self?.cloudSyncFailedCount = ids.count
+                }
+            } catch { self?.appendEvent("同期の失敗の監視に失敗: \(error.localizedDescription)") }
+        }
+    }
+
     private func observeTags() {
         tagsObservation?.cancel()
         guard let store else { return }
@@ -1468,6 +1501,12 @@ final class AppModel {
         do {
             for message in try store.retryPendingAudioDeletions() { appendEvent(message) }
         } catch { appendEvent("削除の再試行に失敗: \(error.localizedDescription)") }
+        // Minutes クラウドへ送れなかった会議を、起動のたびに 1 回だけ送り直す（アプリやサーバーの直しで通るようになったものを届ける）。
+        // 同期を切っている・ログインしていないときは数えない（入れたら、その次の見回りで送り直す）
+        if !requeuedFailedCloudSync, let count = pipeline.requeueFailedCloudSync() {
+            requeuedFailedCloudSync = true
+            if count > 0 { appendEvent("Minutes クラウドへ送れなかった会議を送り直します: \(count) 件") }
+        }
         let report = await pipeline.retryPendingExports()
         for line in report { appendEvent("export retry: \(line)") }
         // 消した会議・ローカルのみにした会議を、同期先（サーバー）から消す

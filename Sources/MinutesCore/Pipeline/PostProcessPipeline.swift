@@ -753,6 +753,21 @@ public final class PostProcessPipeline: Sendable {
     }
 
     /// pending の同期を再送する（起動時と 10 分ごと、SPEC §9.1）。
+    /// Minutes クラウドへ送れなかった会議（failed）を、もう一度待ちに戻す（送るのは `retryPendingExports`）。戻した数を返す。
+    /// failed は送り直しても通らない誤り（形の誤りなど）なので自動では送り直さないが、アプリやサーバーの直しで通るようになることがある。
+    /// アプリは起動のたびに 1 回と、設定の「送り直す」で呼ぶ。同期を切っている・ログインしていない（同期先がない）ときは nil。
+    public func requeueFailedCloudSync() -> Int? {
+        guard let target = providers.syncTargets.first(where: { $0.id == MinutesCloudSyncTarget.targetID }) as? MinutesCloudSyncTarget,
+              target.uploads else { return nil }
+        do {
+            let ids = try store.failedCloudSyncMeetingIds()
+            if !ids.isEmpty { try store.queueExports(meetingIds: ids, target: target.id) }
+            return ids.count
+        } catch {
+            return nil
+        }
+    }
+
     public func retryPendingExports() async -> [String] {
         guard begin("exports") else { return [] }
         defer { end("exports") }

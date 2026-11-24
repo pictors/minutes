@@ -212,6 +212,46 @@ struct MinutesCloudSyncTests {
         #expect(try latestStatus(store, synced.id) == ExportStatus.removed.rawValue)
     }
 
+    @Test("送れなかった会議を数え、待ちに戻して送り直す（消した・ローカルのみにした会議は数えない。同期を切っているときは戻さない）")
+    func failedAreRequeued() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let accepts = Mutex(false)
+        let base = StubURLProtocol.host { _ in
+            accepts.withLock { $0 } ? Self.recordingReply() : Self.reply(["error": "bad_meeting", "message": "transcript.provider"], status: 400)
+        }
+        let store = try Store.inMemory()
+        let failed = try seed(store)
+        let deleted = try seed(store)
+        var local = try seed(store)
+        let pipe = pipeline(store, base: base, export: root)
+        for meeting in [failed, deleted, local] { try await pipe.refreshExport(meetingId: meeting.id) }
+        try store.deleteMeeting(id: deleted.id)
+        local.privacy = .localOnly
+        try store.updateMeeting(local)
+        #expect(try store.failedCloudSyncMeetingIds() == [failed.id])
+
+        // 同期を切っている・同期先がないときは戻さない
+        #expect(pipeline(store, base: base, uploads: false, export: root).requeueFailedCloudSync() == nil)
+        let noTarget = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: LocalTranscriber(), summarizer: nil, exportDirectory: root))
+        #expect(noTarget.requeueFailedCloudSync() == nil)
+        #expect(try store.failedCloudSyncMeetingIds() == [failed.id])
+
+        // 通らないままなら、送り直してもまた failed（数に戻る）
+        #expect(pipe.requeueFailedCloudSync() == 1)
+        #expect(try store.failedCloudSyncMeetingIds().isEmpty)
+        _ = await pipe.retryPendingExports()
+        #expect(try store.failedCloudSyncMeetingIds() == [failed.id])
+
+        // サーバーが受けるようになったら届く
+        accepts.withLock { $0 = true }
+        #expect(pipe.requeueFailedCloudSync() == 1)
+        _ = await pipe.retryPendingExports()
+        #expect(try latestStatus(store, failed.id) == ExportStatus.ok.rawValue)
+        #expect(try store.failedCloudSyncMeetingIds().isEmpty)
+        #expect(pipe.requeueFailedCloudSync() == 0)
+    }
+
     @Test("同期を入れたときに送る会議: 終わった・クラウド OK・取り込んだ会議でない（新しい順）")
     func eligible() throws {
         let store = try Store.inMemory()
