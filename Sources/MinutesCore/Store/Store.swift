@@ -487,10 +487,13 @@ public final class Store: Sendable {
                 // DB の削除と同一トランザクションで記録。commit 失敗時は音声に触れない。
                 try db.execute(sql: "INSERT OR REPLACE INTO pending_audio_deletions(meeting_id, audio_dir) VALUES (?, ?)", arguments: [id, directory])
             }
+            // サーバーへ同期していた会議は、サーバーからも消す（印を残し、PostProcessPipeline.retryPendingRemovals が消す。P7）
+            let synced = try Store.latestExportStatuses(db, meetingId: id)
             _ = try MeetingRecord.deleteOne(db, key: id)
             try db.execute(sql: "DELETE FROM notes_fts WHERE meeting_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM pipeline_runs WHERE meeting_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM export_log WHERE meeting_id = ?", arguments: [id])
+            try Store.recordRemoteRemovals(db, meetingId: id, previous: synced)
         }
         try removePendingAudio(id: id, removeDirectory: removeDirectory)
     }

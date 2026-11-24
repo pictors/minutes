@@ -21,16 +21,21 @@ struct MeetingDetailView: View {
 
     private var item: MeetingItem? { model.meetings.first { $0.id == clientId } }
 
-    /// リンクで共有できる会議（iPhone・Watch で録って、サーバーで処理が終わったもの。P7）
+    /// リンクで共有できる会議（iPhone・Watch で録って、サーバーで処理が終わったものと、同期した Mac の会議。P7）
     private var shareableRecording: MinutesCloudRecording? {
-        guard let server = item?.server, server.status == "done", ["iphone", "watch"].contains(server.source ?? "") else { return nil }
+        guard let server = item?.server, server.status == "done", server.isSyncedMeeting || ["iphone", "watch"].contains(server.source ?? "") else { return nil }
         return server
     }
 
     private var canPlay: Bool {
         guard let item else { return false }
+        // 同期した Mac の会議は音声を送らない
+        if item.isMacMeeting { return false }
         return (item.isDone && item.server?.audioDeleted != true) || model.localAudioURL(item) != nil
     }
+
+    /// 題名・話者の名前を直す・会議を消すのは、iPhone・Watch で録った会議だけ（Mac の会議は Mac が正。P7 の最初の段は一方向）
+    private var canEdit: Bool { item?.isMacMeeting != true }
 
     var body: some View {
         ScrollViewReader { scroll in
@@ -63,6 +68,12 @@ struct MeetingDetailView: View {
                         }
                         if let transcript, !transcript.speakers.isEmpty {
                             speakersCard(transcript)
+                        }
+                        if item.isMacMeeting {
+                            Label("Mac から同期した会議です。題名や話者の名前は Mac で直してください。", systemImage: "laptopcomputer")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
                         }
                         if let transcript, !transcript.segments.isEmpty {
                             transcriptCard(transcript)
@@ -138,8 +149,7 @@ struct MeetingDetailView: View {
                 if let count = item.server?.speakerCount, count > 0 {
                     InfoChip(text: "\(count) 人", systemImage: "person.2.fill")
                 }
-                let fromWatch = item.server?.source == "watch" || item.local?.source == "watch"
-                InfoChip(text: fromWatch ? "Watch で録音" : "iPhone で録音", systemImage: fromWatch ? "applewatch" : "iphone")
+                InfoChip(text: item.origin.text, systemImage: item.origin.systemImage)
                 if let gaps = item.local?.gaps, !gaps.isEmpty {
                     InfoChip(text: "録れていない時間 \(gaps.count) か所", systemImage: "scissors")
                 }
@@ -241,8 +251,10 @@ struct MeetingDetailView: View {
                 }
             }
         } trailing: {
-            Button("名前を付ける") { editingSpeakers = true }
-                .font(.subheadline.weight(.medium))
+            if canEdit {
+                Button("名前を付ける") { editingSpeakers = true }
+                    .font(.subheadline.weight(.medium))
+            }
         }
     }
 
@@ -301,7 +313,7 @@ struct MeetingDetailView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                if item?.server != nil {
+                if item?.server != nil, canEdit {
                     Button {
                         titleDraft = item?.title ?? ""
                         renaming = true
@@ -309,7 +321,7 @@ struct MeetingDetailView: View {
                         Label("名前を変える", systemImage: "pencil")
                     }
                 }
-                if let transcript, !transcript.speakers.isEmpty {
+                if let transcript, !transcript.speakers.isEmpty, canEdit {
                     Button {
                         editingSpeakers = true
                     } label: {
@@ -323,12 +335,14 @@ struct MeetingDetailView: View {
                         Label("リンクで共有…", systemImage: "link")
                     }
                 }
-                Button(role: .destructive) {
-                    confirmingDelete = true
-                } label: {
-                    Label("会議を消す", systemImage: "trash")
+                if canEdit {
+                    Button(role: .destructive) {
+                        confirmingDelete = true
+                    } label: {
+                        Label("会議を消す", systemImage: "trash")
+                    }
+                    .disabled(item?.id == model.recorder.clientId)
                 }
-                .disabled(item?.id == model.recorder.clientId)
             } label: {
                 Image(systemName: "ellipsis")
             }

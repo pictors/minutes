@@ -27,6 +27,7 @@ struct MinutesCLI {
             case "bench": try BenchCommand.run(rest)
             case "account": try await AccountCommand.run(rest)
             case "pull": try await PullCommand.run(rest)
+            case "sync": try await SyncCommand.run(rest)
             case "help", "--help", "-h": printUsage()
             case "version", "--version": Console.out(version)
             default:
@@ -113,6 +114,10 @@ struct MinutesCLI {
           minutes-cli pull [--db <path>] [--audio-root <dir>] [--export-dir <dir>] [--no-process]
               サーバーの会議（iPhone・Apple Watch で録ったもの）を取り込み、後処理（保存・書き出し）に掛ける。
               文字起こしと要約はサーバーのものを使う（この Mac の手段は呼ばない）。同じ録音は二重に取り込まない。
+
+          minutes-cli sync [--db <path>] [--export-dir <dir>] [--meeting <id>] [--delete <id>]
+              この Mac の会議の文字起こしと議事録を Minutes クラウドへ同期する（iPhone で読める。音声は送らない）。
+              会議を指さなければ、終わった・クラウド OK・取り込んだ会議でない会議をすべて送る。--delete はサーバーの会議だけを消す。
 
         API キー: 環境変数または .env の ELEVENLABS_API_KEY / OPENAI_API_KEY
         """)

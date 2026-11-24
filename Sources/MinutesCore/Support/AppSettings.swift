@@ -97,6 +97,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var autoStartOnAudio: Bool = true
     /// true なら音声検知後に自動開始せず、確認（通知 / 画面のボタン）を待つ（SPEC §6.2）。
     public var confirmBeforeAutoStart: Bool = false
+    /// この Mac の会議を Minutes クラウドに同期するか（P7。既定は切。入れると、これまでの会議も送る。ログインしているときだけ働く）
+    public var syncMeetingsToMinutesCloud: Bool = false
     public var silenceTimeoutSeconds: Double = 180
     public var keytermsAutoLearn: Bool = true
     /// 新しい会議の言語（2026-10-07）。自動はライブ字幕を日本語で始め、会議のあとで英語の会議かを判定する。
@@ -150,6 +152,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         autoStartOnAudio = try container.decodeIfPresent(Bool.self, forKey: .autoStartOnAudio) ?? defaults.autoStartOnAudio
         confirmBeforeAutoStart = try container.decodeIfPresent(Bool.self, forKey: .confirmBeforeAutoStart) ?? defaults.confirmBeforeAutoStart
         silenceTimeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .silenceTimeoutSeconds) ?? defaults.silenceTimeoutSeconds
+        syncMeetingsToMinutesCloud = try container.decodeIfPresent(Bool.self, forKey: .syncMeetingsToMinutesCloud) ?? defaults.syncMeetingsToMinutesCloud
         keytermsAutoLearn = try container.decodeIfPresent(Bool.self, forKey: .keytermsAutoLearn) ?? defaults.keytermsAutoLearn
         // 会議の言語を持つ前は、ライブ字幕のロケール（live_locale）だけを選べた。英語にしていたら英語の会議として引き継ぐ
         let legacyLiveLocale = try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(String.self, forKey: .liveLocale)

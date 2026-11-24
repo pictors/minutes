@@ -74,7 +74,7 @@ final class PhoneModel {
 
     var meetings: [MeetingItem] {
         var items: [String: MeetingItem] = [:]
-        for recording in serverRecordings where recording.source == "iphone" || recording.source == "watch" {
+        for recording in serverRecordings where recording.source == "iphone" || recording.source == "watch" || recording.isSyncedMeeting {
             items[recording.clientId] = MeetingItem(id: recording.clientId, local: nil, server: recording)
         }
         for upload in localUploads {
@@ -113,7 +113,8 @@ final class PhoneModel {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            async let recordings = client.recordings()
+            // iPhone の一覧（iPhone・Watch の録音と、同期した Mac の会議）。古いサーバーは scope を見ないので、下でも選ぶ
+            async let recordings = client.recordings(scope: .meetings)
             async let account = client.account()
             serverRecordings = try await recordings
             self.account = try await account

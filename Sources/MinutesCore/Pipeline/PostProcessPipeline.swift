@@ -122,6 +122,8 @@ public final class PostProcessPipeline: Sendable {
     public let store: Store
     public let providers: PipelineProviders
     private let summaryMeetings = Mutex<Set<String>>([])
+    /// 再送と、同期先から消すのを、同時に 2 つ走らせない（同期を入れたときのまとめての送信と、10 分ごとの片づけが重なる）
+    private let retrying = Mutex<Set<String>>([])
 
     public init(store: Store, providers: PipelineProviders) {
         self.store = store
@@ -269,15 +271,58 @@ public final class PostProcessPipeline: Sendable {
     }
 
     /// ローカル専用に切り替えたときなどに、書き出しフォルダと同期先のコピーを消す。削除したパスを返す。
+    /// サーバーの会議（`Store.remoteRemovalTargets`）を消せなかったときは、消すのを待つ印を残して続ける（回線が戻ったら消す）。
     public func removeExportedFiles(meetingId: String) async throws -> [String] {
         let lease = try store.acquireMeetingLease(meetingId)
         defer { withExtendedLifetime(lease) {} }
         guard let meeting = try store.meeting(id: meetingId) else { throw PipelineError.meetingNotFound(meetingId) }
         var removed = try MeetingExporter.removeFolders(for: meeting, in: providers.exportDirectory)
         for target in providers.syncTargets {
-            removed += try await target.remove(meeting: meeting)
+            guard Store.remoteRemovalTargets.contains(target.id) else {
+                removed += try await target.remove(meeting: meeting)
+                continue
+            }
+            // 送ったことのない会議は、サーバーに聞かない
+            guard try store.wasSynced(meetingId: meetingId, target: target.id) else { continue }
+            do {
+                removed += try await target.remove(meeting: meeting)
+                try store.logExport(meetingId: meetingId, target: target.id, status: .removed)
+            } catch {
+                try store.logExport(meetingId: meetingId, target: target.id, status: .removePending)
+            }
         }
         return removed
+    }
+
+    /// 消すのを待っている会議を、同期先から消す（消した会議・ローカルのみにした会議。起動時と 10 分ごと、会議を消した直後）。
+    public func retryPendingRemovals() async -> [String] {
+        guard begin("removals") else { return [] }
+        defer { end("removals") }
+        var report: [String] = []
+        var halted = Set<String>()
+        guard let pending = try? store.pendingRemovals(), !pending.isEmpty else { return report }
+        for entry in pending where !halted.contains(entry.target) {
+            guard let target = providers.syncTargets.first(where: { $0.id == entry.target }) else { continue }
+            // ローカルのみから戻して、また送る会議になっていたら消さない（次の書き出しで送り直す）
+            if let meeting = try? store.meeting(id: entry.meetingId), meeting.privacy == .cloudOk { continue }
+            do {
+                try await target.removeDeleted(meetingID: entry.meetingId)
+                try store.logExport(meetingId: entry.meetingId, target: entry.target, status: .removed)
+                report.append("\(entry.meetingId) → \(entry.target): removed")
+            } catch {
+                report.append("\(entry.meetingId) → \(entry.target): still pending removal (\(error.localizedDescription))")
+                if target.haltsRetries(error) { halted.insert(entry.target) }
+            }
+        }
+        return report
+    }
+
+    private func begin(_ job: String) -> Bool {
+        retrying.withLock { running in running.insert(job).inserted }
+    }
+
+    private func end(_ job: String) {
+        _ = retrying.withLock { running in running.remove(job) }
     }
 
     // MARK: - Steps
@@ -668,12 +713,14 @@ public final class PostProcessPipeline: Sendable {
     /// 7. 会議フォルダを生成し、SyncTarget へ送る。同期失敗は pending として残す（再送は retryPendingExports）。
     func export(meeting: MeetingRecord) async throws -> (path: String?, provider: String) {
         guard try store.meeting(id: meeting.id)?.privacy == .cloudOk else { return (nil, "skipped (local_only)") }
-        let folder = try writeExportFolder(meetingId: meeting.id)
+        let export = try writeExport(meetingId: meeting.id)
+        let folder = (url: export.folder, manifest: export.manifest)
         var statuses: [String] = ["local: ok"]
         for target in providers.syncTargets {
             guard try store.meeting(id: meeting.id)?.privacy == .cloudOk else { break }
+            guard target.accepts(export.input.meeting) else { continue }
             do {
-                let receipt = try await target.upload(folder: folder.url, manifest: folder.manifest)
+                let receipt = try await target.upload(export: export)
                 try store.logExport(meetingId: meeting.id, target: target.id, status: .ok, checksum: receipt.checksum)
                 statuses.append("\(target.id): ok")
             } catch {
@@ -687,29 +734,45 @@ public final class PostProcessPipeline: Sendable {
 
     /// DB の内容から書き出しフォルダを（再）生成する。
     public func writeExportFolder(meetingId: String) throws -> (url: URL, manifest: ExportManifest) {
+        let export = try writeExport(meetingId: meetingId)
+        return (export.folder, export.manifest)
+    }
+
+    /// 書き出しフォルダを（再）生成し、元にした DB の中身と一緒に返す（同期先へ渡す）。
+    func writeExport(meetingId: String) throws -> SyncExport {
         try store.withCloudExport(meetingId: meetingId) { input in
             let bundle = try MeetingExporter.build(input)
             try FileManager.default.createDirectory(at: providers.exportDirectory, withIntermediateDirectories: true)
             let url = try bundle.write(into: providers.exportDirectory)
             // タイトル変更で名前が変わった旧フォルダ（同じ id 末尾）を残さない
             _ = try? MeetingExporter.removeFolders(for: input.meeting, in: providers.exportDirectory, except: bundle.folderName)
-            return (url, bundle.manifest)
+            return SyncExport(folder: url, manifest: bundle.manifest, input: input)
         }
     }
 
     /// pending の同期を再送する（起動時と 10 分ごと、SPEC §9.1）。
     public func retryPendingExports() async -> [String] {
+        guard begin("exports") else { return [] }
+        defer { end("exports") }
         var report: [String] = []
+        var halted = Set<String>()
         guard let pending = try? store.pendingExports(), !pending.isEmpty else { return report }
-        for entry in pending {
+        for entry in pending where !halted.contains(entry.target) {
             guard let target = providers.syncTargets.first(where: { $0.id == entry.target }) else { continue }
             do {
                 let lease = try store.acquireMeetingLease(entry.meetingId)
                 defer { withExtendedLifetime(lease) {} }
+                guard let meeting = try store.meeting(id: entry.meetingId) else {
+                    // 会議がもうない（消した）。送り直さない
+                    try store.logExport(meetingId: entry.meetingId, target: entry.target, status: .failed)
+                    continue
+                }
+                guard meeting.privacy == .cloudOk else { continue }
+                // この同期先へは今は送らない会議（同期を切っている・取り込んだ会議）。待たせたままにする（入れ直したら送る）
+                guard target.accepts(meeting) else { continue }
+                let export = try writeExport(meetingId: entry.meetingId)
                 guard try store.meeting(id: entry.meetingId)?.privacy == .cloudOk else { continue }
-                let folder = try writeExportFolder(meetingId: entry.meetingId)
-                guard try store.meeting(id: entry.meetingId)?.privacy == .cloudOk else { continue }
-                let receipt = try await target.upload(folder: folder.url, manifest: folder.manifest)
+                let receipt = try await target.upload(export: export)
                 try store.logExport(meetingId: entry.meetingId, target: target.id, status: .ok, checksum: receipt.checksum)
                 report.append("\(entry.meetingId) → \(target.id): ok")
             } catch StoreError.meetingBusy {
@@ -717,6 +780,7 @@ public final class PostProcessPipeline: Sendable {
             } catch {
                 _ = try? store.logExport(meetingId: entry.meetingId, target: entry.target, status: .pending, checksum: entry.checksum)
                 report.append("\(entry.meetingId) → \(entry.target): still pending (\(error.localizedDescription))")
+                if target.haltsRetries(error) { halted.insert(entry.target) }
             }
         }
         return report

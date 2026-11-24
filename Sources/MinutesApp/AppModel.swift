@@ -369,6 +369,10 @@ final class AppModel {
         let summarizer = try? SummaryProviders.make(settings: settings)
         var targets: [any SyncTarget] = []
         if let sync = settings.syncDirectoryURL { targets.append(LocalDirectorySyncTarget(destination: sync)) }
+        // Minutes クラウドへの会議の同期（P7）。ログインしていれば置く: 同期を切っていても、ローカルのみにした会議と消した会議をサーバーから消す
+        if minutesCloudEmail != nil || MinutesCloudCredentials.hasStoredLogin {
+            targets.append(MinutesCloudSyncTarget(client: .standard(), uploads: settings.syncMeetingsToMinutesCloud))
+        }
         let providers = PipelineProviders(
             cloud: cloud,
             local: local,
@@ -500,6 +504,8 @@ final class AppModel {
         // ログアウトしても、ログインの入口（アカウントのタブ）を残す
         MinutesCloudOffer.rememberSignedIn()
         minutesCloudEmail = address
+        // 同期の同期先を置く（ログインしたら、消した会議をサーバーから消せる）
+        rebuildPipeline()
         // iPhone・Watch で録った会議があれば、すぐ取り込む
         pullCloudMeetings(.scheduled)
     }
@@ -509,6 +515,30 @@ final class AppModel {
         try? await MinutesCloudClient.standard().signOut()
         try? MinutesCloudCredentials.clear()
         minutesCloudEmail = nil
+        rebuildPipeline()
+    }
+
+    /// この Mac の会議を Minutes クラウドに同期するか（P7）。入れると、これまでの会議（終わった・クラウド OK・取り込んだ会議でない）もまとめて送る。
+    /// 切ると、それより後は送らない（送った会議はサーバーに残る）。ローカルのみにした会議と、消した会議は、切っていてもサーバーから消す。
+    func setMeetingSync(_ enabled: Bool) {
+        guard settings.syncMeetingsToMinutesCloud != enabled else { return }
+        var updated = settings
+        updated.syncMeetingsToMinutesCloud = enabled
+        updateSettings(updated)
+        guard enabled, let store else { return }
+        do {
+            let ids = try store.meetingIdsForCloudSync()
+            try store.queueExports(meetingIds: ids, target: MinutesCloudSyncTarget.targetID)
+            appendEvent("Minutes クラウドへの同期: \(ids.count) 件の会議を送ります")
+        } catch {
+            operationError = "同期を始められません: \(error.localizedDescription)"
+            return
+        }
+        Task { [weak self] in
+            guard let pipeline = self?.pipeline else { return }
+            let report = await pipeline.retryPendingExports()
+            for line in report { self?.appendEvent("sync: \(line)") }
+        }
     }
 
     func minutesCloudAccount() async throws -> MinutesCloudAccount {
@@ -1254,6 +1284,8 @@ final class AppModel {
         do {
             guard canDeleteMeeting(meeting) else { throw StoreError.meetingBusy(meeting.id) }
             try store.deleteMeeting(id: meeting.id)
+            // サーバーへ同期していた会議は、サーバーからも消す（消せなければ印が残り、10 分ごとに試す）
+            if let pipeline { Task { _ = await pipeline.retryPendingRemovals() } }
         } catch {
             operationError = error.localizedDescription
             appendEvent("会議の削除に失敗: \(error.localizedDescription)")
@@ -1438,6 +1470,8 @@ final class AppModel {
         } catch { appendEvent("削除の再試行に失敗: \(error.localizedDescription)") }
         let report = await pipeline.retryPendingExports()
         for line in report { appendEvent("export retry: \(line)") }
+        // 消した会議・ローカルのみにした会議を、同期先（サーバー）から消す
+        for line in await pipeline.retryPendingRemovals() { appendEvent("sync removal: \(line)") }
         do {
             let purged = try AudioRetention.purge(store: store, retentionDays: settings.audioRetentionDays, managedRoot: settings.audioRootDirectoryURL)
             if !purged.purgedMeetingIds.isEmpty { appendEvent("音声を削除: \(purged.purgedMeetingIds.count) 件") }

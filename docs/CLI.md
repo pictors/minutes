@@ -97,6 +97,7 @@ $CLI account status                             # プランと今月の量（--j
 $CLI process recordings/2026-09-16_weekly --provider minutes --summary-provider minutes-cloud --title "週次定例"
 $CLI transcribe recordings/2026-09-16_weekly --provider minutes
 $CLI pull --db /tmp/minutes-test.sqlite --audio-root /tmp/minutes-audio   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5。--db を省くとアプリの DB）
+$CLI sync --db /tmp/minutes-test.sqlite --export-dir /tmp/minutes-export   # この Mac の会議の文字起こしと議事録を同期する（iPhone で読める。SPEC §5.6。--db を省くとアプリの DB の会議をすべて送る）
 $CLI account logout
 ```
 

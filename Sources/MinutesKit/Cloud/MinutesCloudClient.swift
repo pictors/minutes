@@ -92,6 +92,8 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
         case "no_summary": return "この会議には要約がありません。全文も入れて共有してください"
         case "not_shareable": return "この会議はリンクで共有できません"
         case "too_many_shares": return "この会議のリンクが多すぎます（20 まで）。使わないリンクを取り消してください"
+        case "synced_meeting": return "Mac から同期した会議は、Mac で直してください"
+        case "bad_meeting": return "会議の形をサーバーが受け付けませんでした"
         case "not_found": return "サーバーに見つかりません（消えたか、別のアカウントのものです）"
         case "TOO_MANY_CODES": return "コードを送りすぎました。しばらくしてからもう一度試してください"
         case "INVALID_OTP": return "コードが違います"
@@ -162,10 +164,43 @@ public struct MinutesCloudRecording: Decodable, Sendable, Equatable, Identifiabl
     public var summarize: Bool?
     public var diarize: Bool?
     public var group: String?
+    /// "recording"（音声を処理した録音）か "meeting"（同期を入れた Mac が上げた会議。音声はない。P7）。古いサーバーは送らない
+    public var kind: String?
     public var createdAt: Date?
     public var completedAt: Date?
 
     public var isFinished: Bool { status == "done" || status == "failed" }
+    /// 同期を入れた Mac が上げた会議（音声はない。直す・消すのは Mac）
+    public var isSyncedMeeting: Bool { kind == "meeting" }
+}
+
+/// 一覧の範囲（GET /v1/recordings?scope=）。
+public enum MinutesCloudRecordingScope: String, Sendable {
+    /// iPhone の一覧: iPhone・Watch の録音と、同期した Mac の会議（Mac の Minutes クラウドの文字起こしの録音は入れない）
+    case meetings
+}
+
+/// 同期する Mac の会議（PUT /v1/meetings/:id、P7）。文字起こしは話者をラベル（"me"・"spk_0" など）で指し、名前は speakers[].name に置く
+/// （iPhone・Watch の録音の transcript.json と同じ形）。背景の声として外した話者の発言は入れない。音声は送らない。
+public struct MinutesCloudMeetingUpload: Encodable, Sendable, Equatable {
+    public var title: String?
+    public var startedAt: Date
+    public var timeZone: String
+    /// "ja" | "en"
+    public var language: String
+    public var durationSeconds: Double?
+    public var transcript: TranscriptDocument
+    public var summary: MinutesSummary?
+
+    public init(title: String?, startedAt: Date, timeZone: String, language: String, durationSeconds: Double?, transcript: TranscriptDocument, summary: MinutesSummary?) {
+        self.title = title
+        self.startedAt = startedAt
+        self.timeZone = timeZone
+        self.language = language
+        self.durationSeconds = durationSeconds
+        self.transcript = transcript
+        self.summary = summary
+    }
 }
 
 /// complete に添える、走（中断で分かれた録音）ごとのバイト数（サーバーは届いた区切りと合わせる）。
@@ -405,11 +440,12 @@ public struct MinutesCloudClient: Sendable {
     }
 
     /// この利用者の録音（新しい順に 100 件）。
-    public func recordings() async throws -> [MinutesCloudRecording] {
+    public func recordings(scope: MinutesCloudRecordingScope? = nil) async throws -> [MinutesCloudRecording] {
         struct Envelope: Decodable {
             var recordings: [MinutesCloudRecording]
         }
-        return try decode(Envelope.self, from: try await send("GET", "/v1/recordings").0).recordings
+        let query = scope.map { [URLQueryItem(name: "scope", value: $0.rawValue)] } ?? []
+        return try decode(Envelope.self, from: try await send("GET", "/v1/recordings", query: query).0).recordings
     }
 
     /// 区切りを上げる要求（PUT /v1/recordings/:id/parts/:run/:offset）。裏の URLSession の uploadTask(with:fromFile:) にそのまま使える。
@@ -528,6 +564,23 @@ public struct MinutesCloudClient: Sendable {
         }
     }
 
+    // MARK: 同期した Mac の会議（P7）
+
+    /// 会議を作るか、丸ごと置き換える（PUT /v1/meetings/:id。id は Mac の会議の ID）。有料でなければ 402 no_plan。
+    public func putMeeting(id: String, upload: MinutesCloudMeetingUpload) async throws -> MinutesCloudRecording {
+        let body = try JSONCoding.encoder(pretty: false).encode(upload)
+        return try decode(RecordingEnvelope.self, from: try await send("PUT", "/v1/meetings/\(id)", body: body).0).recording
+    }
+
+    /// 同期した会議を消す。もうない（404）なら、消えているとみなす。
+    public func deleteMeeting(id: String) async throws {
+        do {
+            _ = try await send("DELETE", "/v1/meetings/\(id)")
+        } catch let error as MinutesCloudError where error.status == 404 {
+            return
+        }
+    }
+
     // MARK: 要約
 
     public func createSummary(clientID: String, group: String, timeZone: String = TimeZone.current.identifier, input: SummaryInput) async throws -> MinutesCloudSummaryJob {
@@ -563,8 +616,10 @@ public struct MinutesCloudClient: Sendable {
         var shares: [MinutesCloudShare]
     }
 
-    private func makeRequest(_ method: String, _ path: String, authorized: Bool = true) throws -> URLRequest {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    private func makeRequest(_ method: String, _ path: String, query: [URLQueryItem] = [], authorized: Bool = true) throws -> URLRequest {
+        var url = baseURL.appending(path: path)
+        if !query.isEmpty { url.append(queryItems: query) }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "accept")
         if let language = Locale.preferredLanguages.first { request.setValue(language, forHTTPHeaderField: "accept-language") }
@@ -579,8 +634,8 @@ public struct MinutesCloudClient: Sendable {
         try await send(method, path, body: try JSONSerialization.data(withJSONObject: json), authorized: authorized)
     }
 
-    private func send(_ method: String, _ path: String, body: Data? = nil, authorized: Bool = true) async throws -> (Data, HTTPURLResponse) {
-        var request = try makeRequest(method, path, authorized: authorized)
+    private func send(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authorized: Bool = true) async throws -> (Data, HTTPURLResponse) {
+        var request = try makeRequest(method, path, query: query, authorized: authorized)
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "content-type")

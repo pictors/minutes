@@ -61,6 +61,7 @@ CLI の実行例（release ビルド後、バイナリは `.build/release/minute
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-provider claude-code   # 要約の手段: codex（既定）/ claude-code / anthropic / minutes-cloud / none
 .build/release/minutes-cli account login --email you@example.com      # Minutes クラウド（SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
 .build/release/minutes-cli pull --db <試し用の DB> --audio-root <フォルダ> --export-dir <フォルダ>   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5）。--db を省くとアプリの DB に入るので、試すときは必ず付ける
+.build/release/minutes-cli sync --db <試し用の DB> --export-dir <フォルダ>   # この Mac の会議を Minutes クラウドへ同期する（SPEC §5.6、iPhone で読める）。--db を省くとアプリの会議をすべて送るので、試すときは必ず --db と手元のサーバー（MINUTES_CLOUD_BASE_URL・MINUTES_CLOUD_TOKEN）を付ける
 
 # 既存の録音（ほかのサービスで録ったものなど）から評価区間を切り出して 3 プロバイダを比較する
 .build/release/minutes-cli cut recordings/external/meeting.m4a recordings/external/cut/system_16k.wav --start 10:00 --duration 600

@@ -155,11 +155,29 @@ struct AccountSettingsPane: View {
                   status: cloud ? "Minutes クラウドに任せています" : "使っていません（\(ownProvidersText) を使っています）", active: cloud) {
                 Button("変える") { model.requestedSettingsTab = .providers }
             }
+            usage("iphone", title: "この Mac の会議を iPhone でも読む",
+                  status: syncStatus(signedIn: signedIn), active: signedIn && model.settings.syncMeetingsToMinutesCloud) {
+                Toggle("この Mac の会議を iPhone でも読む", isOn: Binding(
+                    get: { model.settings.syncMeetingsToMinutesCloud },
+                    set: { model.setMeetingSync($0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(!signedIn)
+            }
         } header: {
             Text("この Mac での使いみち")
         } footer: {
-            Text("Minutes クラウドは、会議の音声と文字起こしを Minutes のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。iPhone・Apple Watch で録った会議は、いつも Minutes クラウドで文字起こしと要約をします。")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Minutes クラウドは、会議の音声と文字起こしを Minutes のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。iPhone・Apple Watch で録った会議は、いつも Minutes クラウドで文字起こしと要約をします。")
+                Text("「iPhone でも読む」を入れると、この Mac の会議（これまでの会議も）の文字起こしと議事録を Minutes のサーバーに置き、iPhone の Minutes で読めるようにします。ほかの参加者の発言も含みます。音声と、ローカルのみの会議は送りません。切ると、それより後は送りません（送った会議はサーバーに残ります）。Mac で会議を消すと、サーバーからも消えます。")
+            }
         }
+    }
+
+    private func syncStatus(signedIn: Bool) -> String {
+        guard signedIn else { return "ログインすると使えます" }
+        return model.settings.syncMeetingsToMinutesCloud ? "同期しています（iPhone の Minutes に出ます）" : "切っています"
     }
 
     /// 「自分で選ぶ」で使っている手段（「ElevenLabs Scribe v2・Codex」）

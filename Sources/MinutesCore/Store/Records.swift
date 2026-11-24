@@ -387,6 +387,10 @@ public struct PipelineRunRecord: MinutesAutoIDRecord, Identifiable, Equatable {
 
 public enum ExportStatus: String, Codable, Sendable {
     case ok, pending, failed
+    /// 同期先から消すのを待っている（Mac で会議を消した・ローカルのみにした。P7）
+    case removePending = "remove_pending"
+    /// 同期先から消した
+    case removed
 }
 
 public struct ExportLogRecord: MinutesAutoIDRecord, Identifiable, Equatable {

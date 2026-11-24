@@ -139,9 +139,9 @@ private struct MeetingCard: View {
 
     var body: some View {
         let state = Formatting.state(item, recordingClientId: recordingClientId)
-        let fromWatch = item.server?.source == "watch" || item.local?.source == "watch"
+        let tile = item.isMacMeeting ? "laptopcomputer" : (item.server?.source == "watch" || item.local?.source == "watch") ? "applewatch" : "waveform"
         HStack(alignment: .top, spacing: 12) {
-            TintedTile(systemImage: state?.isError == true ? "exclamationmark.triangle.fill" : (fromWatch ? "applewatch" : "waveform"),
+            TintedTile(systemImage: state?.isError == true ? "exclamationmark.triangle.fill" : tile,
                        tint: state?.isError == true ? Palette.rose : (item.isDone ? Palette.periwinkle : (state?.tint ?? Palette.periwinkle)), size: 40)
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.title ?? "無題の会議")
@@ -192,7 +192,7 @@ private struct EmptyMeetings: View {
                 .padding(.bottom, 6)
             Text("会議はまだありません")
                 .font(.title3.weight(.semibold))
-            Text("iPhone と Apple Watch で録った会議が、\nここに並びます。")
+            Text("iPhone と Apple Watch で録った会議が、ここに並びます。\nMac の会議は、Mac の設定で同期を入れると出ます。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -297,17 +297,42 @@ public struct SyncReceipt: Sendable, Equatable {
     public var uploadedAt: Date
 }
 
+/// 同期先へ渡す書き出し: 会議のフォルダと、その元にした DB の中身（話者のラベル・名前など、フォルダの形にないものを使う同期先のため）。
+public struct SyncExport: Sendable {
+    public var folder: URL
+    public var manifest: ExportManifest
+    public var input: MeetingExporter.Input
+
+    public init(folder: URL, manifest: ExportManifest, input: MeetingExporter.Input) {
+        self.folder = folder
+        self.manifest = manifest
+        self.input = input
+    }
+}
+
 public protocol SyncTarget: Sendable {
     var id: String { get }
     var cacheIdentity: String { get }
     func upload(folder: URL, manifest: ExportManifest) async throws -> SyncReceipt
+    /// 書き出しを送る。既定は会議のフォルダを送る（upload(folder:manifest:)）。DB の中身から自分の形を作る同期先は、こちらを実装する。
+    func upload(export: SyncExport) async throws -> SyncReceipt
+    /// この同期先へ送る会議か（既定はすべて）。送らない会議は、書き出しの記録も残さない。
+    func accepts(_ meeting: MeetingRecord) -> Bool
     /// 会議の書き出しを同期先から取り消す（ローカル専用への切替時）。対応しない同期先は空配列を返す。削除したパスを返す。
     func remove(meeting: MeetingRecord) async throws -> [String]
+    /// 消した会議を同期先から消す（会議の行はもうない。`Store.remoteRemovalTargets` の同期先だけが呼ばれる）。
+    func removeDeleted(meetingID: String) async throws
+    /// この誤りなら、同じ同期先への残りの再送をこの回はやめる（ログイン切れ・有料でない・混雑・回線。会議ごとの誤りではない）。
+    func haltsRetries(_ error: Error) -> Bool
 }
 
 public extension SyncTarget {
     var cacheIdentity: String { id }
+    func upload(export: SyncExport) async throws -> SyncReceipt { try await upload(folder: export.folder, manifest: export.manifest) }
+    func accepts(_ meeting: MeetingRecord) -> Bool { true }
     func remove(meeting: MeetingRecord) async throws -> [String] { [] }
+    func removeDeleted(meetingID: String) async throws {}
+    func haltsRetries(_ error: Error) -> Bool { false }
 }
 
 public extension MeetingExporter {
