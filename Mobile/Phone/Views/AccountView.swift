@@ -41,6 +41,12 @@ struct AccountView: View {
                         } label: {
                             row("アカウントを消す", systemImage: "trash", tint: Palette.rose)
                         }
+                        // 確認は押したボタンから出す（画面全体に付けると、関係のない場所から出る）
+                        .confirmationDialog("アカウントを消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                            Button("アカウントを消す", role: .destructive) { deleteAccount() }
+                        } message: {
+                            Text("サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。")
+                        }
                     }
                     .buttonStyle(CardPressStyle())
                     .cardBackground()
@@ -62,11 +68,6 @@ struct AccountView: View {
             }
             .disabled(working)
             .overlay { if working { ProgressView().controlSize(.large) } }
-            .confirmationDialog("アカウントを消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
-                Button("アカウントを消す", role: .destructive) { deleteAccount() }
-            } message: {
-                Text("サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。")
-            }
             .task { await model.refresh() }
         }
     }

@@ -32,6 +32,15 @@ enum Formatting {
         return label
     }
 
+    /// やることの担当者の表示名。要約は担当者を "me"・"agent"・話者のラベルか名前で返す（Mac の ActionRow と同じ読み方）。空なら出さない
+    static func owner(_ owner: String, in document: TranscriptDocument?) -> String? {
+        switch owner {
+        case "": nil
+        case "agent": "エージェント"
+        default: speaker(owner, in: document)
+        }
+    }
+
     /// 一覧と詳細に出す状態（空なら出さない）
     static func status(_ item: MeetingItem, recordingClientId: String?) -> String {
         if item.id == recordingClientId { return "録音中" }

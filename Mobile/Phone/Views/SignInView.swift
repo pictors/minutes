@@ -13,6 +13,7 @@ struct SignInView: View {
     @State private var codeSent = false
     @State private var working = false
     @State private var message: String?
+    @State private var position = ScrollPosition(edge: .top)
     @FocusState private var focus: Field?
 
     private enum Field { case email, code }
@@ -72,6 +73,15 @@ struct SignInView: View {
                                 .keyboardType(.numberPad)
                                 .font(.title3.weight(.semibold).monospacedDigit())
                                 .focused($focus, equals: .code)
+                                .onChange(of: code) { _, value in
+                                    // 数字だけ・6 桁まで。6 桁そろったらそのままログインする（数字のキーボードには送るキーがない）
+                                    let digits = Self.digits(value)
+                                    if digits != value {
+                                        code = digits
+                                    } else if digits.count == 6, !working {
+                                        verify()
+                                    }
+                                }
                         }
                         .transition(Motion.content(reduceMotion: reduceMotion))
                         Button("ログイン") { verify() }
@@ -107,11 +117,42 @@ struct SignInView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
+        .scrollPosition($position)
         .scrollDismissesKeyboard(.interactively)
+        .onChange(of: focus) { _, field in
+            if field != nil { revealForm() }
+        }
         .background(Surface.page.ignoresSafeArea())
+        .overlay(alignment: .top) { statusBarFade }
         .overlay {
             if working { ProgressView().controlSize(.large) }
         }
+    }
+
+    /// 入力欄に入ったら、フォームの終わりまで送る。キーボードは欄の下のボタン（コードを送る・ログイン）を隠すので、
+    /// キーボードの分だけ表示域が縮んでから動かす。
+    private func revealForm() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard focus != nil else { return }
+            withAnimation(reduceMotion ? nil : Motion.layout) { position.scrollTo(edge: .bottom) }
+        }
+    }
+
+    /// 送った中身が時刻やダイナミックアイランドに重ならないように、上の安全域を地の色で覆い、その下を少しぼかす
+    private var statusBarFade: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 0).background(Surface.page)
+            LinearGradient(colors: [Surface.page, Surface.page.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 16)
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 入れた文字から数字だけを 6 桁まで取る（全角の数字や、貼り付けた「123 456」も受ける）
+    private static func digits(_ text: String) -> String {
+        let half = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        return String(half.filter { $0.isASCII && $0.isNumber }.prefix(6))
     }
 
     private func field(@ViewBuilder _ content: () -> some View) -> some View {

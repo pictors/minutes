@@ -100,11 +100,6 @@ struct MeetingDetailView: View {
                 }
             }
         }
-        .confirmationDialog("この会議を消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button("消す", role: .destructive) { delete() }
-        } message: {
-            Text("音声・文字起こし・議事録を、この iPhone とサーバーから消します。元に戻せません。")
-        }
         .task(id: item?.server?.status) { await load() }
         .refreshable {
             if let id = item?.server?.id { await model.reloadServerRecording(id: id) }
@@ -166,16 +161,24 @@ struct MeetingDetailView: View {
                             Text(action.text)
                                 .fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 6) {
-                                let name = Formatting.speaker(action.owner, in: transcript)
-                                HStack(spacing: 5) {
-                                    SpeakerBadge(label: action.owner, name: name, size: 18)
-                                    Text(name)
+                                if let name = Formatting.owner(action.owner, in: transcript) {
+                                    HStack(spacing: 5) {
+                                        if action.owner == "agent" {
+                                            Image(systemName: "sparkles")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(Palette.violet)
+                                                .frame(width: 18, height: 18)
+                                        } else {
+                                            SpeakerBadge(label: action.owner, name: name, size: 18)
+                                        }
+                                        Text(name)
+                                    }
+                                    .font(.caption.weight(.medium))
+                                    .padding(.leading, 3)
+                                    .padding(.trailing, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Surface.raised, in: .capsule)
                                 }
-                                .font(.caption.weight(.medium))
-                                .padding(.leading, 3)
-                                .padding(.trailing, 8)
-                                .padding(.vertical, 3)
-                                .background(Surface.raised, in: .capsule)
                                 if let due = action.due, !due.isEmpty {
                                     InfoChip(text: due, systemImage: "calendar")
                                 }
@@ -312,6 +315,12 @@ struct MeetingDetailView: View {
             }
             .accessibilityLabel("会議の操作")
             .disabled(item == nil)
+            // 確認は操作のメニューから出す（画面全体に付けると、関係のない場所から出る）
+            .confirmationDialog("この会議を消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("消す", role: .destructive) { delete() }
+            } message: {
+                Text("音声・文字起こし・議事録を、この iPhone とサーバーから消します。元に戻せません。")
+            }
         }
     }
 
