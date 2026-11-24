@@ -73,8 +73,6 @@ enum BrandCopy {
     /// 公開ページの最初の見出し
     static let promise = "会議は、\n話すことに集中しよう。"
     static let promiseDetail = "録音するだけ。議事録は、Minutes が書きます。"
-    static let emptyTitle = "録音するだけ。"
-    static let emptyDetail = "終わったら、議事録は Minutes が書きます。"
 }
 
 extension View {

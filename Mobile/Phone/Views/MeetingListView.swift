@@ -182,20 +182,24 @@ private struct MeetingCard: View {
     }
 }
 
+/// 会議がないとき。Mac のアプリの空の表示と同じく、マークは色を付けず灰色で小さく、ことばは「まだありません」にする
+/// （ブランドを大きく見せるのはログインの画面だけ）。どの会議が並ぶかも書く（Mac で録った会議は、まだ iPhone には出ない）。
 private struct EmptyMeetings: View {
     var body: some View {
-        VStack(spacing: 14) {
-            MinutesMark(height: 52, color: Palette.periwinkle.opacity(0.9))
+        VStack(spacing: 10) {
+            MinutesMark(height: 34, color: .secondary)
+                .opacity(0.7)
                 .padding(.bottom, 6)
-            Text(BrandCopy.emptyTitle)
-                .brandDisplay(size: 28)
-            Text(BrandCopy.emptyDetail)
+            Text("会議はまだありません")
+                .font(.title3.weight(.semibold))
+            Text("iPhone と Apple Watch で録った会議が、\nここに並びます。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 72)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 80)
     }
 }
 
