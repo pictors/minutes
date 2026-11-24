@@ -62,7 +62,7 @@ macOS はアプリ単位で音を録ります。**ブラウザのタブ単位で
 | | クラウド OK | ローカルのみ |
 |---|---|---|
 | 録音した音声 | 会議のあと、選んだ文字起こしのサービス（ElevenLabs / OpenAI。準備中の Minutes（キーなし）は Pictors のサーバー）へ送る。参加者の名前と用語も、精度を上げるために送る | 送らない（この Mac の中で文字起こし） |
-| 文字起こしの本文・会議名・参加者 | 選んだ要約の手段へ送る（Codex は OpenAI、Claude Code と Anthropic API は Anthropic、Minutes（キーなし）は Pictors のサーバー） | 送らない（要約は作らない） |
+| 文字起こしの本文・会議名・参加者 | 選んだ要約の手段へ送る（Codex は OpenAI、Claude Code と Anthropic API は Anthropic。準備中の Minutes（キーなし）は Pictors のサーバー） | 送らない（要約は作らない） |
 | 書き出し・同期 | 選んだフォルダへコピーする | しない |
 
 - ライブ字幕は、いつもこの Mac の中で作ります。
