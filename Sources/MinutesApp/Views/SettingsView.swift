@@ -538,6 +538,11 @@ struct ProviderSettingsPane: View {
 
     private var finalEntry: ProviderCatalog.Entry? { ProviderCatalog.final(draft.finalProviderId) }
 
+    /// Minutes（キーなし）を選択肢に出すか（公開までは、ログインの印がある Mac などに限る。`AppModel.offersMinutesCloud`）。
+    private var offersMinutesCloud: Bool {
+        model.offersMinutesCloud(draftSelected: draft.finalProviderId == MinutesCloudTranscriber.providerID || draft.resolvedSummaryProvider == .minutesCloud)
+    }
+
     /// 変わったら接続とモデル一覧を確認し直す。Codex 以外を選んでいる間は nil。
     private var codexLookup: String? {
         draft.resolvedSummaryProvider == .codex ? "\(draft.codexExecutablePath ?? "")\n\(codexRefresh)" : nil
@@ -575,7 +580,7 @@ struct ProviderSettingsPane: View {
         Form {
             Section {
                 Picker("確定文字起こし", selection: $draft.finalProviderId) {
-                    ForEach(ProviderCatalog.finalProviders) { entry in
+                    ForEach(ProviderCatalog.finalProviders.filter { !$0.usesMinutesAccount || offersMinutesCloud }) { entry in
                         Text(entry.title).tag(entry.id)
                     }
                 }
@@ -603,7 +608,7 @@ struct ProviderSettingsPane: View {
                     Text("Codex app server（既定）").tag(SummaryProvider.codex)
                     Text("Claude Code").tag(SummaryProvider.claudeCode)
                     Text("Anthropic API").tag(SummaryProvider.anthropic)
-                    Text("Minutes（キーなし）").tag(SummaryProvider.minutesCloud)
+                    if offersMinutesCloud { Text("Minutes（キーなし）").tag(SummaryProvider.minutesCloud) }
                     Divider()
                     Text("要約しない").tag(SummaryProvider.none)
                 }

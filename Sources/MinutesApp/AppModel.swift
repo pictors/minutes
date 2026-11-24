@@ -468,6 +468,16 @@ final class AppModel {
 
     // MARK: - Minutes（キーなし）のアカウント
 
+    /// Minutes（キーなし）を選択肢に出すか（設定・初回の案内）。公開までは、この Mac にログインの印があるか、
+    /// すでに選んでいるか、隠しスイッチが入っているときだけ出す（`MinutesCloudOffer`、SPEC §5.6）。
+    /// `draftSelected` は、まだ保存していない画面の上の選択（選んだ直後に選択肢から消さない）。
+    func offersMinutesCloud(draftSelected: Bool = false) -> Bool {
+        let selected = draftSelected || settings.finalProviderId == MinutesCloudTranscriber.providerID || settings.resolvedSummaryProvider == .minutesCloud
+        // ログイン・ログアウトで表示を更新する（minutesCloudEmail を読んで監視の対象にする）
+        return MinutesCloudOffer.isOffered(hasLogin: minutesCloudEmail != nil || MinutesCloudCredentials.hasStoredLogin,
+                                           selected: selected, preview: UserDefaults.standard.bool(forKey: MinutesCloudOffer.previewDefaultsKey))
+    }
+
     /// ログイン（なければ登録）のコードをメールに送る。
     func sendMinutesCloudCode(email: String) async throws {
         try await MinutesCloudClient.standard().sendSignInCode(email: email.trimmingCharacters(in: .whitespacesAndNewlines))

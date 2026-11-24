@@ -178,9 +178,10 @@ enum ProviderCatalog {
         return unique.joined(separator: " + ")
     }
 
-    /// notes.model（"codex/gpt-6-astra / prompt v2" 等）からプロンプト版を落とす。
+    /// notes.model（"codex/gpt-6-astra / prompt v2" 等）からプロンプト版を落とす。Pictors のサーバーの要約（"minutes.cloud"）は名前で出す。
     static func summarizeModel(_ raw: String) -> String {
-        raw.components(separatedBy: " / prompt").first ?? raw
+        let model = raw.components(separatedBy: " / prompt").first ?? raw
+        return model == PostProcessPipeline.cloudSummaryModel ? "Minutes" : model
     }
 }
 

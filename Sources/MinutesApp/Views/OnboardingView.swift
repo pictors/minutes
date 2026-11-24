@@ -562,7 +562,10 @@ private struct ProvidersPage: View {
             PageHeader(title: "文字起こしと要約", detail: "会議が終わったら、選んだサービスに会議の音声と本文を送って、文字起こしと要約を作ります。送りたくない会議は、録音の前に「ローカルのみ」を選ぶと、この Mac の中で文字起こしします（要約は作りません）。")
             SectionCard("文字起こし", systemImage: "waveform") {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(ProviderCatalog.finalProviders) { entry in
+                    // Minutes（キーなし）は、公開までは出さない（ログインの印がある Mac などに限る。SPEC §5.6）
+                    ForEach(ProviderCatalog.finalProviders.filter {
+                        !$0.usesMinutesAccount || onboarding.model.offersMinutesCloud(draftSelected: onboarding.finalProvider == MinutesCloudTranscriber.providerID)
+                    }) { entry in
                         ChoiceRow(selected: onboarding.finalProvider == entry.id, title: title(entry), detail: detail(entry)) {
                             onboarding.finalProvider = entry.id
                         }
