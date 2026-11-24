@@ -102,7 +102,8 @@ struct MenuBarLabel: View {
     }
 }
 
-/// 「ファイル > 音声ファイルを取り込む…」（SPEC §4.4）。メニューはメインウィンドウを出している間だけ現れる。
+/// 「ファイル > 音声ファイルを取り込む…」（SPEC §4.4）と「iPhone・Watch の会議を取り込む」（SPEC §4.5。Minutes にログインしているときだけ押せる。
+/// ふだんは自動で取り込むので、すぐ取り込みたいときのためのもの）。メニューはメインウィンドウを出している間だけ現れる。
 struct ImportCommands: Commands {
     let model: AppModel
 
@@ -113,6 +114,11 @@ struct ImportCommands: Commands {
                 model.showingImportPicker = true
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
+            Button("iPhone・Watch の会議を取り込む") {
+                model.showMainWindow()
+                model.pullCloudMeetings(userInitiated: true)
+            }
+            .disabled(model.minutesCloudEmail == nil)
         }
     }
 }

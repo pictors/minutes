@@ -60,6 +60,7 @@ CLI の実行例（release ビルド後、バイナリは `.build/release/minute
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-only   # 保存済み本文から要約だけやり直す（編集・根拠 ID を保持）
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-provider claude-code   # 要約の手段: codex（既定）/ claude-code / anthropic / minutes-cloud / none
 .build/release/minutes-cli account login --email you@example.com      # Minutes（キーなし、SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
+.build/release/minutes-cli pull --db <試し用の DB> --audio-root <フォルダ> --export-dir <フォルダ>   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5）。--db を省くとアプリの DB に入るので、試すときは必ず付ける
 
 # 既存の録音（ほかのサービスで録ったものなど）から評価区間を切り出して 3 プロバイダを比較する
 .build/release/minutes-cli cut recordings/external/meeting.m4a recordings/external/cut/system_16k.wav --start 10:00 --duration 600
@@ -85,10 +86,10 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
   Eval/                      CER
   Support/                   ArgumentParser, DotEnv, Multipart, HostClock, JSON, Log, AppSettings, Diagnostics（診断情報の書き出し）
-  Store/                     GRDB レコード・スキーマ・Store・音声保持
+  Store/                     GRDB レコード・スキーマ・Store・音声保持、サーバーからの取り込みの記録（CloudImport）
   Session/                   SessionStateMachine、MeetingSessionController、VoiceSampleExtractor
   Pipeline/                  PostProcessPipeline（8 ステップ、pipeline_runs で再開）、PostProcessingQueue
-  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）
+  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）、CloudMeetingImport（iPhone・Watch の会議をサーバーから取り込む、SPEC §4.5）
   Summarize/                 MinutesSummary、CodexSummarizer、ClaudeCodeSummarizer（claude -p）、ClaudeSummarizer（API）、Resources/Prompts/summarize_ja.md
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）

@@ -52,6 +52,25 @@ struct DropHighlight: View {
 }
 
 /// 取り込み中の表示（会議リストの下）。
+/// メニューから頼んだ「iPhone・Watch の会議を取り込む」の進み具合と結果（会議リストの下。SPEC §4.5）。
+struct CloudPullBar: View {
+    let notice: CloudPullNotice
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if notice.busy { ProgressView().controlSize(.small) }
+            Text(notice.text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .capsule)
+        .padding(.bottom, 10)
+    }
+}
+
 struct ImportProgressBar: View {
     let count: Int
 

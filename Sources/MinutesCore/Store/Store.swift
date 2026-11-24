@@ -376,8 +376,11 @@ public final class Store: Sendable {
 
     /// 言語を変えて文字起こしし直す前に、本文の編集を外す（編集した本文は transcript_revisions に残す）。
     /// 再認識は編集済みの本文を置き換えない決まり（`reconcileSegments`）なので、言語を変えたときだけここで戻す。
+    /// サーバーの文字起こしと要約を使っていた会議（取り込み。SPEC §4.5）は、ここからこの Mac の手段で処理する。
     public func prepareRetranscription(meetingId: String) throws {
         try writer.write { db in
+            try db.execute(sql: "UPDATE meetings SET cloud_processed = 0, updated_at = ? WHERE id = ? AND cloud_processed = 1",
+                           arguments: [Store.isoString(Date()), meetingId])
             let current = try Store.fetchSegments(db, meetingId: meetingId, source: .final)
             guard current.contains(where: { $0.originalText == nil || $0.text != $0.originalText }) else { return }
             let content = String(decoding: try JSONCoding.encoder().encode(current.map { record -> SegmentRecord in

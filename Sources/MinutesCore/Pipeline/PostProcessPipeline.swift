@@ -112,6 +112,12 @@ public final class PostProcessPipeline: Sendable {
     public static let micArtifact = "final_mic.json"
     public static let mergedArtifact = "merged.json"
     public static let summaryArtifact = "summary.json"
+    /// サーバーが作った文字起こしと要約（iPhone・Apple Watch の録音の取り込み。SPEC §4.5）。
+    /// `cloudProcessed` の会議は、これをそのまま本文と要約にする（この Mac の文字起こし・要約の手段は呼ばない）。
+    public static let cloudTranscriptArtifact = "cloud_transcript.json"
+    public static let cloudSummaryArtifact = "cloud_summary.json"
+    /// 取り込んだ要約の手段の名前（キーなしの要約 `MinutesCloudSummarizer` と同じサーバー）
+    public static let cloudSummaryModel = "minutes.cloud"
 
     public let store: Store
     public let providers: PipelineProviders
@@ -218,9 +224,14 @@ public final class PostProcessPipeline: Sendable {
                     exportPath = result.path
                     provider = result.provider
                 case .notify:
-                    let notes = try store.notes(meetingId: meetingId)
-                    providers.notify?(meeting, notes)
-                    provider = nil
+                    // サーバーから取り込んだ会議は知らせない（iPhone・Watch で録った会議が、まとめて届くことがある）
+                    if meeting.cloudProcessed {
+                        provider = "skipped (取り込み)"
+                    } else {
+                        let notes = try store.notes(meetingId: meetingId)
+                        providers.notify?(meeting, notes)
+                        provider = nil
+                    }
                 }
                 let savedFingerprint = try stepFingerprint(step, meeting: try store.meeting(id: meetingId) ?? meeting, directory: directory)
                 try store.finishRun(run, status: .ok, provider: provider, fingerprint: savedFingerprint)
@@ -358,6 +369,12 @@ public final class PostProcessPipeline: Sendable {
     /// 2. privacy_mode に従ってプロバイダを選び、トラックごとに final を作る。クラウド失敗時は Local にフォールバック。
     /// system と mic は同時に送る（G3。順に送ると会議の終了から議事録までが 2 本分かかる）。
     func transcribeFinal(meeting: MeetingRecord, directory: URL, policy: RetryPolicy = .immediate) async throws -> String? {
+        // サーバーで文字起こし済みの会議（取り込み）は、この Mac からは送らない。サーバーの文字起こしがなければ失敗にする
+        // （ないまま進めると、音声をこの Mac の手段へ送り直してしまう）。
+        if meeting.cloudProcessed {
+            let document = try loadCloudTranscript(directory)
+            return "cloud: \(document.provider)"
+        }
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
         let language = try resolveLanguage(meeting)
@@ -526,6 +543,13 @@ public final class PostProcessPipeline: Sendable {
 
     /// 3. mic（me）と system を時刻でマージする。
     func mergeTracks(meeting: MeetingRecord, directory: URL) throws -> String? {
+        if meeting.cloudProcessed {
+            // サーバーの文字起こしをそのまま本文にする（区切りを変えない。要約の根拠の番号と 1 対 1 のままにする）
+            let document = try loadCloudTranscript(directory)
+            let merged = MergedTranscript(speakers: document.speakers, segments: document.segments, providerDescription: document.provider)
+            try JSONCoding.encoder().encode(merged).write(to: directory.appendingPathComponent(PostProcessPipeline.mergedArtifact), options: .atomic)
+            return "cloud"
+        }
         let decoder = JSONCoding.decoder()
         func load(_ name: String) throws -> TranscriptionResult? {
             let url = directory.appendingPathComponent(name)
@@ -577,6 +601,7 @@ public final class PostProcessPipeline: Sendable {
     /// 5. 要約（local_only ではスキップ）。成果物にモデル・入力ハッシュを保存する。
     func summarize(meeting: MeetingRecord, directory: URL) async throws -> String? {
         guard let current = try store.meeting(id: meeting.id), current.privacy == .cloudOk else { return "skipped (local_only)" }
+        if current.cloudProcessed { return try useCloudSummary(meeting: current, directory: directory) }
         guard let summarizer = providers.summarizer else { return "skipped (no summarizer)" }
         let input = try summaryInput(current)
         guard !input.segments.isEmpty else { return "skipped (empty transcript)" }
@@ -587,6 +612,41 @@ public final class PostProcessPipeline: Sendable {
         let artifact = SummaryArtifact(summary: summary, model: summarizer.modelDescription, inputFingerprint: fingerprint)
         try JSONCoding.encoder().encode(artifact).write(to: directory.appendingPathComponent(Self.summaryArtifact), options: .atomic)
         return artifact.model
+    }
+
+    /// サーバーが書いた要約をそのまま使う（取り込んだ会議。この Mac の要約の手段は、設定してあっても呼ばない）。
+    /// 根拠の番号はサーバーの文字起こしの発話の番号なので、DB の発話の ID に付け替える。サーバーに要約がなければ要約なしのままにする。
+    func useCloudSummary(meeting: MeetingRecord, directory: URL) throws -> String? {
+        let url = directory.appendingPathComponent(Self.cloudSummaryArtifact)
+        guard FileManager.default.fileExists(atPath: url.path) else { return "skipped (サーバーの要約なし)" }
+        let summary = try JSONCoding.decoder().decode(MinutesSummary.self, from: Data(contentsOf: url))
+        let document = try loadCloudTranscript(directory)
+        let input = try summaryInput(meeting)
+        guard !input.segments.isEmpty else { return "skipped (empty transcript)" }
+        let map = Self.evidenceMap(from: document.segments, to: try store.segments(meetingId: meeting.id, source: .final))
+        let artifact = SummaryArtifact(summary: summary.remappingEvidence(map), model: Self.cloudSummaryModel, inputFingerprint: try PipelineFingerprint.encoded(input))
+        try JSONCoding.encoder().encode(artifact).write(to: directory.appendingPathComponent(Self.summaryArtifact), options: .atomic)
+        return "cloud: \(artifact.model)"
+    }
+
+    /// サーバーの文字起こしの発話の番号 → DB の発話の ID。時刻と文言が同じ発話を、順に 1 つずつ対応させる
+    /// （この Mac で文言を直していても、元の文言で合わせる）。対応のない番号は根拠から落ちる。
+    static func evidenceMap(from segments: [TranscriptDocument.Segment], to rows: [SegmentRecord]) -> [Int: Int] {
+        var unused = rows
+        var map: [Int: Int] = [:]
+        for segment in segments {
+            guard let index = unused.firstIndex(where: { $0.tStart == segment.tStart && $0.tEnd == segment.tEnd && ($0.originalText ?? $0.text) == segment.text }),
+                  let id = unused[index].id else { continue }
+            map[segment.id] = Int(id)
+            unused.remove(at: index)
+        }
+        return map
+    }
+
+    func loadCloudTranscript(_ directory: URL) throws -> TranscriptDocument {
+        let url = directory.appendingPathComponent(Self.cloudTranscriptArtifact)
+        guard FileManager.default.fileExists(atPath: url.path) else { throw PipelineError.artifactMissing(Self.cloudTranscriptArtifact) }
+        return try JSONCoding.decoder().decode(TranscriptDocument.self, from: Data(contentsOf: url))
     }
 
     /// 6. 本文は resolve_speakers で確定済み。store の再試行で編集を上書きしない。
@@ -689,15 +749,26 @@ public final class PostProcessPipeline: Sendable {
         case .finalizeAudio:
             values.append("audio-quality-v1")
             try files([RecordingSession.systemArchiveName, RecordingSession.micArchiveName, RecordingSession.systemSTTName, RecordingSession.micSTTName, "expected-tracks.json", RecordingManifest.fileName])
+        case .transcribeFinal where meeting.cloudProcessed:
+            // 取り込んだ会議（サーバーの文字起こしを使う）。この Mac の文字起こしの手段や用語には依らない。
+            // この Mac で録った会議の指紋は変えない（値を足すと、既存の会議がすべてやり直しになる）
+            values.append("cloud-v1")
+            try files([Self.cloudTranscriptArtifact])
         case .transcribeFinal:
             try files([RecordingSession.systemSTTName, RecordingSession.micSTTName, Self.systemArtifact, Self.micArtifact])
             values += [meeting.privacyMode, providers.local.cacheIdentity, providers.cloud?.cacheIdentity ?? "none", meeting.attendeesJson ?? "", try PipelineFingerprint.encoded(store.manualKeyterms()), String(format: "offset=%.3f", meeting.meetingStartOffsetSeconds)]
             // 日本語（言語を持つ前の会議を含む）は値を足さない。足すと既存の会議がすべて文字起こしし直しになる
             if meeting.meetingLanguage != .ja { values.append("language=\(meeting.meetingLanguage.rawValue)") }
+        case .mergeTracks where meeting.cloudProcessed:
+            values.append("cloud-v1")
+            try files([Self.cloudTranscriptArtifact, Self.mergedArtifact])
         case .mergeTracks:
             try files([Self.systemArtifact, Self.micArtifact, Self.mergedArtifact])
         case .resolveSpeakers:
             try files([Self.mergedArtifact])
+        case .summarize where meeting.cloudProcessed:
+            values += [meeting.privacyMode, "cloud-v1", try PipelineFingerprint.encoded(summaryInput(meeting))]
+            try files([Self.cloudSummaryArtifact, Self.summaryArtifact])
         case .summarize:
             values += [meeting.privacyMode, providers.summarizer?.cacheIdentity ?? "none", try PipelineFingerprint.encoded(summaryInput(meeting))]
             try files([Self.summaryArtifact])

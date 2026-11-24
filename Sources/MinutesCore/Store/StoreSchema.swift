@@ -175,6 +175,23 @@ public enum StoreSchema {
             ALTER TABLE meetings ADD COLUMN summary_language TEXT;
             """)
         }
+        // サーバーで処理した会議の取り込み（iPhone・Apple Watch の録音。SPEC §4.5）:
+        // 元の録音の ID、サーバーの文字起こしと要約をそのまま使う印、取り込みの記録（会議を消しても残し、同じ録音を取り込み直さない）。
+        migrator.registerMigration("v9_cloud_import") { db in
+            try db.execute(sql: """
+            ALTER TABLE meetings ADD COLUMN cloud_recording_id TEXT;
+            ALTER TABLE meetings ADD COLUMN cloud_processed INTEGER NOT NULL DEFAULT 0;
+            CREATE UNIQUE INDEX meetings_cloud_recording_idx ON meetings(cloud_recording_id) WHERE cloud_recording_id IS NOT NULL;
+            CREATE TABLE cloud_imports (
+              recording_id TEXT PRIMARY KEY,
+              meeting_id TEXT,
+              status TEXT NOT NULL CHECK (status IN ('imported', 'failed')),
+              attempts INTEGER NOT NULL DEFAULT 0,
+              attempted_at TEXT NOT NULL,
+              error TEXT
+            );
+            """)
+        }
         return migrator
     }
 }

@@ -85,6 +85,8 @@ extension MeetingPlatform {
         case .meet: "Google Meet"
         case .teams: "Microsoft Teams"
         case .other: "会議"
+        case .iphone: "iPhone で録音"
+        case .watch: "Apple Watch で録音"
         }
     }
 
@@ -93,6 +95,8 @@ extension MeetingPlatform {
         case .meet: "video.fill"
         case .teams: "person.2.fill"
         case .other: "waveform"
+        case .iphone: "iphone"
+        case .watch: "applewatch"
         }
     }
 
@@ -101,6 +105,7 @@ extension MeetingPlatform {
         case .meet: Palette.mint
         case .teams: Palette.violet
         case .other: Palette.periwinkle
+        case .iphone, .watch: Palette.cyan
         }
     }
 }

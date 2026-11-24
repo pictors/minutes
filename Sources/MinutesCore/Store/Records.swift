@@ -14,6 +14,8 @@ public enum MeetingStatus: String, Codable, Sendable, CaseIterable {
 
 public enum MeetingPlatform: String, Codable, Sendable, CaseIterable {
     case meet, teams, other
+    /// iPhone・Apple Watch で録った対面の会議（サーバーから取り込む。SPEC §4.5）
+    case iphone, watch
 }
 
 public enum SegmentSource: String, Codable, Sendable {
@@ -67,9 +69,16 @@ public struct MeetingRecord: MinutesRecord, Identifiable, Equatable {
     public var languageDetected: Bool
     /// 要約の言語（ISO 639-1）。nil は日本語。文字起こしのときに会議の言語と設定から決める。
     public var summaryLanguage: String?
+    /// サーバーの録音の ID（iPhone・Apple Watch で録って、サーバーから取り込んだ会議。SPEC §4.5）。この Mac で録った会議は nil。
+    public var cloudRecordingId: String?
+    /// サーバーの文字起こしと要約をそのまま使う（この Mac では文字起こしも要約もやり直さない）。
+    /// 会議の言語を変えて文字起こしし直すと false になり、それからはこの Mac の手段で処理する（`Store.prepareRetranscription`）。
+    public var cloudProcessed: Bool
 
-    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = [], language: MeetingLanguage? = nil, languageDetected: Bool = false, summaryLanguage: MeetingLanguage? = nil) {
+    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = [], language: MeetingLanguage? = nil, languageDetected: Bool = false, summaryLanguage: MeetingLanguage? = nil, cloudRecordingId: String? = nil, cloudProcessed: Bool = false) {
         self.id = id
+        self.cloudRecordingId = cloudRecordingId
+        self.cloudProcessed = cloudProcessed
         self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt

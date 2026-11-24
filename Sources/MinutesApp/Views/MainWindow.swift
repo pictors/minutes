@@ -436,12 +436,17 @@ struct ContentColumn: View {
             if dropTargeted { DropHighlight() }
         }
         .safeAreaInset(edge: .bottom) {
-            if model.importingCount > 0 { ImportProgressBar(count: model.importingCount).transition(.opacity) }
+            if model.importingCount > 0 {
+                ImportProgressBar(count: model.importingCount).transition(.opacity)
+            } else if let notice = model.cloudPullNotice {
+                CloudPullBar(notice: notice).transition(.opacity)
+            }
         }
         .audioImportDropTarget(model, isTargeted: $dropTargeted)
         .animation(.smooth(duration: 0.2), value: model.isSearchActive)
         .animation(.easeOut(duration: 0.15), value: dropTargeted)
         .animation(.smooth(duration: 0.2), value: model.importingCount > 0)
+        .animation(.smooth(duration: 0.2), value: model.cloudPullNotice)
         .navigationSplitViewColumnWidth(min: 290, ideal: 350)
     }
 }

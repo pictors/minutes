@@ -144,6 +144,20 @@ Google Meet・Microsoft Teams・Zoom などのオンライン会議を Mac 上�
 - 会議: 開始は確認した日時、終了は開始 + 音声の長さ、`recording_started_at` は開始と同じ（録音準備中の切り落としを起こさない）。`privacy_mode` は次の会議の設定に従う。会議の行と後処理の依頼を 1 つの書き込みで作り、以降は録音と同じ後処理（§8）を通る。
 - 背景の声の候補: 身に着けた機器で録ると録った人の声がいちばん大きく、離れた参加者が 10 dB 以上小さいと背景の声の候補に出ることがある（候補は自動では隠さない）。
 
+### 4.5 iPhone・Apple Watch の会議の取り込み（製品版の P5、2026-11-24）
+
+iPhone か Apple Watch で録って、サーバーで文字起こしと議事録になった会議（§5.7）を、この Mac の会議リストへ取り込む。Minutes（§5.6）にログインしている Mac が、サーバーへ取りに行く（`CloudMeetingImport`）。
+
+- いつ: 起動時と 10 分ごと、ログインのあと、アプリを前に出したとき（1 分に 1 回まで）、メニューの「ファイル > iPhone・Watch の会議を取り込む」。CLI は `minutes-cli pull`。
+- 何を: サーバーの録音の一覧のうち、iPhone・Watch で録って処理の終わったもの（この Mac のキーなしの文字起こしの録音は取り込まない）。音声・文字起こし（transcript.json）・要約（summary.json）を落とす。
+- 会議の形: 外部の録音の取り込み（§4.4）と同じ。音声は `system_16k.wav` と `system.m4a` にし、全体を 1 本の system トラックとして扱う。題名・開始日時・言語・話者の名前はサーバーのもの（iPhone で直した題名と話者の名前を含む。題名がなければ「iPhone の録音」「Apple Watch の録音」）。`platform` は `iphone` / `watch`、`privacy_mode` は `cloud_ok`。
+- 文字起こしと要約はサーバーのものをそのまま使い、この Mac ではやり直さない（`meetings.cloud_processed`）。後処理（§8）は同じ待ち行列を通るが、`transcribe_final` は何も送らず、`merge_tracks` はサーバーの区切りのまま本文にし、`summarize` はサーバーの要約を保存する（根拠の番号は DB の発話の ID に付け替える。この Mac の要約の手段は、設定してあっても呼ばない。サーバーに要約がなければ要約なしのまま）。話者の音量の測定・保存・書き出しはふだんどおりで、通知は出さない。サーバーの文字起こしのファイルがなくなっていたら失敗にする（音声をこの Mac の手段へ送り直さない）。
+- 二重に取り込まない: 会議は元の録音の ID を持ち（`meetings.cloud_recording_id`）、取り込みの記録（`cloud_imports`）は会議を消しても残す。Mac で消した会議は取り込み直さない。会議の行・後処理の依頼・取り込みの記録は 1 つの書き込みで作る。
+- 取り込めなかった録音（音声を読めないなど）は覚えて、10 分から倍々に間をあけて試す（最長 1 日）。回線・ログイン切れ・サーバーの混雑では途中でやめ、次の取り込みで続ける。
+- 一度きりの取り込み: 取り込んだあとに iPhone で直した題名・話者の名前や、iPhone で消した会議は Mac に届かない。Mac で直した内容もサーバーへ戻さない（双方向の同期はあとの段）。
+- Mac でやり直すとき: 会議の言語を変えると（§5.5）、そこからはこの Mac の手段で文字起こしと要約をやり直す（`cloud_processed` を外す）。要約だけの作り直し（「要約を更新」）も、この Mac の要約の手段を使う。
+- まだ扱わないもの: サーバーの音声の保存期間（30 日）を過ぎた会議、サーバーの一覧の新しい 100 件より古い会議、カレンダーの予定との対応付け、取り込むかどうかの設定。
+
 ---
 
 ## 5. 文字起こしと話者分離
@@ -229,7 +243,7 @@ mic track は常に `"me"`。
 
 ### 5.7 iPhone と Watch のアプリ（製品版、2026-11-23 着手）
 
-対面の会議を iPhone か Apple Watch で録り、§5.6 と同じサーバーで文字起こしと議事録にする。アプリは公開する（`Mobile/`。Xcode のプロジェクトで、iPhone のアプリに Watch のアプリを同梱する）。最初の版は、iPhone と Watch で録った会議だけを扱う（Mac の会議との行き来はあとの段）。
+対面の会議を iPhone か Apple Watch で録り、§5.6 と同じサーバーで文字起こしと議事録にする。アプリは公開する（`Mobile/`。Xcode のプロジェクトで、iPhone のアプリに Watch のアプリを同梱する）。iPhone と Watch のアプリは、iPhone と Watch で録った会議だけを扱う。Mac はそれを会議リストへ取り込む（§4.5）。Mac で録った会議を iPhone で見ることと、双方向の同期はあとの段。
 
 - 録音: AAC 16 kHz mono 32 kbps の ADTS（拡張子 .aac）で、走（ひと続きの録音）ごとに 1 つのファイルに書き足す。電話・Siri などで止まったら走を閉じ、再開の推奨（iOS・watchOS 27 の `resumptionRecommendationNotification`、26 までは `interruptionNotification`）を受けたら新しい走で続ける。すぐの再開は断られることがあるので、数秒おきに何度か試す。録れなかった時間は会議の画面に出す。録音中は録音していることを画面にはっきり出す。
 - 送り方: 録音の ID（client_id）は端末で決める。録音中から、増えた分を区切りにして上げる（`parts/:run/:offset`。区切りの境目は端末の記録 `upload.json` に残し、上げ直しでも同じ境目で上げる）。走を閉じたら、切り出したときのバイト列と閉じたファイルを SHA-256 で比べ、違えば上げ直す。止めて区切りがすべて届いたら、走ごとのバイト数を添えて complete を送る（サーバーは区切りをつないで 1 本にし、文字起こしと要約をする）。
@@ -310,7 +324,7 @@ finalizing ──(失敗)──▶ failed（音声は保持、再実行可）
 
 ### 7.1 SQLite（GRDB、`~/Library/Application Support/Minutes/minutes.sqlite`）
 
-初期のスキーマ。以後の列とテーブルの追加（録音開始時刻、タグ、話者の音量と除外、用語、本文の版、自動録音の記録、後処理ジョブなど）は `Sources/MinutesCore/Store/StoreSchema.swift` のマイグレーションが正。
+初期のスキーマ。以後の列とテーブルの追加（録音開始時刻、タグ、話者の音量と除外、用語、本文の版、自動録音の記録、後処理ジョブ、会議の言語、サーバーの録音の ID と取り込みの記録など）は `Sources/MinutesCore/Store/StoreSchema.swift` のマイグレーションが正。
 
 ```sql
 CREATE TABLE meetings (
@@ -318,7 +332,7 @@ CREATE TABLE meetings (
   title TEXT NOT NULL,
   started_at TEXT NOT NULL,          -- ISO 8601
   ended_at TEXT,
-  platform TEXT,                     -- 'meet' | 'teams' | 'other'
+  platform TEXT,                     -- 'meet' | 'teams' | 'other'（取り込んだ会議は 'iphone' | 'watch'。§4.5）
   calendar_event_id TEXT,
   calendar_title TEXT,
   attendees_json TEXT,               -- [{name, email}]
@@ -453,6 +467,8 @@ generated_by: minutes/0.1 (elevenlabs.scribe_v2, codex/<model>, prompt v3)
 
 要約・書き出し・通知の失敗は会議を failed にせず、警告として残して会議は完了扱いにする（画面からやり直せる）。文字起こし以前と保存の失敗だけが failed。
 
+サーバーから取り込んだ会議（§4.5）は、2・3・5 でサーバーの文字起こしと要約をそのまま使い（この Mac の手段は呼ばない）、8 の通知は出さない。
+
 ### 8.1 Summarizer
 
 - 要約の手段は設定で選ぶ。
@@ -548,6 +564,7 @@ protocol SyncTarget {
 - 話者割当: 全文の話者チップをクリック → 参加者候補から選択 → 同クラスタ全体に反映。
 - 検索: 入力ごとに FTS、ハイライト付き snippet。
 - 音声の取り込み（§4.4）: 会議リストへのドロップとメニューから。取り込み中は会議リストの下に進み具合を出す。
+- iPhone・Watch の会議の取り込み（§4.5）: 自動。メニューから頼んだときは、会議リストの下に進み具合と結果を出す。会議のアイコンは録った機器（iPhone・Apple Watch）。
 
 ### 10.3 設定
 

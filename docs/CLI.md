@@ -96,6 +96,7 @@ $CLI account login --email you@example.com      # メールに届く 6 桁を入
 $CLI account status                             # プランと今月の量（--json）
 $CLI process recordings/2026-09-16_weekly --provider minutes --summary-provider minutes-cloud --title "週次定例"
 $CLI transcribe recordings/2026-09-16_weekly --provider minutes
+$CLI pull --db /tmp/minutes-test.sqlite --audio-root /tmp/minutes-audio   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5。--db を省くとアプリの DB）
 $CLI account logout
 ```
 

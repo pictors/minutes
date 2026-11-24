@@ -26,6 +26,7 @@ struct MinutesCLI {
             case "assets": try await AssetsCommand.run(rest)
             case "bench": try BenchCommand.run(rest)
             case "account": try await AccountCommand.run(rest)
+            case "pull": try await PullCommand.run(rest)
             case "help", "--help", "-h": printUsage()
             case "version", "--version": Console.out(version)
             default:
@@ -108,6 +109,10 @@ struct MinutesCLI {
           minutes-cli account login --email <address> | status [--json] | logout
               Minutes（キーなし）のアカウント。メールに届くコードでログインし、印はアプリと同じ Keychain に置く。
               MINUTES_CLOUD_BASE_URL でサーバーの場所を変えられる（既定 https://api.minutes.tools）。
+
+          minutes-cli pull [--db <path>] [--audio-root <dir>] [--export-dir <dir>] [--no-process]
+              サーバーの会議（iPhone・Apple Watch で録ったもの）を取り込み、後処理（保存・書き出し）に掛ける。
+              文字起こしと要約はサーバーのものを使う（この Mac の手段は呼ばない）。同じ録音は二重に取り込まない。
 
         API キー: 環境変数または .env の ELEVENLABS_API_KEY / OPENAI_API_KEY
         """)
