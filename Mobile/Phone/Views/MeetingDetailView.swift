@@ -356,6 +356,8 @@ struct MeetingDetailView: View {
             self.transcript = try await transcript
             self.summary = try await summary
             loadError = nil
+        } catch where PhoneModel.isCancellation(error) {
+            // 画面を離れた・読み直しに替わった（誤りとして出さない）
         } catch {
             loadError = "議事録を読めませんでした（\(error.localizedDescription)）"
         }

@@ -83,7 +83,32 @@ final class PhoneModel {
         return items.values.sorted { $0.startedAt > $1.startedAt }
     }
 
+    private var refreshTask: Task<Void, Never>?
+
+    /// 一覧を読み直す。読んでいる途中なら、その読み込みが終わるのを待つ（同時に 2 つ走らせない）。
+    /// 読み込みは呼んだ画面の仕事（引き下げての更新・アカウントのシート・処理中の見回り）とは別の Task で走らせ、画面が閉じたり
+    /// 作り直されたりしても取り消さない（取り消すと URLSession が「キャンセルしました」で終わり、一覧の上に誤りとして出ていた）。
     func refresh() async {
+        if let running = refreshTask {
+            await running.value
+            return
+        }
+        let task = Task { [weak self] in
+            await self?.performRefresh()
+            self?.refreshTask = nil
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    /// 取り消し（画面を離れた・アプリが裏へ回った）か。誤りとして出さない。
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+
+    private func performRefresh() async {
         guard isSignedIn else { return }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -102,6 +127,8 @@ final class PhoneModel {
             banner = error.localizedDescription
             // 録音中は録音の画面を消さない（録音は端末に残り、ログインし直したら送る）
             if !recorder.isActive { signedOutLocally() }
+        } catch where Self.isCancellation(error) {
+            // 取り消しは誤りではない（前の知らせはそのまま。次の読み込みで消える）
         } catch {
             banner = "一覧を読めませんでした（\(error.localizedDescription)）"
         }

@@ -202,6 +202,8 @@ struct ShareLinksView: View {
         do {
             shares = try await model.client.shares(recordingID: recordingID)
             message = nil
+        } catch where PhoneModel.isCancellation(error) {
+            // シートを閉じた（誤りとして出さない）
         } catch {
             message = Self.describe(error, action: "リンクを読めませんでした")
         }
