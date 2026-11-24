@@ -43,6 +43,8 @@ final class WatchModel {
         LoginRelay.shared.activate()
         #if DEBUG
         autoRecordIfRequested()
+        quickRecordIfRequested()
+        observeQuickRecordNotification()
         #endif
     }
 
@@ -61,6 +63,21 @@ final class WatchModel {
             try? await Task.sleep(for: .seconds(seconds))
             recorder.stop()
         }
+    }
+
+    /// 開発用: 環境変数 MINUTES_QUICK_RECORD=1 があれば、起動してすぐ「録音を始める」の求めを立てる（コンプリケーション・コントロールから
+    /// 開いたときと同じ道。告知と、録音中なら始めないことも同じ）。外から画面を押せない Watch のシミュレータで確かめる。
+    private func quickRecordIfRequested() {
+        guard ProcessInfo.processInfo.environment["MINUTES_QUICK_RECORD"] == "1" else { return }
+        QuickRecord.shared.request()
+    }
+
+    /// 開発用: 動いているアプリに「録音を始める」の求めを立てる（待っているとき・録音中に、コントロールから求めが来たときと同じ道）。
+    /// `xcrun simctl spawn <端末> notifyutil -p jp.pictors.minutes.debug.quick-record`
+    private func observeQuickRecordNotification() {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), nil, { _, _, _, _, _ in
+            Task { @MainActor in QuickRecord.shared.request() }
+        }, "jp.pictors.minutes.debug.quick-record" as CFString, nil, .deliverImmediately)
     }
     #endif
 

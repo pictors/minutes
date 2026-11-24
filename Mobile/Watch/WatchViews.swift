@@ -32,7 +32,15 @@ struct WatchRootView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.becameActive() }
+            if phase == .active {
+                model.becameActive()
+                takeQuickRecord()
+            }
+        }
+        // 文字盤・コントロールセンター・Siri・ショートカットからの「録音を始める」（QuickRecord。SPEC §5.7）
+        .onChange(of: QuickRecord.shared.isPending, initial: true) { takeQuickRecord() }
+        .onOpenURL { url in
+            if QuickRecord.isRecordURL(url) { QuickRecord.shared.request() }
         }
     }
 
@@ -92,6 +100,14 @@ struct WatchRootView: View {
                 WatchRecordingDetailView(clientId: clientId)
             }
         }
+    }
+
+    /// 「録音を始める」の求めを、アプリが前面になってから受け取り、「録音」のボタンと同じ流れで始める（最初の録音の前は告知を出す）。
+    /// 録音中なら 2 本目は始めず、録音の画面を出したままにする。
+    private func takeQuickRecord() {
+        guard scenePhase == .active, QuickRecord.shared.take() else { return }
+        guard !model.recorder.isActive, !starting, !showingNotice else { return }
+        start()
     }
 
     private func start() {

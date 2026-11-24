@@ -97,7 +97,9 @@ Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカ
 Mobile/                      iPhone と Watch のアプリ（製品版、SPEC §5.7）。Minutes.xcodeproj（フォルダと同期するグループ。ファイルを足してもプロジェクトを直さなくてよい）
   Shared/                    iPhone と Watch で共通: 見た目の決まり（DesignSystem: Palette・Surface・Motion・BigTimerText・PillButtonStyle・SectionCard。Mac の DesignSystem と同じ言葉。system の赤・橙を直接使わない）、録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
   Phone/                     iPhone のアプリ（PhoneModel、Views/）
-  Watch/                     Watch のアプリ（WatchModel、WatchViews。ログインは iPhone から LoginRelay で受け取る）
+  Watch/                     Watch のアプリ（WatchModel、WatchViews。ログインは iPhone から LoginRelay で受け取る。Siri とショートカットの言い方は MinutesWatchShortcuts）
+  WatchIntents/              Watch のアプリと拡張で共通: 録音を始める App Intent（StartRecordingIntent）と、入口からアプリへ求めを渡す口（QuickRecord）
+  WatchWidgets/              Watch の拡張（MinutesWatchWidgets）: 文字盤のコンプリケーションとコントロールセンターのコントロール。状態を持たない。Shared は入れない
   Support/                   設定（Base.xcconfig）、Info.plist、entitlements。署名のチーム ID は Signing.xcconfig（git に入れない。.example を写す）
 Sources/MinutesApp/          SwiftUI アプリ（AppModel、OnboardingModel・SetupChecks（初回の案内）、CalendarService、MeetingDetector、GlobalHotKey、Views/）。Info.plist と entitlements は build-app.sh が使う
 Tests/MinutesCoreTests/      単体テスト（golden JSON は Fixtures/）
@@ -118,7 +120,7 @@ site/                        公開ページ（minutes.tools、日本語と英�
 
 ## 実行時の注意
 
-- iPhone と Watch のアプリ（Mobile/）: シミュレータでは録音にマイクを使わず、本番（api.minutes.tools）にも送らない（シミュレータのマイクは Mac のマイク）。開発のビルドは `xcrun simctl launch` の前に `SIMCTL_CHILD_MINUTES_CLOUD_BASE_URL`・`SIMCTL_CHILD_MINUTES_CLOUD_TOKEN`（手元のサーバー）と `SIMCTL_CHILD_MINUTES_FIXTURE_AUDIO=<fixtures/sample_meeting/system_16k.wav の絶対パス>`・`SIMCTL_CHILD_MINUTES_FIXTURE_SPEED`（録音の代わりに書く架空の会議）を付ける。Watch のシミュレータは外から画面を押せないので、`SIMCTL_CHILD_MINUTES_AUTORECORD_SECONDS=<秒>` で起動してすぐ録音し、その秒数で止める（DEBUG だけ）。実機に入れるには Signing.xcconfig にチーム ID を書く（初めての実機のビルドで、Xcode が Apple Developer に App ID と開発用のプロファイルを作る）。
+- iPhone と Watch のアプリ（Mobile/）: シミュレータでは録音にマイクを使わず、本番（api.minutes.tools）にも送らない（シミュレータのマイクは Mac のマイク）。開発のビルドは `xcrun simctl launch` の前に `SIMCTL_CHILD_MINUTES_CLOUD_BASE_URL`・`SIMCTL_CHILD_MINUTES_CLOUD_TOKEN`（手元のサーバー）と `SIMCTL_CHILD_MINUTES_FIXTURE_AUDIO=<fixtures/sample_meeting/system_16k.wav の絶対パス>`・`SIMCTL_CHILD_MINUTES_FIXTURE_SPEED`（録音の代わりに書く架空の会議）を付ける。Watch のシミュレータは外から画面を押せないので、`SIMCTL_CHILD_MINUTES_AUTORECORD_SECONDS=<秒>` で起動してすぐ録音し、その秒数で止める（DEBUG だけ）。文字盤・コントロールセンター・Siri からの「録音を始める」（SPEC §5.7）は、`SIMCTL_CHILD_MINUTES_QUICK_RECORD=1` で起動時に、`xcrun simctl spawn <端末> notifyutil -p jp.pictors.minutes.debug.quick-record` で動いているアプリに、同じ求めを立てて確かめる（DEBUG だけ。コンプリケーションとコントロールを押すところはシミュレータでは確かめられない）。実機に入れるには Signing.xcconfig にチーム ID を書く（初めての実機のビルドで、Xcode が Apple Developer に App ID と開発用のプロファイルを作る）。
 
 - TCC: `record` / `live` はマイクと「システムオーディオ録音」の許可が必要。ターミナルから起動した場合、許可はターミナルアプリ（責任プロセス）に紐づく。ad-hoc 署名のバイナリはビルドごとに許可がリセットされるので、継続利用は `CODESIGN_IDENTITY`（`.env` か環境変数。Apple Development 証明書で可）を設定した `scripts/build-cli.sh` / `scripts/build-app.sh` で。無効な ID はビルド前に止まる（`scripts/codesign-identity.sh`）。
 - Process Tap は「タブ単位」の切り出しができない。会議は専用ブラウザで開く運用（初回の案内と README）。
