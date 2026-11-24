@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-/// Minutes（キーなし）のログインの印（SPEC §5.6、§14）。Keychain（service jp.pictors.minutes、account minutes-cloud-session）に置き、起動中は覚えておく
+/// Minutes クラウドのログインの印（SPEC §5.6、§14）。Keychain（service jp.pictors.minutes、account minutes-cloud-session）に置き、起動中は覚えておく
 /// （Keychain の読み取りは、署名の違う版では確認のダイアログを出すので、1 回だけ読む）。
 /// テストと CLI は環境変数 MINUTES_CLOUD_TOKEN で差し替えられる。印・メールアドレスはログに出さない。
 public enum MinutesCloudCredentials {
@@ -66,13 +66,13 @@ public extension MinutesCloudClient {
     }
 }
 
-/// Minutes（キーなし）を選択肢に出すか（SPEC §5.6）。公開（製品版の P6）までは、ふつうの利用者には出さない:
+/// Minutes クラウドを選択肢に出すか（SPEC §5.6）。公開（製品版の P6）までは、ふつうの利用者には出さない:
 /// 価格・利用規約・プライバシーポリシーがそろう前に、アカウントを作る入口を全員に見せない。公開のときにこの決まりを外す。
 public enum MinutesCloudOffer {
     /// 公開の前に試す人のための隠しスイッチ: `defaults write jp.pictors.minutes MinutesCloudPreview -bool YES`
     public static let previewDefaultsKey = "MinutesCloudPreview"
 
-    /// 出すのは、この Mac にログインの印がある・すでにキーなしを選んでいる・隠しスイッチが入っている、のどれかのとき。
+    /// 出すのは、この Mac にログインの印がある・すでに Minutes クラウドを選んでいる・隠しスイッチが入っている、のどれかのとき。
     /// すでに選んでいる設定は、ログアウトしたあとも選択肢に残す（選択肢から消えると、いまの選択を表示できない）。
     public static func isOffered(hasLogin: Bool, selected: Bool, preview: Bool) -> Bool {
         hasLogin || selected || preview

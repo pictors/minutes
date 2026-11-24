@@ -164,7 +164,7 @@ public enum AudioFileTools {
 
     // MARK: - AAC
 
-    /// キーなしのサーバーへ送るために AAC（.m4a）へ写した一時ファイルを作る（サーバーは AAC・M4A だけを受ける）。呼び出し側がフォルダごと消す。
+    /// Minutes クラウドのサーバーへ送るために AAC（.m4a）へ写した一時ファイルを作る（サーバーは AAC・M4A だけを受ける）。呼び出し側がフォルダごと消す。
     /// 少しずつ読んで書く（60 分の音声を一度にメモリへ載せない）。ビットレートを受け付けない形式なら、エンコーダーに任せる。
     public static func aacCopy(of url: URL, bitrate: Int = 32_000) throws -> URL {
         let input = try AVAudioFile(forReading: url)

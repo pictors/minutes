@@ -84,7 +84,7 @@ struct MinutesCLI {
               --db <path>（既定: ~/Library/Application Support/Minutes/minutes.sqlite）--export-dir --sync-dir --no-summary
               --force step,step で完了済みステップを再実行（例: --force summarize,store,export）
               --summary-provider codex|claude-code|anthropic|minutes-cloud|none（既定: codex）--summary-model <model>
-              --provider minutes と --summary-provider minutes-cloud は Minutes（キーなし。account login でログイン）
+              --provider minutes と --summary-provider minutes-cloud は Minutes クラウド（account login でログイン）
               --codex-path <absolute-path> --claude-path <absolute-path>
               --summary-only で保存済み本文から要約だけを更新（本文・根拠 ID は保持）
               --language ja|en で会議の言語を決める（省略すると新しい会議はライブ字幕から自動判定）。--summary-language ja|en で要約の言語
@@ -107,7 +107,7 @@ struct MinutesCLI {
               録音中の書き出し処理（整合・AAC・16 kHz WAV）の CPU を合成音声で測る（G7 の内訳。デバイス・許可は不要）。
 
           minutes-cli account login --email <address> | status [--json] | logout
-              Minutes（キーなし）のアカウント。メールに届くコードでログインし、印はアプリと同じ Keychain に置く。
+              Minutes クラウドのアカウント。メールに届くコードでログインし、印はアプリと同じ Keychain に置く。
               MINUTES_CLOUD_BASE_URL でサーバーの場所を変えられる（既定 https://api.minutes.tools）。
 
           minutes-cli pull [--db <path>] [--audio-root <dir>] [--export-dir <dir>] [--no-process]

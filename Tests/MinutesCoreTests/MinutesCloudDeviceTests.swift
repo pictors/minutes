@@ -29,7 +29,7 @@ private let serverSummary = """
  "open_questions":[{"text":"架空の論点","evidence":[0]}],"keyterms_learned":["架空の用語"]}
 """
 
-@Suite("キーなし（iPhone・Watch のやり取り）")
+@Suite("Minutes クラウド（iPhone・Watch のやり取り）")
 struct MinutesCloudDeviceClientTests {
     @Test("日時はミリ秒のあり・なしの両方を読む（サーバーの toISOString と、今までの .iso8601）")
     func tolerantDates() throws {

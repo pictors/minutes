@@ -2,7 +2,7 @@ import Foundation
 @testable import MinutesCore
 import Testing
 
-@Suite("Minutes（キーなし）を選択肢に出すか（公開までの決まり、SPEC §5.6）")
+@Suite("Minutes クラウドを選択肢に出すか（公開までの決まり、SPEC §5.6）")
 struct MinutesCloudOfferTests {
     @Test("ふつうの利用者には出さない。ログインの印がある・すでに選んでいる・隠しスイッチのどれかで出す")
     func rule() {

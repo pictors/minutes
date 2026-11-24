@@ -1,7 +1,7 @@
 import Foundation
 import MinutesCore
 
-/// Minutes（キーなし）のアカウント（SPEC §5.6）。ログインの印はアプリと同じ Keychain に置く。
+/// Minutes クラウドのアカウント（SPEC §5.6）。ログインの印はアプリと同じ Keychain に置く。
 ///   minutes-cli account login --email <address>   メールに届いたコードを聞いてログインする
 ///   minutes-cli account status                    ログインしているか・プランと今月の量
 ///   minutes-cli account logout

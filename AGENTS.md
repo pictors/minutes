@@ -59,7 +59,7 @@ CLI の実行例（release ビルド後、バイナリは `.build/release/minute
 .build/release/minutes-cli process recordings/2026-09-16_weekly --provider elevenlabs --title "週次定例"
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-only   # 保存済み本文から要約だけやり直す（編集・根拠 ID を保持）
 .build/release/minutes-cli process recordings/2026-09-16_weekly --summary-provider claude-code   # 要約の手段: codex（既定）/ claude-code / anthropic / minutes-cloud / none
-.build/release/minutes-cli account login --email you@example.com      # Minutes（キーなし、SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
+.build/release/minutes-cli account login --email you@example.com      # Minutes クラウド（SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
 .build/release/minutes-cli pull --db <試し用の DB> --audio-root <フォルダ> --export-dir <フォルダ>   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5）。--db を省くとアプリの DB に入るので、試すときは必ず付ける
 
 # 既存の録音（ほかのサービスで録ったものなど）から評価区間を切り出して 3 プロバイダを比較する
@@ -80,7 +80,7 @@ python3 scripts/make-fixtures.py
 ## レイアウト
 
 ```
-Sources/MinutesKit/          機種に依らない型・JSON・ログ・Minutes（キーなし）のサーバーとのやり取り（依存なし。macOS・iOS・watchOS。MinutesCore が @_exported で含める）
+Sources/MinutesKit/          機種に依らない型・JSON・ログ・Minutes クラウドのサーバーとのやり取り（依存なし。macOS・iOS・watchOS。MinutesCore が @_exported で含める）
 Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方から使う）
   Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList, AudioImport（外部の録音の取り込み、SPEC §4.4）
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
@@ -125,7 +125,7 @@ site/                        公開ページ（minutes.tools、日本語と英�
 - 最初の起動では初回の案内（`OnboardingView`）が開き、終えるまで自動録音を準備しない。会議がすでにある環境では出さない。設定 > 診断 から開き直せる。
 - 起動の窓は `AppDelegate`（`MinutesApp.swift`）が起動の Apple イベントで決める（`LaunchKind`: ログイン項目ならメニューバーだけ、SPEC §10.1）。窓を開く操作は `AppModel.present` を通す（Dock を持たせてから開き、前に出す）。macOS 14 からのアクティベーションは協調的で、Finder・Dock・Spotlight から起動した直後のメニューバー常駐アプリは `NSApp.activate()` を断られる（macOS 26.5 で確認）ので、アクティブでないときだけ `activate(ignoringOtherApps:)` を使う。
 - 会議の言語（日本語・英語、SPEC §5.5）: 会議ごとに `meetings.language` を持ち、ライブ字幕・確定の文字起こし・要約・書き出しが従う。自動は日本語のライブ字幕で始め、後処理の文字起こしの前に字幕の文字の種類で判定する（`MeetingLanguageDetector`）。録音中の切り替えは `LiveLocaleControl` で認識器を開き直す。日本語は後処理の指紋と要約の入力に値を足さない（足すと既存の会議がすべて文字起こしし直しになる）。英語のライブ字幕のモデルは初めて英語を選んだときにダウンロードする。
-- Minutes（キーなし）は、製品版の公開まで設定と初回の案内の選択肢に出さない（`MinutesCloudOffer`、SPEC §5.6）。出るのは、この Mac にログインの印がある（`minutes-cli account login` で作れる）・すでにキーなしを選んでいる・`defaults write jp.pictors.minutes MinutesCloudPreview -bool YES` のとき。「iPhone・Watch の会議を取り込む」のメニュー（SPEC §4.5）は、ログインしているときだけ出る。
+- Minutes クラウド（以前の名前は「Minutes（キーなし）」）は、製品版の公開まで設定と初回の案内の選択肢に出さず、設定の「アカウント」のタブ（Minutes アカウントのログイン）も出さない（`MinutesCloudOffer`、SPEC §5.6）。出るのは、この Mac にログインの印がある（`minutes-cli account login` で作れる）・すでに Minutes クラウドを選んでいる・`defaults write jp.pictors.minutes MinutesCloudPreview -bool YES` のとき。「iPhone・Watch の会議を取り込む」のメニュー（SPEC §4.5）は、ログインしているときだけ出る。
 - 録音中の終了（SPEC §6.4）: 終了の求めはすべて `AppDelegate.applicationShouldTerminate` から `AppModel.terminationReply` を通る。録音中は確認を出し、ログアウト・システム終了は確かめずに止めて保存する。更新の再起動は、録音・後処理が終わるまで `UpdateController` が遅らせる（`RelaunchGate`）。会議が始まったかの印は、録音のフォルダの `recording-phase.json`。起動時の復旧（`Store.recoverInterruptedMeetings`）がこの印を見て、録音準備だけなら行と音声を消し、会議なら後処理を依頼する。
 - 自動の録音準備（SPEC §6.4）: `MeetingSessionController.arm` はマイクの許可を尋ねない。許可がなければ行を作らずに `ArmPermissionError` で終え、`AppModel.checkArmCondition` は予定回を使わずに通知で知らせる（許可を尋ねるのは手動の開始と初回の案内）。偽の録音で、マイクを録る設定のまま録音準備を試すテストは `micAuthorization` を差し込む（既定は実際の TCC を読む）。
 - 自動更新は Sparkle（`Updates.swift`）。配布用のビルド（`build-app.sh --dist`）だけが SUFeedURL を持ち、開発用のビルドと `swift run` では動かさない。Sparkle.framework は XPC サービスを外して内側から署名する。更新の DMG は EdDSA で署名する（鍵はキーチェーンのアカウント `jp.pictors.minutes`。公開鍵は Info.plist の SUPublicEDKey）。版を上げるときは Info.plist の CFBundleShortVersionString と CFBundleVersion（数字、毎回増やす）を直す。

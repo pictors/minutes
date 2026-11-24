@@ -155,7 +155,7 @@ private final class FakeServer: Sendable {
     }
 }
 
-@Suite("キーなし（Pictors のサーバー）")
+@Suite("Minutes クラウド（Pictors のサーバー）")
 struct MinutesCloudClientTests {
     @Test("録音の作り方: 値のない欄は送らず、Bearer の印を付け、Cookie は送らない")
     func createRecordingShape() async throws {

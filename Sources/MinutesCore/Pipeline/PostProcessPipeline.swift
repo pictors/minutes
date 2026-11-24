@@ -116,7 +116,7 @@ public final class PostProcessPipeline: Sendable {
     /// `cloudProcessed` の会議は、これをそのまま本文と要約にする（この Mac の文字起こし・要約の手段は呼ばない）。
     public static let cloudTranscriptArtifact = "cloud_transcript.json"
     public static let cloudSummaryArtifact = "cloud_summary.json"
-    /// 取り込んだ要約の手段の名前（キーなしの要約 `MinutesCloudSummarizer` と同じサーバー）
+    /// 取り込んだ要約の手段の名前（Minutes クラウドの要約 `MinutesCloudSummarizer` と同じサーバー）
     public static let cloudSummaryModel = "minutes.cloud"
 
     public let store: Store
@@ -378,7 +378,7 @@ public final class PostProcessPipeline: Sendable {
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
         let language = try resolveLanguage(meeting)
-        // キーなし（Pictors のサーバー）なら、この文字起こしの組を決める（2 本を 1 つの会議として数える。SPEC §5.6）
+        // Minutes クラウド（Pictors のサーバー）なら、この文字起こしの組を決める（2 本を 1 つの会議として数える。SPEC §5.6）
         let cloudGroup = providers.cloud?.id == MinutesCloudTranscriber.providerID && meeting.privacy != .localOnly
             ? try cloudGroupKey(meeting: meeting, directory: directory, language: language) : nil
         let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms, language: language,
@@ -420,7 +420,7 @@ public final class PostProcessPipeline: Sendable {
         var cloudGroup: String?
     }
 
-    /// キーなしで送る文字起こしの組。同じ会議の同じ入力なら同じ組（後処理のやり直しで上げ直さず、二重に数えない）、
+    /// Minutes クラウドで送る文字起こしの組。同じ会議の同じ入力なら同じ組（後処理のやり直しで上げ直さず、二重に数えない）、
     /// 入力が変わった文字起こしし直しは別の組（サーバーでは新しい会議として数える）。
     /// 入力は文字起こしの指紋（stepFingerprint）と同じもの: 音声・参加者・手で足した用語・言語・会議の始まり。
     /// 要約から覚えた用語は入れない（要約のたびに組が変わり、やり直しで上げ直すことになる）。
@@ -436,7 +436,7 @@ public final class PostProcessPipeline: Sendable {
         return MinutesCloudGroup.key(meetingID: meeting.id, run: inputs.joined(separator: "\n"))
     }
 
-    /// キーなしで文字起こしした会議の組（トラックの成果物の providerMeta に残る）。ほかの手段で文字起こしした会議は nil。
+    /// Minutes クラウドで文字起こしした会議の組（トラックの成果物の providerMeta に残る）。ほかの手段で文字起こしした会議は nil。
     func cloudGroup(directory: URL?) -> String? {
         guard let directory else { return nil }
         for name in [Self.systemArtifact, Self.micArtifact] {

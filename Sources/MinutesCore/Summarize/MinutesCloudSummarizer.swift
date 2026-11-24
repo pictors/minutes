@@ -1,9 +1,9 @@
 import CryptoKit
 import Foundation
 
-/// Minutes（キーなし）: Pictors のサーバーで要約する（製品版の有料の手段、SPEC §5.6）。
+/// Minutes クラウド: Pictors のサーバーで要約する（製品版の有料の手段、SPEC §5.6）。
 /// 話者の名前などを解いたあとの SummaryInput をそのまま送る（サーバーは Mac と同じ指示文と出力の形で要約する）。
-/// キーなしで文字起こしした会議（同じ組。SummaryContext.cloudGroup）だけで使える。同じ入力の要約は同じ依頼（client_id）にする。
+/// Minutes クラウドで文字起こしした会議（同じ組。SummaryContext.cloudGroup）だけで使える。同じ入力の要約は同じ依頼（client_id）にする。
 public struct MinutesCloudSummarizer: Summarizing {
     public var client: MinutesCloudClient
     public var pollInterval: Duration

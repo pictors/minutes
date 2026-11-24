@@ -6,7 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum SettingsTab: String, CaseIterable, Sendable {
-    case recording, providers, export, calendar, people, appearance, diagnostics, about
+    case recording, account, providers, export, calendar, people, appearance, diagnostics, about
 }
 
 /// 設定（SPEC §10.3）。変更は 0.5 秒後に自動で保存・適用する。API キーはプロバイダの行で入力し、Keychain に保存する。
@@ -23,6 +23,10 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $selection) {
             Tab("録音", systemImage: "record.circle", value: .recording) { RecordingSettingsPane(draft: $draft) }
+            // Minutes アカウント（ログイン）。製品版の公開までは、ログインの印がある Mac などにだけ出す（`MinutesCloudOffer`、SPEC §5.6）
+            if model.offersMinutesCloud() {
+                Tab("アカウント", systemImage: "person.crop.circle", value: .account) { AccountSettingsPane() }
+            }
             Tab("プロバイダ", systemImage: "cloud", value: .providers) { ProviderSettingsPane(draft: $draft) }
             Tab("書き出し", systemImage: "square.and.arrow.up", value: .export) { ExportSettingsPane(draft: $draft) }
             Tab("カレンダー", systemImage: "calendar", value: .calendar) { CalendarSettingsPane(draft: $draft) }
@@ -55,7 +59,8 @@ struct SettingsView: View {
 
     private func consumeRequestedTab(_ tab: SettingsTab?) {
         guard let tab else { return }
-        selection = tab
+        // アカウントのタブは、出していないときは選ばない（公開までの決まり）
+        selection = tab == .account && !model.offersMinutesCloud() ? .providers : tab
         model.requestedSettingsTab = nil
     }
 
@@ -538,7 +543,7 @@ struct ProviderSettingsPane: View {
 
     private var finalEntry: ProviderCatalog.Entry? { ProviderCatalog.final(draft.finalProviderId) }
 
-    /// Minutes（キーなし）を選択肢に出すか（公開までは、ログインの印がある Mac などに限る。`AppModel.offersMinutesCloud`）。
+    /// Minutes クラウドを選択肢に出すか（公開までは、ログインの印がある Mac などに限る。`AppModel.offersMinutesCloud`）。
     private var offersMinutesCloud: Bool {
         model.offersMinutesCloud(draftSelected: draft.finalProviderId == MinutesCloudTranscriber.providerID || draft.resolvedSummaryProvider == .minutesCloud)
     }
@@ -600,7 +605,7 @@ struct ProviderSettingsPane: View {
                 Text((finalEntry.map { $0.detail + "。" } ?? "")
                      + "ローカルのみの会議とクラウド失敗時は常にローカルを使います。"
                      + (finalEntry?.keyName == nil ? "" : "キーは Keychain に保存し、.env / 環境変数より優先します。")
-                     + (finalEntry?.usesMinutesAccount == true ? "ログインは下の「Minutes（キーなし）のアカウント」で行います。" : "")
+                     + (finalEntry?.usesMinutesAccount == true ? "ログインは「アカウント」のタブで行います。" : "")
                      + "変更は次の後処理から適用されます。学習した用語は「人物と用語」で確認・削除できます。")
             }
             Section {
@@ -608,7 +613,7 @@ struct ProviderSettingsPane: View {
                     Text("Codex app server（既定）").tag(SummaryProvider.codex)
                     Text("Claude Code").tag(SummaryProvider.claudeCode)
                     Text("Anthropic API").tag(SummaryProvider.anthropic)
-                    if offersMinutesCloud { Text("Minutes（キーなし）").tag(SummaryProvider.minutesCloud) }
+                    if offersMinutesCloud { Text("Minutes クラウド").tag(SummaryProvider.minutesCloud) }
                     Divider()
                     Text("要約しない").tag(SummaryProvider.none)
                 }
@@ -663,13 +668,10 @@ struct ProviderSettingsPane: View {
                 case .anthropic:
                     Text("キーは Keychain に保存し、.env / 環境変数より優先します。要約時は会議の文字起こしを Anthropic に送信します。ローカルのみの会議では要約しません。")
                 case .minutesCloud:
-                    Text("Minutes のアカウントで、Pictors のサーバーが要約します（有料）。キーなしで文字起こしした会議（30 日以内）だけで使えます。要約時は会議の文字起こし（話者の名前を含む）を Pictors のサーバーに送り、サーバーは Anthropic に送ります。ローカルのみの会議では要約しません。")
+                    Text("Minutes アカウントで、Pictors のサーバーが要約します（有料）。Minutes クラウドで文字起こしした会議（30 日以内）だけで使えます。要約時は会議の文字起こし（話者の名前を含む）を Pictors のサーバーに送り、サーバーは Anthropic に送ります。ローカルのみの会議では要約しません。")
                 case .none:
                     Text("要約を作らず、文字起こしまでの議事録を作ります。Codex か Claude Code にログインするか、Anthropic の API キーを登録すると要約できます。")
                 }
-            }
-            if draft.finalProviderId == MinutesCloudTranscriber.providerID || draft.resolvedSummaryProvider == .minutesCloud {
-                MinutesCloudAccountSection()
             }
             Section {
                 Picker("会議の言語", selection: $draft.meetingLanguage) {

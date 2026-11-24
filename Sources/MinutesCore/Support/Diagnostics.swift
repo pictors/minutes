@@ -145,7 +145,7 @@ public struct DiagnosticsReport: Encodable, Sendable {
         case .codex: result["summary_model"] = settings.codexModel ?? "Codex の既定"
         case .claudeCode: result["summary_model"] = settings.claudeCodeModel ?? "Claude Code の既定"
         case .anthropic: result["summary_model"] = settings.summaryModel
-        case .minutesCloud: result["summary_model"] = "Minutes（キーなし）"
+        case .minutesCloud: result["summary_model"] = "Minutes クラウド"
         case .none: break
         }
         return result

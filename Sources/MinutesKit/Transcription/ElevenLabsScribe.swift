@@ -1,7 +1,7 @@
 import Foundation
 
 /// ElevenLabs Scribe の文字起こしの応答の読み方（SPEC §5.3）。
-/// 直接 ElevenLabs に送ったとき（MinutesCore の ElevenLabsTranscriber）と、Pictors のサーバーの GET /v1/recordings/:id/stt（キーなし）の両方で使う。
+/// 直接 ElevenLabs に送ったとき（MinutesCore の ElevenLabsTranscriber）と、Pictors のサーバーの GET /v1/recordings/:id/stt（Minutes クラウド）の両方で使う。
 /// 形: language_code, language_probability, text, words[]{text,type,logprob,start,end,speaker_id}, transcription_id, audio_duration_secs
 public enum ElevenLabsScribe {
     public struct Response: Decodable, Sendable {

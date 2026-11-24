@@ -23,7 +23,7 @@ public struct TranscriptionRequest: Sendable {
     /// 参加者名・業界用語。
     public var keyterms: [String]
     public var knownSpeakers: [KnownSpeaker]
-    /// 同じ会議のトラックの組（キーなしのサーバーは、組の中の長いほうだけを使える量に数える）。nil は組にしない。
+    /// 同じ会議のトラックの組（Minutes クラウドのサーバーは、組の中の長いほうだけを使える量に数える）。nil は組にしない。
     public var groupKey: String?
 
     public init(audioURL: URL, language: String = "ja", diarize: Bool = true, keyterms: [String] = [], knownSpeakers: [KnownSpeaker] = [], groupKey: String? = nil) {

@@ -87,7 +87,7 @@ $CLI process recordings/2026-09-16_weekly --summary-only --summary-provider clau
 $CLI process recordings/2026-09-16_weekly --summary-only --summary-model <model-id> --codex-path /absolute/path/to/codex
 ```
 
-## Minutes（キーなし）
+## Minutes クラウド
 
 自分の API キーなしで、Pictors のサーバーが文字起こしと要約をする有料の手段（SPEC §5.6）。ログインはアプリと同じ Keychain の印を使う。
 

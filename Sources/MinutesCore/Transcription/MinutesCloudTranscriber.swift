@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// Minutes（キーなし）: Pictors のサーバーで文字起こしする（製品版の有料の手段、SPEC §5.6）。
+/// Minutes クラウド: Pictors のサーバーで文字起こしする（製品版の有料の手段、SPEC §5.6）。
 /// トラックの音声を AAC にして送り、文字起こしだけ（要約しない）を頼む。結果は ElevenLabs の応答の形で受け、
 /// 直接 ElevenLabs に送ったときと同じ読み方（ElevenLabsScribe）で読む。
 /// - 同じトラックは同じ client_id で送る（後処理のやり直し・スリープのあとに、上げ直したり二重に数えたりしない）。前の失敗は消して作り直す。

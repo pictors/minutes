@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// Pictors のサーバー（Minutes のキーなし。自分の API キーなしで文字起こしと要約を使う有料の手段）とのやり取り。
+// Pictors のサーバー（Minutes クラウド。自分の API キーなしで文字起こしと要約を使う有料の手段）とのやり取り。
 // Mac・iPhone・Watch で共通（SPEC §5.6）。ログインの印（Bearer）は呼び出し側が持ち、ここでは保存しない。Cookie は使わない。
 // API の形（2026-11-23 確認）: サーバーの docs/mac-keyless.md（非公開）と同じもの。
 //   ログイン: POST /v1/auth/email-otp/send-verification-otp {email, type: "sign-in"} → POST /v1/auth/sign-in/email-otp {email, otp}
@@ -20,7 +20,7 @@ import Foundation
 
 /// サーバーの場所と、Cookie を使わない URLSession。
 public extension URLSession {
-    /// キーなしのサーバー用。Cookie も応答の写しも持たない（印は Authorization: Bearer で送る）。
+    /// Minutes クラウドのサーバー用。Cookie も応答の写しも持たない（印は Authorization: Bearer で送る）。
     /// 回線がないときはすぐに失敗させる（待つのは後処理のキュー。SPEC §8.2）。
     static let minutesCloud: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -61,7 +61,7 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .notSignedIn:
-            return "Minutes にログインしていません（設定 > プロバイダ の「Minutes（キーなし）」でログインしてください）"
+            return "Minutes にログインしていません（設定 > アカウント でログインしてください）"
         case let .http(status, code, requestID):
             let id = requestID.map { " request-id=\($0)" } ?? ""
             return (Self.message(status: status, code: code) ?? "Minutes のサーバーが HTTP \(status)\(code.map { "（\($0)）" } ?? "") を返しました") + id
@@ -77,11 +77,11 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
     static func message(status: Int, code: String?) -> String? {
         switch code {
         case "unauthorized": return "Minutes のログインが切れました。ログインし直してください"
-        case "limit_exceeded": return "今月のキーなしで使える量を超えました"
-        case "no_plan": return "キーなしの文字起こしと要約は、有料のプランで使えます"
-        case "no_transcription": return "キーなしの要約は、キーなしで文字起こしした会議（30 日以内）だけで使えます"
-        case "too_many_summaries": return "この会議のキーなしの要約は、もう作り直せません（10 回まで）"
-        case "group_full": return "この会議はキーなしでもう送れません（同じ会議の録音は 2 本まで）"
+        case "limit_exceeded": return "今月の使える量を超えました"
+        case "no_plan": return "文字起こしと要約は、有料のプランで使えます"
+        case "no_transcription": return "Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議（30 日以内）だけで使えます"
+        case "too_many_summaries": return "この会議の要約は、もう作り直せません（10 回まで）"
+        case "group_full": return "この会議はもう送れません（同じ会議の録音は 2 本まで）"
         case "parts_missing": return "録音の一部がまだサーバーに届いていません"
         case "no_audio": return "サーバーに録音が届いていません"
         case "too_large": return "録音が大きすぎて送れません"
@@ -131,7 +131,7 @@ public struct MinutesCloudAccount: Decodable, Sendable, Equatable {
     public var usage: Usage
 }
 
-/// サーバーの録音（GET /v1/recordings・/:id）。Mac のキーなしが使う欄のほかは、iPhone・Watch の一覧と議事録の表示に使う。
+/// サーバーの録音（GET /v1/recordings・/:id）。Mac の Minutes クラウドが使う欄のほかは、iPhone・Watch の一覧と議事録の表示に使う。
 public struct MinutesCloudRecording: Decodable, Sendable, Equatable, Identifiable {
     public var id: String
     public var clientId: String

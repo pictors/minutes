@@ -163,7 +163,7 @@ final class AppModel {
     var requestedSettingsTab: SettingsTab?
     /// Keychain の API キーを保存・削除するたびに増える（キーの有無で変わる表示の更新用）。
     private(set) var apiKeysRevision = 0
-    /// Minutes（キーなし）にログインしているメールアドレス（表示用）。ログイン・ログアウトで変わり、プロバイダの状態の表示を更新する
+    /// Minutes クラウドにログインしているメールアドレス（表示用）。ログイン・ログアウトで変わり、プロバイダの状態の表示を更新する
     private(set) var minutesCloudEmail: String? = MinutesCloudCredentials.isSignedIn ? (MinutesCloudCredentials.email() ?? "") : nil
     /// armed 中に音声を検知し、設定により開始の確認を待っている。
     private(set) var awaitingStartConfirmation = false
@@ -446,7 +446,7 @@ final class AppModel {
         case .codex: "Codex / \(settings.codexModel.flatMap { $0.isEmpty ? nil : $0 } ?? "既定モデル")"
         case .claudeCode: "Claude Code / \(settings.claudeCodeModel.flatMap { $0.isEmpty ? nil : $0 } ?? "既定モデル")"
         case .anthropic: settings.summaryModel
-        case .minutesCloud: "Minutes（キーなし）"
+        case .minutesCloud: "Minutes クラウド"
         case .none: "要約しない"
         }
     }
@@ -466,9 +466,9 @@ final class AppModel {
         return hasKey(key)
     }
 
-    // MARK: - Minutes（キーなし）のアカウント
+    // MARK: - Minutes クラウドのアカウント
 
-    /// Minutes（キーなし）を選択肢に出すか（設定・初回の案内）。公開までは、この Mac にログインの印があるか、
+    /// Minutes クラウドを選択肢に出すか（設定・初回の案内）。公開までは、この Mac にログインの印があるか、
     /// すでに選んでいるか、隠しスイッチが入っているときだけ出す（`MinutesCloudOffer`、SPEC §5.6）。
     /// `draftSelected` は、まだ保存していない画面の上の選択（選んだ直後に選択肢から消さない）。
     func offersMinutesCloud(draftSelected: Bool = false) -> Bool {

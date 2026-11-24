@@ -6,7 +6,7 @@ import Foundation
 /// - 同じ録音は二重に取り込まない（`cloud_imports`。会議を Mac で消しても取り込み直さない）。
 /// - 一度きりの取り込み。あとで iPhone で直した題名や話者の名前は届かず、Mac で直した内容もサーバーへ戻さない。
 public enum CloudMeetingImport {
-    /// 取り込む録音の出どころ（サーバーの一覧には、この Mac のキーなしの文字起こしの録音なども出る）。
+    /// 取り込む録音の出どころ（サーバーの一覧には、この Mac の Minutes クラウドの文字起こしの録音なども出る）。
     public static let platforms: [String: MeetingPlatform] = ["iphone": .iphone, "watch": .watch]
 
     public struct Failure: Sendable, Equatable {

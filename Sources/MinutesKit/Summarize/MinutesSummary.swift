@@ -133,7 +133,7 @@ public struct SummaryInput: Codable, Sendable {
 /// 要約の入力のほかに、要約の手段が使ってよいこと（入力そのものには入れない。入力は要約の指紋に入るため）。
 public struct SummaryContext: Sendable, Equatable {
     public var meetingID: String
-    /// キーなしで文字起こしした組（MinutesCloudGroup）。キーなしの要約はこの組の文字起こしがあるときだけ使える。
+    /// Minutes クラウドで文字起こしした組（MinutesCloudGroup）。Minutes クラウドの要約はこの組の文字起こしがあるときだけ使える。
     public var cloudGroup: String?
 
     public init(meetingID: String, cloudGroup: String? = nil) {
