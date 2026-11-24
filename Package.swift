@@ -21,7 +21,7 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
     ],
     targets: [
-        // 依存なし。Mac・iPhone・Watch で共通の型（文字起こし・要約・会議の言語）、JSON、ログ、Pictors のサーバー（キーなし）とのやり取り
+        // 依存なし。Mac・iPhone・Watch で共通の型（文字起こし・要約・会議の言語）、JSON、ログ、Minutes のサーバー（キーなし）とのやり取り
         .target(
             name: "MinutesKit",
             path: "Sources/MinutesKit"

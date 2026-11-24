@@ -162,7 +162,7 @@ enum ProviderCatalog {
         Entry(id: "openai.gpt-4o-transcribe-diarize", title: "OpenAI gpt-4o-transcribe-diarize", shortTitle: "gpt-4o", detail: "処理が遅く発話を落とすことがある", keyName: APIKeys.openAI),
         Entry(id: "local.speechanalyzer+fluidaudio", title: "ローカル（SpeechAnalyzer + FluidAudio）", shortTitle: "ローカル", detail: "端末内で処理。クラウド失敗時のフォールバックにも使う", keyName: nil),
         Entry(id: MinutesCloudTranscriber.providerID, title: "Minutes クラウド", shortTitle: "Minutes クラウド",
-              detail: "API キーなしで、Pictors のサーバーが文字起こしする（有料。Minutes アカウントでログイン）", keyName: nil, usesMinutesAccount: true),
+              detail: "API キーなしで、Minutes のサーバーが文字起こしする（有料。Minutes アカウントでログイン）", keyName: nil, usesMinutesAccount: true),
     ]
 
     static func final(_ id: String) -> Entry? { finalProviders.first { $0.id == id } }

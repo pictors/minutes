@@ -622,7 +622,7 @@ struct ProviderSettingsPane: View {
             if offersMinutesCloud {
                 Section {
                     SettingsChoiceRow(selected: draft.usesMinutesCloud, title: "Minutes クラウドに任せる",
-                                      detail: "文字起こしと要約を Pictors のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
+                                      detail: "文字起こしと要約を Minutes のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
                         draft.setUsesMinutesCloud(true)
                     }
                     SettingsChoiceRow(selected: !draft.usesMinutesCloud, title: "自分で選ぶ",
@@ -637,7 +637,7 @@ struct ProviderSettingsPane: View {
                     Text("Mac で録った会議の文字起こしと要約")
                 } footer: {
                     Text(draft.usesMinutesCloud
-                         ? "会議の音声と文字起こしを Pictors のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。ローカルのみの会議は、この Mac の中で文字起こしします（要約は作りません）。変更は次の後処理から適用されます。"
+                         ? "会議の音声と文字起こしを Minutes のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。ローカルのみの会議は、この Mac の中で文字起こしします（要約は作りません）。変更は次の後処理から適用されます。"
                          : "iPhone・Apple Watch で録った会議は、この選択によらず、Minutes クラウドで文字起こしと要約をします。変更は次の後処理から適用されます。")
                 }
             }
@@ -753,7 +753,7 @@ struct ProviderSettingsPane: View {
                 case .anthropic:
                     Text("キーは Keychain に保存し、.env / 環境変数より優先します。要約時は会議の文字起こしを Anthropic に送信します。ローカルのみの会議では要約しません。")
                 case .minutesCloud:
-                    Text("Minutes アカウントで、Pictors のサーバーが要約します（有料）。Minutes クラウドで文字起こしした会議（30 日以内）だけで使えます。要約時は会議の文字起こし（話者の名前を含む）を Pictors のサーバーに送り、サーバーは Anthropic に送ります。ローカルのみの会議では要約しません。")
+                    Text("Minutes アカウントで、Minutes のサーバーが要約します（有料）。Minutes クラウドで文字起こしした会議（30 日以内）だけで使えます。要約時は会議の文字起こし（話者の名前を含む）を Minutes のサーバーに送り、サーバーは Anthropic に送ります。ローカルのみの会議では要約しません。")
                 case .none:
                     Text("要約を作らず、文字起こしまでの議事録を作ります。Codex か Claude Code にログインするか、Anthropic の API キーを登録すると要約できます。")
                 }

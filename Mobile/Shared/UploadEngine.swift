@@ -1,7 +1,7 @@
 import Foundation
 import MinutesKit
 
-/// 端末の録音を Pictors のサーバーへ上げる（iPhone と Watch で共通。製品版の P4）。
+/// 端末の録音を Minutes のサーバーへ上げる（iPhone と Watch で共通。製品版の P4）。
 /// 録音を作る・区切りを上げる・complete の 3 つを、どれも裏の URLSession のファイルからの送信で行う（アプリが眠っても OS が続ける）。
 /// - 送信の結果は delegate の中で、その場で upload.json に書く（裏で起こされてすぐ眠っても失わない。P1 の所見）。
 /// - 同じ送信が重なっても、サーバーは client_id と、走と位置で重ねるので二重にはならない。

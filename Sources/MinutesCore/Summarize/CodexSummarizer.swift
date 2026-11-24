@@ -59,7 +59,7 @@ public enum SummaryProvider: String, Codable, Sendable, CaseIterable {
     case codex
     case claudeCode = "claude-code"
     case anthropic
-    /// Minutes クラウド: Pictors のサーバーで要約する（有料、ログインが要る。Minutes クラウドで文字起こしした会議だけ。SPEC §5.6）
+    /// Minutes クラウド: Minutes のサーバーで要約する（有料、ログインが要る。Minutes クラウドで文字起こしした会議だけ。SPEC §5.6）
     case minutesCloud = "minutes-cloud"
     /// 要約しない（文字起こしまでの議事録を作る）。Codex にも Claude Code にもログインしておらず、キーもない人向け（2026-10-05 決定）
     case none

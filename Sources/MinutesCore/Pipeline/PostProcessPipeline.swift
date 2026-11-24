@@ -378,7 +378,7 @@ public final class PostProcessPipeline: Sendable {
         var keyterms = try store.keyterms()
         for attendee in meeting.attendees where !keyterms.contains(attendee.name) { keyterms.append(attendee.name) }
         let language = try resolveLanguage(meeting)
-        // Minutes クラウド（Pictors のサーバー）なら、この文字起こしの組を決める（2 本を 1 つの会議として数える。SPEC §5.6）
+        // Minutes クラウドなら、この文字起こしの組を決める（2 本を 1 つの会議として数える。SPEC §5.6）
         let cloudGroup = providers.cloud?.id == MinutesCloudTranscriber.providerID && meeting.privacy != .localOnly
             ? try cloudGroupKey(meeting: meeting, directory: directory, language: language) : nil
         let job = TrackTranscriptionJob(meeting: meeting, directory: directory, keyterms: keyterms, language: language,

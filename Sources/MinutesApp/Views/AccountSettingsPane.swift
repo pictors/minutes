@@ -158,7 +158,7 @@ struct AccountSettingsPane: View {
         } header: {
             Text("この Mac での使いみち")
         } footer: {
-            Text("Minutes クラウドは、会議の音声と文字起こしを Pictors のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。iPhone・Apple Watch で録った会議は、いつも Minutes クラウドで文字起こしと要約をします。")
+            Text("Minutes クラウドは、会議の音声と文字起こしを Minutes のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。iPhone・Apple Watch で録った会議は、いつも Minutes クラウドで文字起こしと要約をします。")
         }
     }
 

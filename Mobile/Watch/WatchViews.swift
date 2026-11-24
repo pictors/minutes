@@ -158,7 +158,7 @@ struct WatchNoticeView: View {
                 Text("録音の前に")
                     .font(.headline)
                 Label("録音することを参加者に伝え、了承を得てください。", systemImage: "person.2.wave.2.fill")
-                Label("音声は Pictors のサーバーに送り、文字起こしと議事録を作ります。音声は 30 日で消えます。", systemImage: "icloud.and.arrow.up.fill")
+                Label("音声は Minutes のサーバーに送り、文字起こしと議事録を作ります。音声は 30 日で消えます。", systemImage: "icloud.and.arrow.up.fill")
                     .foregroundStyle(.secondary)
                 Button("わかりました", action: onAccept)
                     .buttonStyle(FilledPillButtonStyle(height: 40))

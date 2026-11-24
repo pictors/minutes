@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// 端末（iPhone・Watch）で録った 1 本の録音を、区切りで Pictors のサーバーへ上げるための記録（製品版の P4）。
+/// 端末（iPhone・Watch）で録った 1 本の録音を、区切りで Minutes のサーバーへ上げるための記録（製品版の P4）。
 /// 録音のフォルダに upload.json として置き、変わるたびに書き直す（アプリが落ちても、裏で起こされても、続きから上げる）。
 ///
 /// - 録音は走（run）ごとに 1 つの ADTS の AAC ファイルに書き足していく。中断（電話・Siri）で走が分かれる。

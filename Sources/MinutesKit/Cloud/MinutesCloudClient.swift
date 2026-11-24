@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// Pictors のサーバー（Minutes クラウド。自分の API キーなしで文字起こしと要約を使う有料の手段）とのやり取り。
+// Minutes のサーバー（Minutes クラウド: 自分の API キーなしで文字起こしと要約を使う有料の手段）とのやり取り。
 // Mac・iPhone・Watch で共通（SPEC §5.6）。ログインの印（Bearer）は呼び出し側が持ち、ここでは保存しない。Cookie は使わない。
 // API の形（2026-11-23 確認）: サーバーの docs/mac-keyless.md（非公開）と同じもの。
 //   ログイン: POST /v1/auth/email-otp/send-verification-otp {email, type: "sign-in"} → POST /v1/auth/sign-in/email-otp {email, otp}
@@ -281,7 +281,7 @@ public enum MinutesCloudGroup {
     }
 }
 
-/// Pictors のサーバーとのやり取り。
+/// Minutes のサーバーとのやり取り。
 public struct MinutesCloudClient: Sendable {
     public static let productionBaseURL = URL(string: "https://api.minutes.tools")!
 

@@ -2,7 +2,7 @@ import Foundation
 import MinutesCore
 import Testing
 
-/// Pictors のサーバー（Minutes クラウド）とのやり取りの形を固定する。
+/// Minutes のサーバー（Minutes クラウド）とのやり取りの形を固定する。
 /// SummaryInput の書き方は、後処理の要約の指紋（PipelineFingerprint）にも入るので、変わると既存の会議の要約がすべてやり直しになる。
 /// 同じファイルをサーバー（非公開）のテストの golden にも写す。変えるときは両方をそろえる。
 @Suite("Minutes クラウドのやり取りの形")

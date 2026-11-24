@@ -26,7 +26,7 @@ public enum JSONCoding {
         return decoder
     }
 
-    /// ISO 8601 の日時（秒の小数のあり・なしの両方）。Pictors のサーバー（JavaScript の toISOString）はミリ秒を付ける
+    /// ISO 8601 の日時（秒の小数のあり・なしの両方）。Minutes のサーバー（JavaScript の toISOString）はミリ秒を付ける
     /// （transcript.json の created_at・録音の一覧の日時）。小数なしは今までの `.iso8601` と同じ読み方。
     public static func parseISO8601(_ text: String) -> Date? {
         let formatter = ISO8601DateFormatter()

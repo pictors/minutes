@@ -565,7 +565,7 @@ private struct ProvidersPage: View {
                 SectionCard("Mac で録った会議の文字起こしと要約", systemImage: "cloud") {
                     VStack(alignment: .leading, spacing: 0) {
                         ChoiceRow(selected: onboarding.usesMinutesCloud, title: "Minutes クラウドに任せる",
-                                  detail: "文字起こしと要約を Pictors のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
+                                  detail: "文字起こしと要約を Minutes のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
                             onboarding.setUsesMinutesCloud(true)
                         }
                         ChoiceRow(selected: !onboarding.usesMinutesCloud, title: "自分で選ぶ",

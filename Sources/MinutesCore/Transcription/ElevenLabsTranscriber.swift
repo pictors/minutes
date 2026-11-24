@@ -120,7 +120,7 @@ public struct ElevenLabsTranscriber: BatchTranscriber {
         return ElevenLabsTranscriber.makeResult(from: decoded, foldingOptions: foldingOptions, meta: meta)
     }
 
-    // MARK: - Response（読み方は MinutesKit の ElevenLabsScribe。Pictors のサーバーの /stt も同じ形）
+    // MARK: - Response（読み方は MinutesKit の ElevenLabsScribe。Minutes のサーバーの /stt も同じ形）
 
     public typealias Response = ElevenLabsScribe.Response
 

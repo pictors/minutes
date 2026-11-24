@@ -2,7 +2,7 @@ import MinutesKit
 import SwiftUI
 import UIKit
 
-/// Minutes の iPhone アプリ（製品版の P4）。録音して Pictors のサーバーへ送り、議事録を見る。
+/// Minutes の iPhone アプリ（製品版の P4）。録音して Minutes のサーバーへ送り、議事録を見る。
 @main
 struct MinutesPhoneApp: App {
     @UIApplicationDelegateAdaptor(PhoneAppDelegate.self) private var delegate

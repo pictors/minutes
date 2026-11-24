@@ -89,7 +89,7 @@ $CLI process recordings/2026-09-16_weekly --summary-only --summary-model <model-
 
 ## Minutes クラウド
 
-自分の API キーなしで、Pictors のサーバーが文字起こしと要約をする有料の手段（SPEC §5.6）。ログインはアプリと同じ Keychain の印を使う。
+自分の API キーなしで、Minutes のサーバーが文字起こしと要約をする有料の手段（SPEC §5.6）。ログインはアプリと同じ Keychain の印を使う。
 
 ```bash
 $CLI account login --email you@example.com      # メールに届く 6 桁を入れてログイン（アカウントがなければ作る）
