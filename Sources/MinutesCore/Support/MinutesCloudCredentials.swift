@@ -72,13 +72,23 @@ public enum MinutesCloudOffer {
     /// 公開の前に試す人のための隠しスイッチ: `defaults write jp.pictors.minutes MinutesCloudPreview -bool YES`
     public static let previewDefaultsKey = "MinutesCloudPreview"
 
-    /// 出すのは、この Mac にログインの印がある・すでに Minutes クラウドを選んでいる・隠しスイッチが入っている、のどれかのとき。
+    /// この Mac でログインしたことがある印（UserDefaults）。ログアウトしても消さない:
+    /// ログインの入口（設定の「アカウント」のタブ）は、ログアウトした人がもう一度ログインする場所でもある。
+    public static let signedInBeforeDefaultsKey = "MinutesCloudSignedInBefore"
+
+    /// 出すのは、この Mac にログインの印がある・ログインしたことがある・すでに Minutes クラウドを選んでいる・隠しスイッチが入っている、のどれかのとき。
     /// すでに選んでいる設定は、ログアウトしたあとも選択肢に残す（選択肢から消えると、いまの選択を表示できない）。
-    public static func isOffered(hasLogin: Bool, selected: Bool, preview: Bool) -> Bool {
-        hasLogin || selected || preview
+    public static func isOffered(hasLogin: Bool, selected: Bool, preview: Bool, signedInBefore: Bool = false) -> Bool {
+        hasLogin || selected || preview || signedInBefore
     }
 
     public static func isOffered(selected: Bool, defaults: UserDefaults = .standard) -> Bool {
-        isOffered(hasLogin: MinutesCloudCredentials.hasStoredLogin, selected: selected, preview: defaults.bool(forKey: previewDefaultsKey))
+        isOffered(hasLogin: MinutesCloudCredentials.hasStoredLogin, selected: selected,
+                  preview: defaults.bool(forKey: previewDefaultsKey), signedInBefore: defaults.bool(forKey: signedInBeforeDefaultsKey))
+    }
+
+    /// ログインの印があるのを見たとき・ログインしたときに覚える。
+    public static func rememberSignedIn(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: signedInBeforeDefaultsKey)
     }
 }

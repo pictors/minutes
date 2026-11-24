@@ -11,6 +11,19 @@ struct MinutesCloudOfferTests {
         // ログアウトしても、選んでいるあいだは選択肢に残す（消えると、いまの選択を表示できない）
         #expect(MinutesCloudOffer.isOffered(hasLogin: false, selected: true, preview: false))
         #expect(MinutesCloudOffer.isOffered(hasLogin: false, selected: false, preview: true))
+        // ログインしたことがある Mac では、ログアウトしたあともログインの入口（アカウントのタブ）を残す
+        #expect(MinutesCloudOffer.isOffered(hasLogin: false, selected: false, preview: false, signedInBefore: true))
+    }
+
+    @Test("ログインしたことは UserDefaults に覚える（ログアウトでは消さない）")
+    func remembersSignIn() throws {
+        let name = "minutes-offer-test-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(!defaults.bool(forKey: MinutesCloudOffer.signedInBeforeDefaultsKey))
+        MinutesCloudOffer.rememberSignedIn(defaults: defaults)
+        #expect(defaults.bool(forKey: MinutesCloudOffer.signedInBeforeDefaultsKey))
+        #expect(MinutesCloudOffer.signedInBeforeDefaultsKey == "MinutesCloudSignedInBefore")
     }
 
     @Test("隠しスイッチは UserDefaults の MinutesCloudPreview（defaults write jp.pictors.minutes MinutesCloudPreview -bool YES）")

@@ -246,6 +246,8 @@ final class AppModel {
         }
         detector.start()
         configureNotifications()
+        // CLI などで置いたログインの印があれば覚える（ログアウトしても、アカウントのタブを残す）
+        if MinutesCloudCredentials.hasStoredLogin { MinutesCloudOffer.rememberSignedIn() }
         startHousekeeping()
         startAutoRecordingChecks()
         // ログアウト・システム終了は、終了を求められる前に知らせが来る。知らせはメインのキューで届くので、その場で覚える
@@ -475,7 +477,8 @@ final class AppModel {
         let selected = draftSelected || settings.finalProviderId == MinutesCloudTranscriber.providerID || settings.resolvedSummaryProvider == .minutesCloud
         // ログイン・ログアウトで表示を更新する（minutesCloudEmail を読んで監視の対象にする）
         return MinutesCloudOffer.isOffered(hasLogin: minutesCloudEmail != nil || MinutesCloudCredentials.hasStoredLogin,
-                                           selected: selected, preview: UserDefaults.standard.bool(forKey: MinutesCloudOffer.previewDefaultsKey))
+                                           selected: selected, preview: UserDefaults.standard.bool(forKey: MinutesCloudOffer.previewDefaultsKey),
+                                           signedInBefore: UserDefaults.standard.bool(forKey: MinutesCloudOffer.signedInBeforeDefaultsKey))
     }
 
     /// ログイン（なければ登録）のコードをメールに送る。
@@ -488,6 +491,8 @@ final class AppModel {
         let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let session = try await MinutesCloudClient.standard().signIn(email: address, code: code.trimmingCharacters(in: .whitespacesAndNewlines))
         try MinutesCloudCredentials.save(session, email: address)
+        // ログアウトしても、ログインの入口（アカウントのタブ）を残す
+        MinutesCloudOffer.rememberSignedIn()
         minutesCloudEmail = address
         // iPhone・Watch で録った会議があれば、すぐ取り込む
         pullCloudMeetings()

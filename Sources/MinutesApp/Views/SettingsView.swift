@@ -45,6 +45,10 @@ struct SettingsView: View {
         .onDisappear { model.setSettingsVisible(false) }
         .onChange(of: draft) { _, _ in scheduleSave() }
         .onChange(of: model.requestedSettingsTab) { _, tab in consumeRequestedTab(tab) }
+        // アカウントのタブを出さなくなったら、選んだままにしない
+        .onChange(of: model.offersMinutesCloud()) { _, offered in
+            if !offered, selection == .account { selection = .providers }
+        }
         // メニューバーのパネルで切り替えたテーマを下書きにも反映する（古い値で上書き保存しない）
         .onChange(of: model.settings.appearance) { _, appearance in
             if draft.appearance != appearance { draft.appearance = appearance }

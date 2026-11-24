@@ -61,7 +61,7 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .notSignedIn:
-            return "Minutes にログインしていません（設定 > アカウント でログインしてください）"
+            return "Minutes アカウントにログインしていません"
         case let .http(status, code, requestID):
             let id = requestID.map { " request-id=\($0)" } ?? ""
             return (Self.message(status: status, code: code) ?? "Minutes のサーバーが HTTP \(status)\(code.map { "（\($0)）" } ?? "") を返しました") + id
