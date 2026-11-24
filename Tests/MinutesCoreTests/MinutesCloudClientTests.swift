@@ -337,4 +337,37 @@ struct MinutesCloudClientTests {
         let account = try await MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" }).account()
         #expect(account.plan == "pro" && account.usage.secondsThisMonth == 9.5 && account.usage.secondsLimit == 7200)
     }
+
+    @Test("閲覧用のリンク（P7）: 作る・一覧・取り消す。取り消しは、もうない（404）なら済んだとみなす")
+    func shares() async throws {
+        let seen = Mutex<[StubURLProtocol.Request]>([])
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0.append(request) }
+            let share: [String: Any] = ["id": "s1", "url": "https://api.example.test/s/AAAA", "include_transcript": true,
+                                        "created_at": "2026-11-24T08:00:15.360Z", "expires_at": "2026-12-01T08:00:15.360Z"]
+            switch (request.method, request.path) {
+            case ("POST", "/v1/recordings/r1/shares"): return json(["share": share], status: 201)
+            case ("GET", "/v1/recordings/r1/shares"): return json(["shares": [share]])
+            case ("DELETE", "/v1/recordings/r1/shares/s1"): return (204, [:], Data())
+            case ("DELETE", "/v1/recordings/r1/shares/gone"): return json(["error": "not_found"], status: 404)
+            case ("POST", "/v1/recordings/r2/shares"): return json(["error": "no_summary"], status: 409)
+            default: return json(["error": "not_found"], status: 404)
+            }
+        }
+        let client = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" })
+        let created = try await client.createShare(recordingID: "r1", includeTranscript: true, expiresInDays: 7)
+        #expect(created.id == "s1" && created.url.absoluteString == "https://api.example.test/s/AAAA" && created.includeTranscript)
+        #expect(created.expiresAt.timeIntervalSince(created.createdAt) == 7 * 86_400)
+        let body = bodyObject(try #require(seen.withLock { $0.first }))
+        #expect(body["include_transcript"] as? Bool == true && body["expires_in_days"] as? Int == 7)
+        #expect(try await client.shares(recordingID: "r1") == [created])
+        try await client.revokeShare(recordingID: "r1", shareID: "s1")
+        try await client.revokeShare(recordingID: "r1", shareID: "gone")
+        await #expect(throws: MinutesCloudError.http(status: 409, code: "no_summary", requestID: nil)) {
+            _ = try await client.createShare(recordingID: "r2")
+        }
+        let defaults = bodyObject(try #require(seen.withLock { $0.last }))
+        #expect(defaults["include_transcript"] as? Bool == false && defaults["expires_in_days"] as? Int == 30)
+        #expect(MinutesCloudError.http(status: 409, code: "no_summary", requestID: nil).localizedDescription.contains("全文"))
+    }
 }

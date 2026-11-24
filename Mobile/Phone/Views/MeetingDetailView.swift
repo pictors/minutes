@@ -17,8 +17,15 @@ struct MeetingDetailView: View {
     @State private var renaming = false
     @State private var titleDraft = ""
     @State private var editingSpeakers = false
+    @State private var sharing = false
 
     private var item: MeetingItem? { model.meetings.first { $0.id == clientId } }
+
+    /// リンクで共有できる会議（iPhone・Watch で録って、サーバーで処理が終わったもの。P7）
+    private var shareableRecording: MinutesCloudRecording? {
+        guard let server = item?.server, server.status == "done", ["iphone", "watch"].contains(server.source ?? "") else { return nil }
+        return server
+    }
 
     private var canPlay: Bool {
         guard let item else { return false }
@@ -98,6 +105,11 @@ struct MeetingDetailView: View {
                 SpeakerNamesView(transcript: transcript) { names in
                     try await saveSpeakerNames(names)
                 }
+            }
+        }
+        .sheet(isPresented: $sharing) {
+            if let server = shareableRecording {
+                ShareLinksView(recordingID: server.id, hasSummary: server.summaryError == nil)
             }
         }
         .task(id: item?.server?.status) { await load() }
@@ -302,6 +314,13 @@ struct MeetingDetailView: View {
                         editingSpeakers = true
                     } label: {
                         Label("話者の名前", systemImage: "person.2")
+                    }
+                }
+                if shareableRecording != nil {
+                    Button {
+                        sharing = true
+                    } label: {
+                        Label("リンクで共有…", systemImage: "link")
                     }
                 }
                 Button(role: .destructive) {

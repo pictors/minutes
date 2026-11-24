@@ -89,6 +89,9 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
         case "audio_not_available": return "音声は保存の期間（30 日）を過ぎて消えました"
         case "unknown_speaker": return "文字起こしにない話者です"
         case "bad_speaker_names": return "話者の名前は 50 文字までにしてください"
+        case "no_summary": return "この会議には要約がありません。全文も入れて共有してください"
+        case "not_shareable": return "この会議はリンクで共有できません"
+        case "too_many_shares": return "この会議のリンクが多すぎます（20 まで）。使わないリンクを取り消してください"
         case "not_found": return "サーバーに見つかりません（消えたか、別のアカウントのものです）"
         case "TOO_MANY_CODES": return "コードを送りすぎました。しばらくしてからもう一度試してください"
         case "INVALID_OTP": return "コードが違います"
@@ -232,6 +235,28 @@ public struct MinutesCloudRecordingRequest: Encodable, Sendable, Equatable {
         self.keyterms = keyterms
         self.group = group
     }
+}
+
+/// 閲覧用のリンク（P7、/v1/recordings/:id/shares）。URL を知る人は、ログインなしで議事録を読める。音声は共有しない。
+public struct MinutesCloudShare: Decodable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var url: URL
+    /// 全文も見せるか（既定は要約だけ）
+    public var includeTranscript: Bool
+    public var createdAt: Date
+    public var expiresAt: Date
+
+    public init(id: String, url: URL, includeTranscript: Bool, createdAt: Date, expiresAt: Date) {
+        self.id = id
+        self.url = url
+        self.includeTranscript = includeTranscript
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+    }
+
+    /// リンクの期限として選べる日数（既定は 30 日）
+    public static let expiryChoices = [7, 30, 90]
+    public static let defaultExpiryDays = 30
 }
 
 public struct MinutesCloudSummaryJob: Decodable, Sendable, Equatable {
@@ -480,6 +505,29 @@ public struct MinutesCloudClient: Sendable {
         try await send("GET", "/v1/recordings/\(recordingID)/stt").0
     }
 
+    // MARK: 閲覧用のリンク（P7）
+
+    /// リンクを作る。includeTranscript が false なら要約だけ（要約がなければ 409 no_summary）。expiresInDays は 1〜365。
+    /// 処理が終わる前は 409 not_ready、有料でなければ 402 no_plan、1 つの会議で使えるリンクは 20 まで（409 too_many_shares）。
+    public func createShare(recordingID: String, includeTranscript: Bool = false, expiresInDays: Int = MinutesCloudShare.defaultExpiryDays) async throws -> MinutesCloudShare {
+        let body = try JSONSerialization.data(withJSONObject: ["include_transcript": includeTranscript, "expires_in_days": expiresInDays])
+        return try decode(ShareEnvelope.self, from: try await send("POST", "/v1/recordings/\(recordingID)/shares", body: body).0).share
+    }
+
+    /// 使えるリンク（期限の内、新しい順）。
+    public func shares(recordingID: String) async throws -> [MinutesCloudShare] {
+        try decode(SharesEnvelope.self, from: try await send("GET", "/v1/recordings/\(recordingID)/shares").0).shares
+    }
+
+    /// リンクを取り消す（すぐに読めなくなる）。もうない（404）なら、取り消し済みとみなす。
+    public func revokeShare(recordingID: String, shareID: String) async throws {
+        do {
+            _ = try await send("DELETE", "/v1/recordings/\(recordingID)/shares/\(shareID)")
+        } catch let error as MinutesCloudError where error.status == 404 {
+            return
+        }
+    }
+
     // MARK: 要約
 
     public func createSummary(clientID: String, group: String, timeZone: String = TimeZone.current.identifier, input: SummaryInput) async throws -> MinutesCloudSummaryJob {
@@ -505,6 +553,14 @@ public struct MinutesCloudClient: Sendable {
 
     private struct SummaryEnvelope: Decodable {
         var summary: MinutesCloudSummaryJob
+    }
+
+    private struct ShareEnvelope: Decodable {
+        var share: MinutesCloudShare
+    }
+
+    private struct SharesEnvelope: Decodable {
+        var shares: [MinutesCloudShare]
     }
 
     private func makeRequest(_ method: String, _ path: String, authorized: Bool = true) throws -> URLRequest {
