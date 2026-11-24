@@ -66,10 +66,20 @@ rm -rf "$SPARKLE/XPCServices" "$SPARKLE/Versions/B/XPCServices"
 if (( ! DIST )); then
   plutil -remove SUFeedURL "$APP/Contents/Info.plist"
 fi
-# 配布先の Mac にはビルドディレクトリがない。アプリが使うリソースが .app の中にあることを確かめる
+# 配布先の Mac にはビルドディレクトリがない。アプリが使うリソースが .app の中にあることを確かめる。
+# リソースバンドルの中の置き場所は swift build の版で違う（Swift 6.3 まで: <bundle>/Resources/…、
+# Xcode 27 の Swift 6.4 から: <bundle>/Contents/Resources/Resources/…）。アプリは Bundle で探すので、どちらでも読める。
+bundle_resource() {
+  local flat="$APP/Contents/Resources/$1/$2"
+  if [[ -f "$flat" ]]; then
+    print -r -- "$flat"
+  else
+    print -r -- "$APP/Contents/Resources/$1/Contents/Resources/$2"
+  fi
+}
 for required in \
-  "$APP/Contents/Resources/minutes_MinutesCore.bundle/Resources/Prompts/summarize_ja.md" \
-  "$APP/Contents/Resources/minutes_MinutesApp.bundle/Resources/Brand/MinutesLogo.png" \
+  "$(bundle_resource minutes_MinutesCore.bundle Resources/Prompts/summarize_ja.md)" \
+  "$(bundle_resource minutes_MinutesApp.bundle Resources/Brand/MinutesLogo.png)" \
   "$APP/Contents/Resources/LICENSE" \
   "$APP/Contents/Resources/NOTICE" \
   "$SPARKLE/Versions/B/Sparkle" \
@@ -93,6 +103,10 @@ sign() {
 sign "$SPARKLE/Versions/B/Autoupdate"
 sign "$SPARKLE/Versions/B/Updater.app"
 sign "$SPARKLE"
+# Swift 6.4 からのリソースバンドルは Info.plist を持ち、ビルドのときの署名（ad-hoc）が付いている。アプリと同じ ID で署名し直す
+for bundle in "$APP/Contents/Resources"/*.bundle; do
+  [[ -f "$bundle/Contents/Info.plist" ]] && sign "$bundle"
+done
 sign --entitlements Sources/MinutesApp/Minutes.entitlements --identifier jp.pictors.minutes "$APP"
 codesign --verify --strict --deep --verbose=1 "$APP"
 if [[ -n "$IDENTITY" ]]; then
