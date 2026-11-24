@@ -28,7 +28,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>CFBundleVersion</key>
-	<string>10</string>
+	<string>11</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
