@@ -560,16 +560,28 @@ private struct ProvidersPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             PageHeader(title: "文字起こしと要約", detail: "会議が終わったら、選んだサービスに会議の音声と本文を送って、文字起こしと要約を作ります。送りたくない会議は、録音の前に「ローカルのみ」を選ぶと、この Mac の中で文字起こしします（要約は作りません）。")
+            // Minutes クラウドに任せるか、自分で選ぶか（設定と同じ 2 択。公開までは、ログインした Mac などにだけ出す。SPEC §5.6）
+            if onboarding.model.offersMinutesCloud(draftSelected: onboarding.usesMinutesCloud) {
+                SectionCard("Mac で録った会議の文字起こしと要約", systemImage: "cloud") {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ChoiceRow(selected: onboarding.usesMinutesCloud, title: "Minutes クラウドに任せる",
+                                  detail: "文字起こしと要約を Pictors のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
+                            onboarding.setUsesMinutesCloud(true)
+                        }
+                        ChoiceRow(selected: !onboarding.usesMinutesCloud, title: "自分で選ぶ",
+                                  detail: "自分の API キーや、ChatGPT・Claude のログインを使います。") {
+                            onboarding.setUsesMinutesCloud(false)
+                        }
+                    }
+                    if onboarding.usesMinutesCloud { LiveModelLine(onboarding: onboarding) }
+                }
+            }
+            if !onboarding.usesMinutesCloud {
             SectionCard("文字起こし", systemImage: "waveform") {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Minutes クラウドは、公開までは出さない（ログインの印がある Mac などに限る。SPEC §5.6）
-                    ForEach(ProviderCatalog.finalProviders.filter {
-                        !$0.usesMinutesAccount || onboarding.model.offersMinutesCloud(draftSelected: onboarding.finalProvider == MinutesCloudTranscriber.providerID)
-                    }) { entry in
+                    ForEach(ProviderCatalog.finalProviders.filter { !$0.usesMinutesAccount }) { entry in
                         ChoiceRow(selected: onboarding.finalProvider == entry.id, title: title(entry), detail: detail(entry)) {
                             onboarding.finalProvider = entry.id
-                            // Minutes クラウドを選んだら、要約も Minutes クラウドにする（設定と同じ。SPEC §5.6）
-                            if entry.usesMinutesAccount { onboarding.summaryProvider = .minutesCloud }
                         }
                         if onboarding.finalProvider == entry.id, let key = entry.keyName {
                             KeyEntry(name: key, provider: entry.title, fallback: "キーを登録するまでは、この Mac の中で文字起こしします。")
@@ -586,11 +598,9 @@ private struct ProvidersPage: View {
                     if onboarding.summaryProvider == .anthropic {
                         KeyEntry(name: APIKeys.anthropic, provider: "Anthropic", fallback: "キーを登録するまでは要約を作りません。")
                     }
-                    if onboarding.model.offersMinutesCloud(draftSelected: onboarding.summaryProvider == .minutesCloud || onboarding.finalProvider == MinutesCloudTranscriber.providerID) {
-                        summaryChoice(.minutesCloud, title: "Minutes クラウド（Minutes アカウント）", check: nil)
-                    }
                     summaryChoice(.none, title: "要約しない（文字起こしだけを保存）", check: nil)
                 }
+            }
             }
         }
         .task { await onboarding.prepareSpeechModel() }

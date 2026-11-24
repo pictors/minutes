@@ -531,6 +531,37 @@ struct AppearanceThumbnail: View {
 
 // MARK: - プロバイダ
 
+/// 設定の 2 択の行（初回の案内の選択の行と同じ形）。
+struct SettingsChoiceRow: View {
+    let selected: Bool
+    let title: String
+    var detail: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    if let detail {
+                        Text(detail)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+}
+
 struct ProviderSettingsPane: View {
     @Environment(AppModel.self) private var model
     @Binding var draft: AppSettings
@@ -587,10 +618,61 @@ struct ProviderSettingsPane: View {
 
     var body: some View {
         Form {
+            // Mac で録った会議を Minutes クラウドに任せるか、自分で選ぶか（SPEC §5.6）。公開までは、ログインした Mac などにだけ出す
+            if offersMinutesCloud {
+                Section {
+                    SettingsChoiceRow(selected: draft.usesMinutesCloud, title: "Minutes クラウドに任せる",
+                                      detail: "文字起こしと要約を Pictors のサーバーでします。API キーは要りません（Minutes アカウント・有料）。") {
+                        draft.setUsesMinutesCloud(true)
+                    }
+                    SettingsChoiceRow(selected: !draft.usesMinutesCloud, title: "自分で選ぶ",
+                                      detail: "自分の API キーや、ChatGPT・Claude のログインを使います。この Mac の中で文字起こしすることもできます。") {
+                        draft.setUsesMinutesCloud(false)
+                    }
+                    if draft.usesMinutesCloud {
+                        LabeledContent("状態") { MinutesCloudStatusLabel() }
+                        Toggle("要約で学習した用語を次回の keyterms に追加する", isOn: $draft.keytermsAutoLearn)
+                    }
+                } header: {
+                    Text("Mac で録った会議の文字起こしと要約")
+                } footer: {
+                    Text(draft.usesMinutesCloud
+                         ? "会議の音声と文字起こしを Pictors のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。ローカルのみの会議は、この Mac の中で文字起こしします（要約は作りません）。変更は次の後処理から適用されます。"
+                         : "iPhone・Apple Watch で録った会議は、この選択によらず、Minutes クラウドで文字起こしと要約をします。変更は次の後処理から適用されます。")
+                }
+            }
+            if !draft.usesMinutesCloud {
+                ownProviderSections
+            }
             Section {
-                // Minutes クラウドを選んだら要約も合わせる（`AppSettings.chooseFinalProvider`。選んだときだけで、読み込んだときは変えない）
-                Picker("確定文字起こし", selection: Binding(get: { draft.finalProviderId }, set: { draft.chooseFinalProvider($0) })) {
-                    ForEach(ProviderCatalog.finalProviders.filter { !$0.usesMinutesAccount || offersMinutesCloud }) { entry in
+                Picker("会議の言語", selection: $draft.meetingLanguage) {
+                    Text("自動（日本語と英語）").tag(MeetingLanguageChoice.auto)
+                    Text("日本語").tag(MeetingLanguageChoice.ja)
+                    Text("英語").tag(MeetingLanguageChoice.en)
+                }
+                Picker("英語の会議の要約", selection: $draft.englishSummaryLanguage) {
+                    Text("英語").tag(MeetingLanguage.en)
+                    Text("日本語").tag(MeetingLanguage.ja)
+                }
+            } header: {
+                Text("会議の言語")
+            } footer: {
+                Text("自動は、ライブ字幕を日本語で始め、会議のあとで英語の会議かを判定します。録音中はメニューバーのパネルや録音画面で言語を切り替えられます。英語のライブ字幕のモデルは、初めて英語を選んだときにダウンロードします。会議の言語と要約の言語は、会議の画面であとから変えられます。")
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: SettingsView.paneHeight)
+        .animation(.snappy, value: draft.resolvedSummaryProvider)
+        .task(id: codexLookup) { await checkCodex() }
+        .task(id: claudeCodeLookup) { await checkClaudeCode() }
+    }
+
+    /// 「自分で選ぶ」ときの文字起こしと要約の欄（Minutes クラウドは出さない。任せるときは、上の 2 択で選ぶ）。
+    @ViewBuilder
+    private var ownProviderSections: some View {
+            Section {
+                Picker("確定文字起こし", selection: $draft.finalProviderId) {
+                    ForEach(ProviderCatalog.finalProviders.filter { !$0.usesMinutesAccount }) { entry in
                         Text(entry.title).tag(entry.id)
                     }
                 }
@@ -610,7 +692,6 @@ struct ProviderSettingsPane: View {
                 Text((finalEntry.map { $0.detail + "。" } ?? "")
                      + "ローカルのみの会議とクラウド失敗時は常にローカルを使います。"
                      + (finalEntry?.keyName == nil ? "" : "キーは Keychain に保存し、.env / 環境変数より優先します。")
-                     + (finalEntry?.usesMinutesAccount == true ? "ログインは「アカウント」のタブで行います。" : "")
                      + "変更は次の後処理から適用されます。学習した用語は「人物と用語」で確認・削除できます。")
             }
             Section {
@@ -618,12 +699,8 @@ struct ProviderSettingsPane: View {
                     Text("Codex app server（既定）").tag(SummaryProvider.codex)
                     Text("Claude Code").tag(SummaryProvider.claudeCode)
                     Text("Anthropic API").tag(SummaryProvider.anthropic)
-                    if offersMinutesCloud { Text("Minutes クラウド").tag(SummaryProvider.minutesCloud) }
                     Divider()
                     Text("要約しない").tag(SummaryProvider.none)
-                }
-                if let mismatch = draft.providerMismatch {
-                    mismatchRow(mismatch)
                 }
                 switch draft.resolvedSummaryProvider {
                 case .codex:
@@ -681,70 +758,6 @@ struct ProviderSettingsPane: View {
                     Text("要約を作らず、文字起こしまでの議事録を作ります。Codex か Claude Code にログインするか、Anthropic の API キーを登録すると要約できます。")
                 }
             }
-            Section {
-                Picker("会議の言語", selection: $draft.meetingLanguage) {
-                    Text("自動（日本語と英語）").tag(MeetingLanguageChoice.auto)
-                    Text("日本語").tag(MeetingLanguageChoice.ja)
-                    Text("英語").tag(MeetingLanguageChoice.en)
-                }
-                Picker("英語の会議の要約", selection: $draft.englishSummaryLanguage) {
-                    Text("英語").tag(MeetingLanguage.en)
-                    Text("日本語").tag(MeetingLanguage.ja)
-                }
-            } header: {
-                Text("会議の言語")
-            } footer: {
-                Text("自動は、ライブ字幕を日本語で始め、会議のあとで英語の会議かを判定します。録音中はメニューバーのパネルや録音画面で言語を切り替えられます。英語のライブ字幕のモデルは、初めて英語を選んだときにダウンロードします。会議の言語と要約の言語は、会議の画面であとから変えられます。")
-            }
-        }
-        .formStyle(.grouped)
-        .frame(height: SettingsView.paneHeight)
-        .animation(.snappy, value: draft.resolvedSummaryProvider)
-        .task(id: codexLookup) { await checkCodex() }
-        .task(id: claudeCodeLookup) { await checkClaudeCode() }
-    }
-
-    /// 文字起こしと要約の手段が食い違うときの知らせ（SPEC §5.6）。どこへ送るかを示し、合わせるボタンを添える。
-    @ViewBuilder
-    private func mismatchRow(_ mismatch: AppSettings.ProviderMismatch) -> some View {
-        switch mismatch {
-        case let .summaryElsewhere(provider):
-            HStack(alignment: .center, spacing: 12) {
-                Label("文字起こしは Minutes クラウドですが、要約は \(Self.summaryTitle(provider)) で作ります。会議の文字起こしは、この Mac から \(Self.summaryDestination(provider)) に送ります。",
-                      systemImage: "info.circle")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("要約も Minutes クラウドにする") { draft.summaryProvider = .minutesCloud }
-            }
-        case .cloudSummaryWithoutCloudTranscription:
-            HStack(alignment: .center, spacing: 12) {
-                Label("Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議だけで使えます。", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Palette.amber)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("文字起こしも Minutes クラウドにする") { draft.chooseFinalProvider(MinutesCloudTranscriber.providerID) }
-            }
-        }
-    }
-
-    private static func summaryTitle(_ provider: SummaryProvider) -> String {
-        switch provider {
-        case .codex: "Codex"
-        case .claudeCode: "Claude Code"
-        case .anthropic: "Anthropic API"
-        case .minutesCloud: "Minutes クラウド"
-        case .none: "（要約しない）"
-        }
-    }
-
-    private static func summaryDestination(_ provider: SummaryProvider) -> String {
-        switch provider {
-        case .codex: "OpenAI"
-        case .claudeCode, .anthropic: "Anthropic"
-        case .minutesCloud: "Pictors のサーバー"
-        case .none: "どこにも"
-        }
     }
 
     @ViewBuilder

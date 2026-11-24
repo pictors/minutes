@@ -94,6 +94,25 @@ final class OnboardingModel {
     var summaryProvider: SummaryProvider {
         didSet { summaryTouched = true }
     }
+    /// 「自分で選ぶ」で選んでいた手段（Minutes クラウドに任せたあと、戻したときに使う）
+    @ObservationIgnored private var ownFinalProvider: String?
+    @ObservationIgnored private var ownSummaryProvider: SummaryProvider?
+
+    /// Mac で録った会議を Minutes クラウドに任せるか（SPEC §5.6。設定の「プロバイダ」と同じ 2 択）
+    var usesMinutesCloud: Bool { finalProvider == MinutesCloudTranscriber.providerID }
+
+    func setUsesMinutesCloud(_ on: Bool) {
+        guard on != usesMinutesCloud else { return }
+        if on {
+            ownFinalProvider = finalProvider
+            ownSummaryProvider = summaryProvider
+            finalProvider = MinutesCloudTranscriber.providerID
+            summaryProvider = .minutesCloud
+        } else {
+            finalProvider = ownFinalProvider ?? AppSettings().finalProviderId
+            summaryProvider = ownSummaryProvider ?? .codex
+        }
+    }
     private(set) var codex: CheckState = .unknown
     private(set) var claudeCode: CheckState = .unknown
     @ObservationIgnored private var summaryTouched = false
@@ -132,6 +151,8 @@ final class OnboardingModel {
         finalProvider = !isFirstRun || keyReady(settings.finalProviderId) ? settings.finalProviderId
             : (keyReady("elevenlabs.scribe_v2") ? "elevenlabs.scribe_v2" : "local.speechanalyzer+fluidaudio")
         summaryProvider = settings.resolvedSummaryProvider
+        ownFinalProvider = settings.ownFinalProviderId
+        ownSummaryProvider = settings.ownSummaryProvider
         notice = settings.resolvedRecordingNotice
         summaryTouched = false
     }
@@ -342,8 +363,12 @@ final class OnboardingModel {
 
     func applyProviders() {
         var settings = model.settings
-        settings.finalProviderId = finalProvider
-        settings.summaryProvider = summaryProvider
+        if usesMinutesCloud {
+            settings.setUsesMinutesCloud(true)
+        } else {
+            settings.finalProviderId = finalProvider
+            settings.summaryProvider = summaryProvider
+        }
         model.updateSettings(settings)
     }
 

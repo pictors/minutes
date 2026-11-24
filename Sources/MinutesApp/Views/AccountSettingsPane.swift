@@ -139,26 +139,42 @@ struct AccountSettingsPane: View {
         }
     }
 
-    // MARK: できること
+    // MARK: この Mac での使いみち
 
+    /// このアカウントを、この Mac で何に使っているか（SPEC §4.5・§5.6）。取り込みはログインしていればいつも、
+    /// Mac の会議の文字起こしと要約は「プロバイダ」で Minutes クラウドに任せているときだけ。
     private var featuresSection: some View {
-        Section {
-            feature("cloud", title: "Minutes クラウドで文字起こしと要約",
-                    detail: "API キーなしで、Pictors のサーバーが文字起こしと要約をします（有料）。「プロバイダ」で Minutes クラウドを選ぶと使います。") {
-                Button("プロバイダを開く") { model.requestedSettingsTab = .providers }
-            }
-            feature("applewatch", title: "iPhone・Apple Watch の会議をこの Mac へ",
-                    detail: "iPhone や Apple Watch で録った会議を、ログインしているあいだ自動でこの Mac の会議リストに取り込みます。") {
+        let signedIn = model.minutesCloudEmail != nil
+        let cloud = model.settings.usesMinutesCloud
+        return Section {
+            usage("applewatch", title: "iPhone・Apple Watch の会議をこの Mac へ",
+                  status: signedIn ? "取り込んでいます" : "ログインすると、自動で取り込みます", active: signedIn) {
                 EmptyView()
             }
+            usage("cloud", title: "Mac で録った会議の文字起こしと要約",
+                  status: cloud ? "Minutes クラウドに任せています" : "使っていません（\(ownProvidersText) を使っています）", active: cloud) {
+                Button("変える") { model.requestedSettingsTab = .providers }
+            }
         } header: {
-            Text("このアカウントでできること")
+            Text("この Mac での使いみち")
         } footer: {
-            Text("Minutes クラウドは、会議の音声と文字起こしを Pictors のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。Mac の会議は相手側と自分のマイクの 2 本を送りますが、使える量は会議の長さだけ数えます。")
+            Text("Minutes クラウドは、会議の音声と文字起こしを Pictors のサーバー（api.minutes.tools）に送ります。サーバーは ElevenLabs で文字起こしし、Anthropic で要約します。音声はサーバーに 30 日保存し、そのあと自動で消します。iPhone・Apple Watch で録った会議は、いつも Minutes クラウドで文字起こしと要約をします。")
         }
     }
 
-    private func feature(_ symbol: String, title: String, detail: String, @ViewBuilder trailing: () -> some View) -> some View {
+    /// 「自分で選ぶ」で使っている手段（「ElevenLabs Scribe v2・Codex」）
+    private var ownProvidersText: String {
+        let summary: String = switch model.settings.resolvedSummaryProvider {
+        case .codex: "Codex"
+        case .claudeCode: "Claude Code"
+        case .anthropic: "Anthropic API"
+        case .minutesCloud: "Minutes クラウド"
+        case .none: "要約なし"
+        }
+        return "\(ProviderCatalog.finalShortTitle(model.settings.finalProviderId))・\(summary)"
+    }
+
+    private func usage(_ symbol: String, title: String, status: String, active: Bool, @ViewBuilder trailing: () -> some View) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
@@ -166,9 +182,9 @@ struct AccountSettingsPane: View {
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                Text(detail)
+                Label(status, systemImage: active ? "checkmark.circle.fill" : "minus.circle")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(active ? Color.green : Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)

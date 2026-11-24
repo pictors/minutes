@@ -345,7 +345,8 @@ struct ClaudeCodeSummarizerTests {
     func connectionModelsTimeout() async throws {
         let slow = try FakeClaude(stdout: FakeClaude.loggedIn, hangModels: true)
         defer { slow.remove() }
-        let connection = try await ClaudeCodeSummarizer(executablePath: slow.path, timeoutSeconds: 1).checkConnection()
+        // ログインの確認にも同じ時間切れが掛かる。1 秒だと、ほかの試験（音声の符号化など）と並ぶと偽の claude が間に合わずに落ちたので 3 秒にする
+        let connection = try await ClaudeCodeSummarizer(executablePath: slow.path, timeoutSeconds: 3).checkConnection()
         #expect(connection.models.isEmpty)
         #expect(connection.currentModel == nil)
         let pid = try #require(try await slow.pid("pid.models"))

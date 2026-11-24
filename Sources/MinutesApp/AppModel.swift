@@ -213,6 +213,8 @@ final class AppModel {
 
     init() {
         var settings = AppSettings.load()
+        // 片方だけ Minutes クラウドの設定（ビルド 8 までの版や CLI で書いたもの）は、どちらかにそろえて保存する（SPEC §5.6）
+        if settings.normalizeProcessingMode() { try? settings.save() }
         self.privacyModeForNextMeeting = settings.defaultPrivacyMode
         self.languageForNextMeeting = settings.meetingLanguage
         var openedStore: Store?
@@ -478,7 +480,7 @@ final class AppModel {
     /// すでに選んでいるか、隠しスイッチが入っているときだけ出す（`MinutesCloudOffer`、SPEC §5.6）。
     /// `draftSelected` は、まだ保存していない画面の上の選択（選んだ直後に選択肢から消さない）。
     func offersMinutesCloud(draftSelected: Bool = false) -> Bool {
-        let selected = draftSelected || settings.finalProviderId == MinutesCloudTranscriber.providerID || settings.resolvedSummaryProvider == .minutesCloud
+        let selected = draftSelected || settings.usesMinutesCloud
         // ログイン・ログアウトで表示を更新する（minutesCloudEmail を読んで監視の対象にする）
         return MinutesCloudOffer.isOffered(hasLogin: minutesCloudEmail != nil || MinutesCloudCredentials.hasStoredLogin,
                                            selected: selected, preview: UserDefaults.standard.bool(forKey: MinutesCloudOffer.previewDefaultsKey),

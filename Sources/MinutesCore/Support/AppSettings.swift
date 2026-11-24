@@ -43,28 +43,48 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var claudeCodeExecutablePath: String?
     public var resolvedSummaryProvider: SummaryProvider { summaryProvider ?? .codex }
 
-    /// 文字起こしの手段を選ぶ（設定と初回の案内）。Minutes クラウドに変えたら、要約も Minutes クラウドにする（SPEC §5.6。
-    /// 要約だけほかの手段のままだと、文字起こしをこの Mac からほかの事業者へ送ることになり、分かりにくい）。要約はあとで変えられる。
-    public mutating func chooseFinalProvider(_ id: String) {
-        let switchedToCloud = id == MinutesCloudTranscriber.providerID && finalProviderId != id
-        finalProviderId = id
-        if switchedToCloud { summaryProvider = .minutesCloud }
+    /// 「自分で選ぶ」で選んでいた文字起こし・要約の手段。Minutes クラウドに任せているあいだも覚えておき、戻したときに使う（SPEC §5.6）。
+    public var ownFinalProviderId: String?
+    public var ownSummaryProvider: SummaryProvider?
+
+    /// Mac で録った会議の文字起こしと要約を、Minutes クラウドに任せているか（SPEC §5.6）。
+    /// 文字起こしと要約は、両方 Minutes クラウドに任せるか、両方を自分で選ぶ（片方だけ Minutes クラウドにはしない）。
+    public var usesMinutesCloud: Bool { finalProviderId == MinutesCloudTranscriber.providerID }
+
+    /// 「Minutes クラウドに任せる」と「自分で選ぶ」を切り替える（設定と初回の案内）。自分で選んでいた手段は覚えておき、戻すと元に戻る。
+    public mutating func setUsesMinutesCloud(_ on: Bool) {
+        let cloudID = MinutesCloudTranscriber.providerID
+        if on {
+            if finalProviderId != cloudID { ownFinalProviderId = finalProviderId }
+            if resolvedSummaryProvider != .minutesCloud { ownSummaryProvider = summaryProvider }
+            finalProviderId = cloudID
+            summaryProvider = .minutesCloud
+        } else {
+            if finalProviderId == cloudID {
+                finalProviderId = ownFinalProviderId.flatMap { $0 == cloudID ? nil : $0 } ?? AppSettings().finalProviderId
+            }
+            if resolvedSummaryProvider == .minutesCloud {
+                summaryProvider = ownSummaryProvider == .minutesCloud ? nil : ownSummaryProvider
+            }
+        }
     }
 
-    /// 文字起こしと要約の手段の組み合わせで、知らせること（設定の要約の欄に出す）。
-    public enum ProviderMismatch: Equatable, Sendable {
-        /// 文字起こしは Minutes クラウドだが、要約はこの Mac からほかの事業者へ文字起こしを送って作る
-        case summaryElsewhere(SummaryProvider)
-        /// 要約は Minutes クラウドだが、文字起こしはほかの手段（Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議だけで使える）
-        case cloudSummaryWithoutCloudTranscription
-    }
-
-    public var providerMismatch: ProviderMismatch? {
-        let cloudTranscription = finalProviderId == MinutesCloudTranscriber.providerID
-        switch resolvedSummaryProvider {
-        case .minutesCloud: return cloudTranscription ? nil : .cloudSummaryWithoutCloudTranscription
-        case .none: return nil
-        case let other: return cloudTranscription ? .summaryElsewhere(other) : nil
+    /// 片方だけ Minutes クラウドの設定（ビルド 8 までの版や CLI で書いたもの）を、どちらかにそろえる。そろえたら true。
+    /// - 文字起こしが Minutes クラウドなら、要約も Minutes クラウドにする（それまでの要約は「自分で選ぶ」に覚える）。
+    /// - 要約だけが Minutes クラウドなら、要約しない（Minutes クラウドの要約は Minutes クラウドで文字起こしした会議だけで使えるので、
+    ///   これまでも要約は作れていなかった。ほかの事業者へ文字起こしを送り始めないように、ほかの手段にはしない）。
+    @discardableResult
+    public mutating func normalizeProcessingMode() -> Bool {
+        switch (usesMinutesCloud, resolvedSummaryProvider == .minutesCloud) {
+        case (true, false):
+            ownSummaryProvider = summaryProvider
+            summaryProvider = .minutesCloud
+            return true
+        case (false, true):
+            summaryProvider = SummaryProvider.none
+            return true
+        default:
+            return false
         }
     }
     public var defaultPrivacyMode: PrivacyMode = .cloudOk
@@ -120,6 +140,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         codexExecutablePath = try container.decodeIfPresent(String.self, forKey: .codexExecutablePath)
         claudeCodeModel = try container.decodeIfPresent(String.self, forKey: .claudeCodeModel)
         claudeCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .claudeCodeExecutablePath)
+        ownFinalProviderId = try container.decodeIfPresent(String.self, forKey: .ownFinalProviderId)
+        ownSummaryProvider = (try? container.decodeIfPresent(String.self, forKey: .ownSummaryProvider)).flatMap(SummaryProvider.init(rawValue:))
         defaultPrivacyMode = try container.decodeIfPresent(PrivacyMode.self, forKey: .defaultPrivacyMode) ?? defaults.defaultPrivacyMode
         audioRetentionDays = try container.decodeIfPresent(Int.self, forKey: .audioRetentionDays) ?? defaults.audioRetentionDays
         exportDirectory = try container.decodeIfPresent(String.self, forKey: .exportDirectory)
