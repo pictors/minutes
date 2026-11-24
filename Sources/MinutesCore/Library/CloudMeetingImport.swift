@@ -14,11 +14,22 @@ public enum CloudMeetingImport {
         public var message: String
     }
 
+    /// 見回りの間（SPEC §4.5）: ふだんは 10 分ごと、iPhone・Watch の録音がサーバーで送信中・処理中のあいだは 1 分ごと。
+    public static let idleInterval: TimeInterval = 600
+    public static let activeInterval: TimeInterval = 60
+    /// 送信中・処理中と見なすのは、始まってからこの時間までの録音（送信の途中で止まった録音で、1 分ごとの見回りを続けない）。
+    public static let activeWindow: TimeInterval = 6 * 3600
+
+    /// 次に見に行くまでの間。読めなかったとき（nil）は、ふだんの間。
+    public static func nextPullDelay(after report: Report?) -> TimeInterval {
+        (report?.pending ?? 0) > 0 ? activeInterval : idleInterval
+    }
+
     public struct Report: Sendable {
         public var imported: [MeetingRecord] = []
         /// 取り込めなかった録音（覚えておき、間をあけて試し直す）
         public var failures: [Failure] = []
-        /// サーバーでまだ処理中の録音（次の取り込みで見る）
+        /// サーバーでまだ送信中・処理中の録音（始まってから `activeWindow` まで。次の取り込みで見る）
         public var pending = 0
         /// 途中でやめた理由（回線・ログイン切れなど。残りは次の取り込みで続ける）
         public var interruption: String?
@@ -49,7 +60,10 @@ public enum CloudMeetingImport {
         for recording in recordings.reversed() {
             guard let platform = recording.source.flatMap({ platforms[$0] }) else { continue }
             guard recording.status == "done" else {
-                if !recording.isFinished { report.pending += 1 }
+                if !recording.isFinished, let started = recording.createdAt ?? recording.startedAt,
+                   now.timeIntervalSince(started) < activeWindow {
+                    report.pending += 1
+                }
                 continue
             }
             guard !skip.contains(recording.id) else { continue }

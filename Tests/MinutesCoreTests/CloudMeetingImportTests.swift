@@ -182,8 +182,9 @@ struct CloudMeetingImportTests {
             recordingObject(id: CloudFixture.watchID, source: "watch", title: "架空の定例"),
         ])
 
-        let report = try await f.pull()
+        let report = try await f.pull(now: Date(timeIntervalSince1970: 1_795_140_000))  // 2026-11-20T02:00Z（録音が作られた 1 時間後）
         #expect(report.imported.count == 1 && report.pending == 1 && report.failures.isEmpty && report.interruption == nil)
+        #expect(CloudMeetingImport.nextPullDelay(after: report) == CloudMeetingImport.activeInterval)
         let meeting = try #require(report.imported.first)
         #expect(meeting.title == "架空の定例" && meeting.meetingPlatform == .watch)
         #expect(meeting.cloudRecordingId == CloudFixture.watchID && meeting.cloudProcessed)
@@ -373,6 +374,36 @@ struct CloudMeetingImportTests {
         #expect(notified.withLock { $0 } == 1)
         // 取り込み直しはしない
         #expect(try await f.pull().imported.isEmpty)
+    }
+
+    @Test("送信中・処理中の録音があるあいだは 1 分ごとに見る。始まって 6 時間を過ぎた送信の途中の録音は数えない")
+    func pollsFasterWhileProcessing() async throws {
+        let f = try CloudFixture(); defer { f.cleanup() }
+        let now = Date(timeIntervalSince1970: 1_795_140_000)  // 2026-11-20T02:00Z
+        func recording(_ id: String, _ source: String, _ status: String, startedHoursAgo hours: Double) -> [String: Any] {
+            var r = recordingObject(id: id, source: source, status: status)
+            let stamp = ISO8601DateFormatter().string(from: now.addingTimeInterval(-hours * 3600))
+            r["created_at"] = stamp
+            r["started_at"] = stamp
+            return r
+        }
+        // 録音中（iPhone が送信中）の 1 本だけを数える
+        f.list([
+            recording("44444444-4444-4444-8444-444444444444", "iphone", "uploading", startedHoursAgo: 0.5),
+            recording("55555555-5555-4555-8555-555555555555", "watch", "transcribing", startedHoursAgo: 7),
+            recording("66666666-6666-4666-8666-666666666666", "watch", "failed", startedHoursAgo: 0.2),
+            recording("77777777-7777-4777-8777-777777777777", "mac", "transcribing", startedHoursAgo: 0.1),
+        ])
+        let busy = try await f.pull(now: now)
+        #expect(busy.pending == 1 && busy.imported.isEmpty)
+        #expect(CloudMeetingImport.nextPullDelay(after: busy) == 60)
+
+        // 処理中の録音がなければ 10 分ごと。読めなかったときも 10 分ごと
+        f.list([recording("55555555-5555-4555-8555-555555555555", "watch", "transcribing", startedHoursAgo: 7)])
+        let idle = try await f.pull(now: now)
+        #expect(idle.pending == 0)
+        #expect(CloudMeetingImport.nextPullDelay(after: idle) == 600)
+        #expect(CloudMeetingImport.nextPullDelay(after: nil) == 600)
     }
 
     @Test("根拠の付け替えは、時刻と文言が同じ発話を順に対応させる（Mac で直した文言は元の文言で合わせる）")

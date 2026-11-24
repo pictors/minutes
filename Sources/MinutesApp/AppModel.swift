@@ -143,6 +143,9 @@ final class AppModel {
     private(set) var cloudPullNotice: CloudPullNotice?
     @ObservationIgnored private var cloudPullRunning = false
     @ObservationIgnored private var lastCloudPull: Date?
+    /// 次に見回りで取りに行く時刻（取り込みのたびに、処理中の録音があれば 1 分後、なければ 10 分後。`CloudMeetingImport.nextPullDelay`）
+    @ObservationIgnored private var nextCloudPullAt: Date?
+    @ObservationIgnored private var cloudPullLoopTask: Task<Void, Never>?
     @ObservationIgnored private var notesDrafts: [String: UserNotesDraft] = [:]
     var privacyModeForNextMeeting: PrivacyMode
     /// 次の録音の言語（既定は設定の「会議の言語」）。英語を選んだら英語のライブ字幕のモデルを先に用意する。
@@ -249,6 +252,7 @@ final class AppModel {
         // CLI などで置いたログインの印があれば覚える（ログアウトしても、アカウントのタブを残す）
         if MinutesCloudCredentials.hasStoredLogin { MinutesCloudOffer.rememberSignedIn() }
         startHousekeeping()
+        startCloudPulls()
         startAutoRecordingChecks()
         // ログアウト・システム終了は、終了を求められる前に知らせが来る。知らせはメインのキューで届くので、その場で覚える
         powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
@@ -495,7 +499,7 @@ final class AppModel {
         MinutesCloudOffer.rememberSignedIn()
         minutesCloudEmail = address
         // iPhone・Watch で録った会議があれば、すぐ取り込む
-        pullCloudMeetings()
+        pullCloudMeetings(.scheduled)
     }
 
     /// この Mac のログインを取り消す（サーバーに伝えられなくても、手元の印は消す）。
@@ -706,25 +710,39 @@ final class AppModel {
 
     // MARK: - サーバーの会議の取り込み（iPhone・Apple Watch、SPEC §4.5）
 
+    /// 取り込みのきっかけ。メニューから頼んだときだけ結果を出し、前に出したときは 1 分に 1 回までにする。
+    enum CloudPullTrigger {
+        /// 起動・見回り・ログインのあと
+        case scheduled
+        /// アプリを前に出した
+        case activation
+        /// ファイルのメニューから頼んだ（結果を会議リストの下に出す）
+        case menu
+    }
+
     /// iPhone・Apple Watch で録った会議を、サーバーからこの Mac の会議リストへ取り込む（Minutes にログインしているときだけ）。
-    /// 起動時と 10 分ごと（`housekeep`）、ログインのあと、アプリを前に出したとき、ファイルのメニューから呼ぶ。同時に 2 つは走らせない。
-    /// 文字起こしと要約はサーバーのものを使うので、取り込んだ会議はこの Mac から音声を送らない。`userInitiated` は結果を会議リストの下に出す。
-    func pullCloudMeetings(userInitiated: Bool = false) {
+    /// 見回り（`startCloudPulls`。起動時、ふだんは 10 分ごと、サーバーで送信中・処理中の録音があるあいだは 1 分ごと）、ログインのあと、
+    /// アプリを前に出したとき、ファイルのメニューから呼ぶ。同時に 2 つは走らせない。
+    /// 文字起こしと要約はサーバーのものを使うので、取り込んだ会議はこの Mac から音声を送らない。
+    func pullCloudMeetings(_ trigger: CloudPullTrigger = .scheduled) {
         guard let store, minutesCloudEmail != nil else { return }
-        if userInitiated { cloudPullNotice = CloudPullNotice(text: "iPhone・Watch の会議を確認中…", busy: true) }
+        if trigger == .menu { cloudPullNotice = CloudPullNotice(text: "iPhone・Watch の会議を確認中…", busy: true) }
         guard !cloudPullRunning else { return }
-        // 前に出すたびにサーバーへ聞かない（頼まれた取り込みは、すぐに行う）
-        if !userInitiated, let last = lastCloudPull, Date().timeIntervalSince(last) < 60 { return }
+        // 前に出すたびにサーバーへ聞かない（見回りと頼まれた取り込みは、すぐに行う）
+        if trigger == .activation, let last = lastCloudPull, Date().timeIntervalSince(last) < CloudMeetingImport.activeInterval { return }
         cloudPullRunning = true
         lastCloudPull = Date()
         let root = settings.audioRootDirectoryURL
         Task {
             var result: String
+            var pulled: CloudMeetingImport.Report?
+            defer { nextCloudPullAt = Date().addingTimeInterval(CloudMeetingImport.nextPullDelay(after: pulled)) }
             do {
                 // 音声全体を読み込むので、main の外で行う
                 let report = try await Task.detached(priority: .utility) {
                     try await CloudMeetingImport.pull(client: .standard(), store: store, audioRoot: root)
                 }.value
+                pulled = report
                 if !report.imported.isEmpty {
                     appendEvent("iPhone・Watch の会議を取り込みました: \(report.imported.count) 件")
                     await postProcessingQueue?.start()
@@ -756,6 +774,17 @@ final class AppModel {
         }
     }
 
+    /// iPhone・Watch の会議の見回り（SPEC §4.5）。1 分ごとに時刻だけを見て、次の時刻を過ぎていたら取りに行く
+    /// （ふだんは 10 分ごと、サーバーで送信中・処理中の録音があるあいだは 1 分ごと。サーバーへ聞くのは取りに行くときだけ）。
+    private func startCloudPulls() {
+        cloudPullLoopTask = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self, Date() >= self.nextCloudPullAt ?? .distantPast { self.pullCloudMeetings(.scheduled) }
+                try? await Task.sleep(for: .seconds(CloudMeetingImport.activeInterval))
+            }
+        }
+    }
+
     private func startAutoRecordingChecks() {
         autoStartTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -771,7 +800,7 @@ final class AppModel {
         })
         // アプリを前に出したら、iPhone・Watch で録った会議が届いていないか見る（SPEC §4.5）
         autoStartObservers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.pullCloudMeetings() }
+            Task { @MainActor in self?.pullCloudMeetings(.activation) }
         })
     }
 
@@ -1411,7 +1440,6 @@ final class AppModel {
             let purged = try AudioRetention.purge(store: store, retentionDays: settings.audioRetentionDays, managedRoot: settings.audioRootDirectoryURL)
             if !purged.purgedMeetingIds.isEmpty { appendEvent("音声を削除: \(purged.purgedMeetingIds.count) 件") }
         } catch { appendEvent("音声の保持処理に失敗: \(error.localizedDescription)") }
-        pullCloudMeetings()
     }
 
     // MARK: - Notifications

@@ -588,7 +588,8 @@ struct ProviderSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Picker("確定文字起こし", selection: $draft.finalProviderId) {
+                // Minutes クラウドを選んだら要約も合わせる（`AppSettings.chooseFinalProvider`。選んだときだけで、読み込んだときは変えない）
+                Picker("確定文字起こし", selection: Binding(get: { draft.finalProviderId }, set: { draft.chooseFinalProvider($0) })) {
                     ForEach(ProviderCatalog.finalProviders.filter { !$0.usesMinutesAccount || offersMinutesCloud }) { entry in
                         Text(entry.title).tag(entry.id)
                     }
@@ -620,6 +621,9 @@ struct ProviderSettingsPane: View {
                     if offersMinutesCloud { Text("Minutes クラウド").tag(SummaryProvider.minutesCloud) }
                     Divider()
                     Text("要約しない").tag(SummaryProvider.none)
+                }
+                if let mismatch = draft.providerMismatch {
+                    mismatchRow(mismatch)
                 }
                 switch draft.resolvedSummaryProvider {
                 case .codex:
@@ -698,6 +702,49 @@ struct ProviderSettingsPane: View {
         .animation(.snappy, value: draft.resolvedSummaryProvider)
         .task(id: codexLookup) { await checkCodex() }
         .task(id: claudeCodeLookup) { await checkClaudeCode() }
+    }
+
+    /// 文字起こしと要約の手段が食い違うときの知らせ（SPEC §5.6）。どこへ送るかを示し、合わせるボタンを添える。
+    @ViewBuilder
+    private func mismatchRow(_ mismatch: AppSettings.ProviderMismatch) -> some View {
+        switch mismatch {
+        case let .summaryElsewhere(provider):
+            HStack(alignment: .center, spacing: 12) {
+                Label("文字起こしは Minutes クラウドですが、要約は \(Self.summaryTitle(provider)) で作ります。会議の文字起こしは、この Mac から \(Self.summaryDestination(provider)) に送ります。",
+                      systemImage: "info.circle")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button("要約も Minutes クラウドにする") { draft.summaryProvider = .minutesCloud }
+            }
+        case .cloudSummaryWithoutCloudTranscription:
+            HStack(alignment: .center, spacing: 12) {
+                Label("Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議だけで使えます。", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Palette.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button("文字起こしも Minutes クラウドにする") { draft.chooseFinalProvider(MinutesCloudTranscriber.providerID) }
+            }
+        }
+    }
+
+    private static func summaryTitle(_ provider: SummaryProvider) -> String {
+        switch provider {
+        case .codex: "Codex"
+        case .claudeCode: "Claude Code"
+        case .anthropic: "Anthropic API"
+        case .minutesCloud: "Minutes クラウド"
+        case .none: "（要約しない）"
+        }
+    }
+
+    private static func summaryDestination(_ provider: SummaryProvider) -> String {
+        switch provider {
+        case .codex: "OpenAI"
+        case .claudeCode, .anthropic: "Anthropic"
+        case .minutesCloud: "Pictors のサーバー"
+        case .none: "どこにも"
+        }
     }
 
     @ViewBuilder

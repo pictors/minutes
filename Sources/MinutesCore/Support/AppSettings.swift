@@ -42,6 +42,31 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var claudeCodeModel: String?
     public var claudeCodeExecutablePath: String?
     public var resolvedSummaryProvider: SummaryProvider { summaryProvider ?? .codex }
+
+    /// 文字起こしの手段を選ぶ（設定と初回の案内）。Minutes クラウドに変えたら、要約も Minutes クラウドにする（SPEC §5.6。
+    /// 要約だけほかの手段のままだと、文字起こしをこの Mac からほかの事業者へ送ることになり、分かりにくい）。要約はあとで変えられる。
+    public mutating func chooseFinalProvider(_ id: String) {
+        let switchedToCloud = id == MinutesCloudTranscriber.providerID && finalProviderId != id
+        finalProviderId = id
+        if switchedToCloud { summaryProvider = .minutesCloud }
+    }
+
+    /// 文字起こしと要約の手段の組み合わせで、知らせること（設定の要約の欄に出す）。
+    public enum ProviderMismatch: Equatable, Sendable {
+        /// 文字起こしは Minutes クラウドだが、要約はこの Mac からほかの事業者へ文字起こしを送って作る
+        case summaryElsewhere(SummaryProvider)
+        /// 要約は Minutes クラウドだが、文字起こしはほかの手段（Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議だけで使える）
+        case cloudSummaryWithoutCloudTranscription
+    }
+
+    public var providerMismatch: ProviderMismatch? {
+        let cloudTranscription = finalProviderId == MinutesCloudTranscriber.providerID
+        switch resolvedSummaryProvider {
+        case .minutesCloud: return cloudTranscription ? nil : .cloudSummaryWithoutCloudTranscription
+        case .none: return nil
+        case let other: return cloudTranscription ? .summaryElsewhere(other) : nil
+        }
+    }
     public var defaultPrivacyMode: PrivacyMode = .cloudOk
     public var audioRetentionDays: Int = 30
     /// 書き出しフォルダ（nil = Application Support/Minutes/export）

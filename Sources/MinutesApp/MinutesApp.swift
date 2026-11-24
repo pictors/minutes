@@ -118,7 +118,7 @@ struct ImportCommands: Commands {
             if model.minutesCloudEmail != nil {
                 Button("iPhone・Watch の会議を取り込む") {
                     model.showMainWindow()
-                    model.pullCloudMeetings(userInitiated: true)
+                    model.pullCloudMeetings(.menu)
                 }
             }
         }

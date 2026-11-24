@@ -568,6 +568,8 @@ private struct ProvidersPage: View {
                     }) { entry in
                         ChoiceRow(selected: onboarding.finalProvider == entry.id, title: title(entry), detail: detail(entry)) {
                             onboarding.finalProvider = entry.id
+                            // Minutes クラウドを選んだら、要約も Minutes クラウドにする（設定と同じ。SPEC §5.6）
+                            if entry.usesMinutesAccount { onboarding.summaryProvider = .minutesCloud }
                         }
                         if onboarding.finalProvider == entry.id, let key = entry.keyName {
                             KeyEntry(name: key, provider: entry.title, fallback: "キーを登録するまでは、この Mac の中で文字起こしします。")
@@ -583,6 +585,9 @@ private struct ProvidersPage: View {
                     summaryChoice(.anthropic, title: "Anthropic API（API キー・従量課金）", check: nil)
                     if onboarding.summaryProvider == .anthropic {
                         KeyEntry(name: APIKeys.anthropic, provider: "Anthropic", fallback: "キーを登録するまでは要約を作りません。")
+                    }
+                    if onboarding.model.offersMinutesCloud(draftSelected: onboarding.summaryProvider == .minutesCloud || onboarding.finalProvider == MinutesCloudTranscriber.providerID) {
+                        summaryChoice(.minutesCloud, title: "Minutes クラウド（Minutes アカウント）", check: nil)
                     }
                     summaryChoice(.none, title: "要約しない（文字起こしだけを保存）", check: nil)
                 }
