@@ -14,6 +14,8 @@ struct RootView: View {
         }
         .tint(Palette.periwinkle)
         .animation(Motion.layout, value: model.isSignedIn)
+        // ウィジェット・コントロール・Siri・ショートカットの「録音を始める」（QuickRecord。SPEC §5.7）
+        .handlesQuickRecord()
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.becameActive() }
         }

@@ -264,6 +264,12 @@ final class PhoneModel {
         _ = try await client.updateRecording(id: server.id, speakerNames: names)
     }
 
+    /// やることの済みを付ける・外す（サーバーの会議。iPhone・Watch の録音も、同期した Mac の会議も。Mac にも届く。P7）。
+    func setActionDone(_ item: MeetingItem, actionID: String, done: Bool) async throws {
+        guard let server = item.server else { return }
+        try await client.setActionDone(recordingID: server.id, actionID: actionID, done: done)
+    }
+
     func retryUpload(_ item: MeetingItem) {
         uploads.retry(item.id)
     }

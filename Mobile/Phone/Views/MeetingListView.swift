@@ -9,6 +9,14 @@ struct MeetingListView: View {
     @State private var showingNotice = false
     @State private var showingAccount = false
     @State private var path: [String] = []
+    @State private var filter = MeetingListFilter()
+    @FocusState private var searching: Bool
+    /// 行を長押しして選んだ操作の対象（名前を変える・リンクで共有・消す）
+    @State private var renameTarget: MeetingItem?
+    @State private var titleDraft = ""
+    @State private var shareTarget: MeetingItem?
+    @State private var deleteTarget: MeetingItem?
+    @State private var rowError: String?
 
     private struct DayGroup: Identifiable {
         let id: Date
@@ -16,13 +24,16 @@ struct MeetingListView: View {
         let items: [MeetingItem]
     }
 
-    private var groups: [DayGroup] {
+    private static func groups(_ items: [MeetingItem]) -> [DayGroup] {
         let calendar = Calendar.current
-        let byDay = Dictionary(grouping: model.meetings) { calendar.startOfDay(for: $0.startedAt) }
+        let byDay = Dictionary(grouping: items) { calendar.startOfDay(for: $0.startedAt) }
         return byDay.keys.sorted(by: >).map { DayGroup(id: $0, title: Formatting.dayTitle($0), items: byDay[$0] ?? []) }
     }
 
     var body: some View {
+        // 絞り込み・検索に当てはまる会議（何も絞っていなければ全部）
+        let shown = filter.apply(model.meetings, recordingClientId: model.recorder.clientId)
+        let groups = Self.groups(shown)
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
@@ -58,6 +69,9 @@ struct MeetingListView: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
                     }
+                    if !model.meetings.isEmpty {
+                        MeetingFilterBar(filter: $filter, meetings: model.meetings, recordingClientId: model.recorder.clientId, searching: $searching)
+                    }
                     ForEach(groups) { group in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(group.title)
@@ -69,6 +83,14 @@ struct MeetingListView: View {
                                     MeetingCard(item: item, recordingClientId: model.recorder.clientId)
                                 }
                                 .buttonStyle(CardPressStyle())
+                                // 長押しで、開かずに名前を変える・共有する・消す（会議の画面の「⋯」と同じ決まり）
+                                .contextMenu { rowMenu(item) }
+                                // 確認は長押しした行から出す（画面全体に付けると、関係のない場所から出る）
+                                .confirmationDialog("この会議を消しますか？", isPresented: deleteBinding(item), titleVisibility: .visible) {
+                                    Button("消す", role: .destructive) { delete(item) }
+                                } message: {
+                                    Text("音声・文字起こし・議事録を、この iPhone とサーバーから消します。元に戻せません。")
+                                }
                                 .transition(Motion.content(reduceMotion: reduceMotion))
                             }
                         }
@@ -76,14 +98,30 @@ struct MeetingListView: View {
                     if model.meetings.isEmpty && !model.isRefreshing {
                         EmptyMeetings()
                             .transition(.opacity)
+                    } else if shown.isEmpty && !model.meetings.isEmpty {
+                        NoMatchingMeetings(filter: filter) {
+                            filter = MeetingListFilter()
+                            searching = false
+                        }
+                        .transition(.opacity)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 110)
-                .animation(Motion.layout, value: model.meetings.map(\.id))
+                .animation(Motion.layout, value: shown.map(\.id))
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(Surface.page.ignoresSafeArea())
+            // 送った一覧が時刻やダイナミックアイランドに重ならないように、上の安全域を地の色で覆い、その下を少しぼかす（ログインの画面と同じ）
+            .overlay(alignment: .top) {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: 0).background(Surface.page)
+                    LinearGradient(colors: [Surface.page, Surface.page.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 16)
+                }
+                .allowsHitTesting(false)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { id in
                 MeetingDetailView(clientId: id)
@@ -105,9 +143,10 @@ struct MeetingListView: View {
                 .buttonStyle(PillButtonStyle(height: 60, floating: true))
                 .sensoryFeedback(.impact(weight: .light), trigger: showingNewMeeting)
                 .padding(.bottom, 10)
-                // シートの下に透けないように、シートが出ているあいだは隠す
-                .opacity(showingNewMeeting || showingNotice ? 0 : 1)
-                .animation(Motion.press, value: showingNewMeeting || showingNotice)
+                // シートの下に透けないように、シートが出ているあいだは隠す。検索の入力中も隠す（キーボードの上に浮いて一覧を覆う）
+                .opacity(showingNewMeeting || showingNotice || searching ? 0 : 1)
+                .allowsHitTesting(!searching)
+                .animation(Motion.press, value: showingNewMeeting || showingNotice || searching)
             }
             .sheet(isPresented: $showingNotice) {
                 RecordingNoticeView {
@@ -125,8 +164,96 @@ struct MeetingListView: View {
             .sheet(isPresented: $showingAccount) {
                 AccountView()
             }
+            // 録音が始まったら、この画面のシート・アラートの状態を戻す（ウィジェットなどから始めたときは QuickRecordHandler が UIKit で閉じるので、
+            // SwiftUI の状態が「開いている」のまま残り、録音のあとでまた出ないようにする）
+            .onChange(of: model.recorder.isActive) { _, active in
+                guard active else { return }
+                showingNotice = false
+                showingAccount = false
+                renameTarget = nil
+                shareTarget = nil
+                deleteTarget = nil
+                rowError = nil
+                searching = false
+            }
             .fullScreenCover(isPresented: Binding(get: { model.recorder.isActive }, set: { _ in })) {
                 RecordingView()
+            }
+            .sheet(item: $shareTarget) { item in
+                if let server = item.shareableRecording {
+                    ShareLinksView(recordingID: server.id, hasSummary: server.summaryError == nil)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(Surface.page)
+                }
+            }
+            .alert("会議の名前", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+                TextField("会議の名前", text: $titleDraft)
+                Button("保存") { rename() }
+                Button("やめる", role: .cancel) { renameTarget = nil }
+            }
+            .alert("操作できませんでした", isPresented: Binding(get: { rowError != nil }, set: { if !$0 { rowError = nil } })) {
+                Button("閉じる", role: .cancel) {}
+            } message: {
+                Text(rowError ?? "")
+            }
+        }
+    }
+
+    /// 行の長押しの操作（会議の画面の「⋯」と同じ決まり: Mac の会議は共有だけ、録音中の会議は消せない）
+    @ViewBuilder
+    private func rowMenu(_ item: MeetingItem) -> some View {
+        if item.canRename {
+            Button {
+                titleDraft = item.title ?? ""
+                renameTarget = item
+            } label: {
+                Label("名前を変える", systemImage: "pencil")
+            }
+        }
+        if item.shareableRecording != nil {
+            Button {
+                shareTarget = item
+            } label: {
+                Label("リンクで共有…", systemImage: "link")
+            }
+        }
+        if item.canDelete {
+            Button(role: .destructive) {
+                deleteTarget = item
+            } label: {
+                Label("会議を消す", systemImage: "trash")
+            }
+            // アプリ全体の色（青紫）が、メニューの消す記号にも付いてしまうので、文字と同じ赤にする
+            .tint(.red)
+            .disabled(item.id == model.recorder.clientId)
+        }
+    }
+
+    private func deleteBinding(_ item: MeetingItem) -> Binding<Bool> {
+        Binding(get: { deleteTarget?.id == item.id }, set: { if !$0 { deleteTarget = nil } })
+    }
+
+    private func rename() {
+        guard let item = renameTarget else { return }
+        let title = titleDraft
+        renameTarget = nil
+        Task {
+            do {
+                try await model.rename(item, title: title)
+            } catch {
+                rowError = "名前を変えられませんでした（\(error.localizedDescription)）"
+            }
+        }
+    }
+
+    private func delete(_ item: MeetingItem) {
+        deleteTarget = nil
+        Task {
+            do {
+                try await model.delete(item)
+            } catch {
+                rowError = "消せませんでした（\(error.localizedDescription)）"
             }
         }
     }
@@ -144,7 +271,7 @@ private struct MeetingCard: View {
             TintedTile(systemImage: state?.isError == true ? "exclamationmark.triangle.fill" : tile,
                        tint: state?.isError == true ? Palette.rose : (item.isDone ? Palette.periwinkle : (state?.tint ?? Palette.periwinkle)), size: 40)
             VStack(alignment: .leading, spacing: 5) {
-                Text(item.title ?? "無題の会議")
+                Text(item.title ?? MeetingItem.untitled)
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
@@ -179,6 +306,153 @@ private struct MeetingCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground()
         .contentShape(.rect(cornerRadius: 20, style: .continuous))
+    }
+}
+
+/// 検索の欄と、絞り込みのチップ（範囲: すべて・今日・今週・処理中・失敗。録った機器: 2 種類以上あるときだけ）。
+/// 範囲は 1 つを選び、機器はもう一度押すと外れる。
+private struct MeetingFilterBar: View {
+    @Binding var filter: MeetingListFilter
+    let meetings: [MeetingItem]
+    let recordingClientId: String?
+    var searching: FocusState<Bool>.Binding
+
+    private var origins: [MeetingOrigin] {
+        let present = Set(meetings.map(\.origin))
+        // 1 種類しかなければ出さない（選んでも変わらない）。選んだままその機器の会議がなくなったら、外せるように残す
+        guard present.count > 1 || filter.origin != nil else { return [] }
+        return MeetingOrigin.allCases.filter { present.contains($0) || $0 == filter.origin }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("会議の名前で検索", text: $filter.query)
+                    .focused(searching)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !filter.query.isEmpty {
+                    Button {
+                        filter.query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 30, height: 44)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("検索の文字を消す")
+                    .transition(.opacity)
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, filter.query.isEmpty ? 14 : 6)
+            .frame(height: 44)
+            .background(Surface.card, in: .capsule)
+            .animation(Motion.press, value: filter.query.isEmpty)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(MeetingListFilter.Scope.allCases) { scope in
+                        FilterChip(title: scope.title, count: count(scope), isOn: filter.scope == scope) {
+                            filter.scope = scope
+                        }
+                    }
+                    if !origins.isEmpty {
+                        Rectangle()
+                            .fill(Surface.hairline)
+                            .frame(width: 1, height: 18)
+                            .padding(.horizontal, 2)
+                        ForEach(origins) { origin in
+                            FilterChip(title: origin.name, systemImage: origin.systemImage, isOn: filter.origin == origin) {
+                                filter.origin = filter.origin == origin ? nil : origin
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .scrollIndicators(.hidden)
+            // チップの並びは画面の端まで流す（一覧の左右の余白の外へ）
+            .padding(.horizontal, -16)
+        }
+        .sensoryFeedback(.selection, trigger: filter.scope)
+        .sensoryFeedback(.selection, trigger: filter.origin)
+    }
+
+    /// 処理中・失敗は数を添える（あるときだけ）
+    private func count(_ scope: MeetingListFilter.Scope) -> Int? {
+        guard scope == .processing || scope == .failed else { return nil }
+        return MeetingListFilter.count(scope, in: meetings, recordingClientId: recordingClientId)
+    }
+}
+
+private struct FilterChip: View {
+    let title: String
+    var systemImage: String?
+    var count: Int?
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.caption.weight(.semibold))
+                }
+                Text(title)
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .monospacedDigit()
+                        .opacity(0.65)
+                        .contentTransition(.numericText())
+                }
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(isOn ? Palette.periwinkle : Color.secondary)
+            .padding(.horizontal, 13)
+            .frame(height: 36)
+            .background(isOn ? Palette.periwinkle.opacity(0.16) : Surface.card, in: .capsule)
+            .contentShape(.capsule)
+            .animation(Motion.press, value: isOn)
+        }
+        .buttonStyle(CardPressStyle())
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// 絞り込み・検索に当てはまる会議がないとき。検索が会議の名前だけに当たることも書く。
+private struct NoMatchingMeetings: View {
+    let filter: MeetingListFilter
+    let reset: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: filter.terms.isEmpty ? "line.3.horizontal.decrease" : "magnifyingglass")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.secondary)
+                .opacity(0.7)
+                .padding(.bottom, 6)
+            Text("当てはまる会議がありません")
+                .font(.title3.weight(.semibold))
+            if !filter.terms.isEmpty {
+                Text("検索は会議の名前に当たります。全文と議事録の中身は、まだ検索できません。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            Button("絞り込みを解く", action: reset)
+                .font(.subheadline.weight(.semibold))
+                .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 56)
     }
 }
 

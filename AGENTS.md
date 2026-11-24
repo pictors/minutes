@@ -62,6 +62,7 @@ CLI の実行例（release ビルド後、バイナリは `.build/release/minute
 .build/release/minutes-cli account login --email you@example.com      # Minutes クラウド（SPEC §5.6）のログイン。--provider minutes と --summary-provider minutes-cloud で使う
 .build/release/minutes-cli pull --db <試し用の DB> --audio-root <フォルダ> --export-dir <フォルダ>   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5）。--db を省くとアプリの DB に入るので、試すときは必ず付ける
 .build/release/minutes-cli sync --db <試し用の DB> --export-dir <フォルダ>   # この Mac の会議を Minutes クラウドへ同期する（SPEC §5.6、iPhone で読める）。--db を省くとアプリの会議をすべて送るので、試すときは必ず --db と手元のサーバー（MINUTES_CLOUD_BASE_URL・MINUTES_CLOUD_TOKEN）を付ける
+.build/release/minutes-cli actions <会議の ID> --db <試し用の DB> [--done <やることの ID>] --sync   # やることの済みを見る・付ける・iPhone と合わせる（SPEC §5.6）。試すときは --db と手元のサーバーを付ける
 
 # 既存の録音（ほかのサービスで録ったものなど）から評価区間を切り出して 3 プロバイダを比較する
 .build/release/minutes-cli cut recordings/external/meeting.m4a recordings/external/cut/system_16k.wav --start 10:00 --duration 600
@@ -87,16 +88,19 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
   Eval/                      CER
   Support/                   ArgumentParser, DotEnv, Multipart, HostClock, JSON, Log, AppSettings, Diagnostics（診断情報の書き出し）
-  Store/                     GRDB レコード・スキーマ・Store・音声保持、サーバーからの取り込みの記録（CloudImport）
+  Store/                     GRDB レコード・スキーマ・Store・音声保持、サーバーからの取り込みの記録（CloudImport）、やることの済みの送る列と読んだところ（CloudActionChecks）
   Session/                   SessionStateMachine、MeetingSessionController、VoiceSampleExtractor
   Pipeline/                  PostProcessPipeline（8 ステップ、pipeline_runs で再開）、PostProcessingQueue
-  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）、CloudMeetingImport（iPhone・Watch の会議をサーバーから取り込む、SPEC §4.5）
+  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）、CloudMeetingImport（iPhone・Watch の会議をサーバーから取り込む、SPEC §4.5）、CloudActionSync（やることの済みを iPhone・ほかの Mac と合わせる、SPEC §5.6）
   Summarize/                 MinutesSummary、CodexSummarizer、ClaudeCodeSummarizer（claude -p）、ClaudeSummarizer（API）、Resources/Prompts/summarize_ja.md
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）
 Mobile/                      iPhone と Watch のアプリ（製品版、SPEC §5.7）。Minutes.xcodeproj（フォルダと同期するグループ。ファイルを足してもプロジェクトを直さなくてよい）
+  Brand/                     ロゴの輪郭（BrandGeometry: BrandLogo・BrandShape）。iPhone・Watch のアプリとウィジェットの拡張で共有する（Palette に頼らない）。scripts/build-mobile-brand.swift もここを読む
   Shared/                    iPhone と Watch で共通: 見た目の決まり（DesignSystem: Palette・Surface・Motion・BigTimerText・PillButtonStyle・SectionCard。Mac の DesignSystem と同じ言葉。system の赤・橙を直接使わない）、録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
-  Phone/                     iPhone のアプリ（PhoneModel、Views/）
+  Phone/                     iPhone のアプリ（PhoneModel、Views/。入口からの「録音を始める」は Views/QuickRecordHandler、Siri とショートカットの言い方は MinutesPhoneShortcuts）
+  PhoneIntents/              iPhone のアプリと拡張で共通: 録音を始める App Intent（StartRecordingIntent）と、入口からアプリへ求めを渡す口（QuickRecord）。WatchIntents と同じ名前・同じ形（入るターゲットが別）
+  PhoneWidgets/              iPhone の拡張（MinutesWidgets）: ホーム画面・ロック画面のウィジェットとコントロール。状態を持たない。Shared は入れない
   Watch/                     Watch のアプリ（WatchModel、WatchViews。ログインは iPhone から LoginRelay で受け取る。Siri とショートカットの言い方は MinutesWatchShortcuts）
   WatchIntents/              Watch のアプリと拡張で共通: 録音を始める App Intent（StartRecordingIntent）と、入口からアプリへ求めを渡す口（QuickRecord）
   WatchWidgets/              Watch の拡張（MinutesWatchWidgets）: 文字盤のコンプリケーションとコントロールセンターのコントロール。状態を持たない。Shared は入れない
@@ -121,6 +125,7 @@ site/                        公開ページ（minutes.tools、日本語と英�
 ## 実行時の注意
 
 - iPhone と Watch のアプリ（Mobile/）: シミュレータでは録音にマイクを使わず、本番（api.minutes.tools）にも送らない（シミュレータのマイクは Mac のマイク）。開発のビルドは `xcrun simctl launch` の前に `SIMCTL_CHILD_MINUTES_CLOUD_BASE_URL`・`SIMCTL_CHILD_MINUTES_CLOUD_TOKEN`（手元のサーバー）と `SIMCTL_CHILD_MINUTES_FIXTURE_AUDIO=<fixtures/sample_meeting/system_16k.wav の絶対パス>`・`SIMCTL_CHILD_MINUTES_FIXTURE_SPEED`（録音の代わりに書く架空の会議）を付ける。Watch のシミュレータは外から画面を押せないので、`SIMCTL_CHILD_MINUTES_AUTORECORD_SECONDS=<秒>` で起動してすぐ録音し、その秒数で止める（DEBUG だけ）。文字盤・コントロールセンター・Siri からの「録音を始める」（SPEC §5.7）は、`SIMCTL_CHILD_MINUTES_QUICK_RECORD=1` で起動時に、`xcrun simctl spawn <端末> notifyutil -p jp.pictors.minutes.debug.quick-record` で動いているアプリに、同じ求めを立てて確かめる（DEBUG だけ。コンプリケーションとコントロールを押すところはシミュレータでは確かめられない）。実機に入れるには Signing.xcconfig にチーム ID を書く（初めての実機のビルドで、Xcode が Apple Developer に App ID と開発用のプロファイルを作る）。
+- iPhone の「録音を始める」（SPEC §5.7）をシミュレータで試すとき: xcodebuild はシミュレータ向けを DEVELOPMENT_TEAM があっても Sign to Run Locally（チーム ID なし）で署名し、そのアプリでは Spotlight のショートカットが linkd に断られる（「ショートカットが見つかりません」）。Spotlight のショートカットを試すときは、チームの Apple Development 証明書で `.appex` と `.app` を署名し直して（entitlements は空）から入れる（ホーム画面のウィジェットは、署名し直さなくても動く）。ウィジェット・コントロールからの冷えた起動には `SIMCTL_CHILD_` が渡らないので、`xcrun simctl spawn <端末> launchctl setenv` で渡す（先に MINUTES_CLOUD_BASE_URL、あとで MINUTES_CLOUD_TOKEN。外すときは印から）。アクションボタンは 設定 > アクションボタン > コントロール で割り当て、XCUITest の `XCUIDevice.shared.press(.action)` で押せる。
 
 - TCC: `record` / `live` はマイクと「システムオーディオ録音」の許可が必要。ターミナルから起動した場合、許可はターミナルアプリ（責任プロセス）に紐づく。ad-hoc 署名のバイナリはビルドごとに許可がリセットされるので、継続利用は `CODESIGN_IDENTITY`（`.env` か環境変数。Apple Development 証明書で可）を設定した `scripts/build-cli.sh` / `scripts/build-app.sh` で。無効な ID はビルド前に止まる（`scripts/codesign-identity.sh`）。
 - Process Tap は「タブ単位」の切り出しができない。会議は専用ブラウザで開く運用（初回の案内と README）。

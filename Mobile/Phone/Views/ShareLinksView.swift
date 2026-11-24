@@ -20,24 +20,17 @@ struct ShareLinksView: View {
     @State private var copiedID: String?
     @State private var newShareID: String?
     @State private var revoking: MinutesCloudShare?
+    /// 作ろうとして、要約がないと分かった（一覧から開いたときは、要約があるかまだ分からない）
+    @State private var summaryMissing = false
+
+    private var summaryAvailable: Bool { hasSummary && !summaryMissing }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    createCard
-                    if let message {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(Palette.rose)
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .cardBackground()
-                    }
-                    if !shares.isEmpty {
-                        linksCard
-                            .transition(Motion.content(reduceMotion: reduceMotion))
-                    } else if !loaded {
+                    if !loaded {
+                        // 読み終えるまでは作る欄を出さない（使えるリンクがあると、あとから上に入って欄が下へ動く）
                         HStack(spacing: 10) {
                             ProgressView()
                             Text("リンクを読んでいます").foregroundStyle(.secondary)
@@ -45,6 +38,21 @@ struct ShareLinksView: View {
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .cardBackground()
+                    } else {
+                        // 使えるリンクを先に出す（半分の高さのシートでも、作ったリンクと「送る」「コピー」がすぐ見える）
+                        if !shares.isEmpty {
+                            linksCard
+                                .transition(Motion.content(reduceMotion: reduceMotion))
+                        }
+                        if let message {
+                            Label(message, systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundStyle(Palette.rose)
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .cardBackground()
+                        }
+                        createCard
                     }
                     Text("リンクを知っている人は、だれでもログインせずに読めます。送る相手に気をつけてください。期限が過ぎるか取り消すと、読めなくなります。")
                         .font(.footnote)
@@ -56,6 +64,7 @@ struct ShareLinksView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
                 .animation(Motion.layout, value: shares.map(\.id))
+                .animation(Motion.layout, value: loaded)
             }
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("リンクで共有")
@@ -78,16 +87,16 @@ struct ShareLinksView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Toggle(isOn: hasSummary ? $includeTranscript : .constant(true)) {
+                Toggle(isOn: summaryAvailable ? $includeTranscript : .constant(true)) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("全文も入れる")
-                        Text(hasSummary ? "発言をすべて、話者の名前つきで見せます" : "この会議には要約がないので、全文を共有します")
+                        Text(summaryAvailable ? "発言をすべて、話者の名前つきで見せます" : "この会議には要約がないので、全文を共有します")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .tint(Palette.periwinkle)
-                .disabled(!hasSummary)
+                .disabled(!summaryAvailable)
                 HStack {
                     Text("期限")
                     Spacer()
@@ -213,7 +222,7 @@ struct ShareLinksView: View {
     private func create() {
         working = true
         message = nil
-        let include = hasSummary ? includeTranscript : true
+        let include = summaryAvailable ? includeTranscript : true
         Task {
             defer { working = false }
             do {
@@ -223,6 +232,10 @@ struct ShareLinksView: View {
                 // 作ったリンクはすぐに貼れるようにしておく
                 UIPasteboard.general.url = share.url
                 copiedID = share.id
+            } catch let error as MinutesCloudError where error.status == 409 && error.code == "no_summary" {
+                // 要約がない会議（一覧の長押しから開いたときは、作るまで分からない）。全文を入れるかは選び直してもらう
+                withAnimation(Motion.layout) { summaryMissing = true }
+                message = "この会議には要約がありません。全文を入れたリンクになります。よければ、もう一度「リンクを作る」を押してください。"
             } catch {
                 message = Self.describe(error, action: "リンクを作れませんでした")
             }

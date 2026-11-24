@@ -1,6 +1,5 @@
 import MinutesKit
 import SwiftUI
-import UIKit
 
 /// アカウント: ログイン中のアドレス（Mac で使うアドレス）、プランと今月の量、ログアウト、アカウントの削除（ガイドライン 5.1.1(v)）。
 struct AccountView: View {
@@ -9,7 +8,6 @@ struct AccountView: View {
     @State private var confirmingDelete = false
     @State private var working = false
     @State private var message: String?
-    @State private var copied = false
     @State private var apple = AppleAuthorization()
 
     var body: some View {
@@ -114,7 +112,7 @@ struct AccountView: View {
     }
 
     private var emailCard: some View {
-        SectionCard(title: "ログイン", systemImage: "envelope.fill", count: nil, tint: Palette.cyan) {
+        SectionCard("ログイン", systemImage: "envelope.fill", tint: Palette.cyan) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.user?.email ?? "—")
                     .font(.body.weight(.medium))
@@ -126,18 +124,6 @@ struct AccountView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-        } trailing: {
-            if let email = model.user?.email {
-                Button {
-                    UIPasteboard.general.string = email
-                    copied = true
-                } label: {
-                    Label(copied ? "コピーしました" : "コピー", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.subheadline.weight(.medium))
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .sensoryFeedback(.success, trigger: copied)
             }
         }
     }

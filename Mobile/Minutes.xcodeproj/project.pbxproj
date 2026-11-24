@@ -11,6 +11,7 @@
 		7B0000000000000000000062 /* MinutesKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B00000000000000000000A2 /* MinutesKit */; };
 		7B0000000000000000000063 /* MinutesKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B00000000000000000000A3 /* MinutesKit */; };
 		7B0000000000000000000064 /* MinutesWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7B0000000000000000000033 /* MinutesWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7B0000000000000000000065 /* MinutesWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7B0000000000000000000034 /* MinutesWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,6 +28,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7B0000000000000000000043;
 			remoteInfo = MinutesWatchWidgets;
+		};
+		7B0000000000000000000075 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7B0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7B0000000000000000000044;
+			remoteInfo = MinutesWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -53,6 +61,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B000000000000000000005F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7B0000000000000000000065 /* MinutesWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -61,9 +80,11 @@
 		7B0000000000000000000023 /* Watch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Watch-Info.plist"; sourceTree = "<group>"; };
 		7B0000000000000000000024 /* Phone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Phone.entitlements; sourceTree = "<group>"; };
 		7B0000000000000000000025 /* WatchWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "WatchWidgets-Info.plist"; sourceTree = "<group>"; };
+		7B0000000000000000000026 /* PhoneWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PhoneWidgets-Info.plist"; sourceTree = "<group>"; };
 		7B0000000000000000000031 /* Minutes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Minutes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B0000000000000000000032 /* MinutesWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinutesWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B0000000000000000000033 /* MinutesWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MinutesWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B0000000000000000000034 /* MinutesWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MinutesWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -92,6 +113,21 @@
 			path = WatchWidgets;
 			sourceTree = "<group>";
 		};
+		7B0000000000000000000016 /* PhoneIntents */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PhoneIntents;
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000017 /* PhoneWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PhoneWidgets;
+			sourceTree = "<group>";
+		};
+		7B0000000000000000000018 /* Brand */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Brand;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,14 +154,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B000000000000000000005D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		7B0000000000000000000002 = {
 			isa = PBXGroup;
 			children = (
+				7B0000000000000000000018 /* Brand */,
 				7B0000000000000000000011 /* Shared */,
 				7B0000000000000000000012 /* Phone */,
+				7B0000000000000000000016 /* PhoneIntents */,
+				7B0000000000000000000017 /* PhoneWidgets */,
 				7B0000000000000000000013 /* Watch */,
 				7B0000000000000000000014 /* WatchIntents */,
 				7B0000000000000000000015 /* WatchWidgets */,
@@ -138,6 +184,7 @@
 			isa = PBXGroup;
 			children = (
 				7B0000000000000000000031 /* Minutes.app */,
+				7B0000000000000000000034 /* MinutesWidgets.appex */,
 				7B0000000000000000000032 /* MinutesWatch.app */,
 				7B0000000000000000000033 /* MinutesWatchWidgets.appex */,
 			);
@@ -149,6 +196,7 @@
 			children = (
 				7B0000000000000000000021 /* Base.xcconfig */,
 				7B0000000000000000000022 /* Phone-Info.plist */,
+				7B0000000000000000000026 /* PhoneWidgets-Info.plist */,
 				7B0000000000000000000023 /* Watch-Info.plist */,
 				7B0000000000000000000024 /* Phone.entitlements */,
 				7B0000000000000000000025 /* WatchWidgets-Info.plist */,
@@ -167,15 +215,19 @@
 				7B0000000000000000000052 /* Frameworks */,
 				7B0000000000000000000053 /* Resources */,
 				7B0000000000000000000054 /* Embed Watch Content */,
+				7B000000000000000000005F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				7B0000000000000000000072 /* PBXTargetDependency */,
+				7B0000000000000000000076 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				7B0000000000000000000018 /* Brand */,
 				7B0000000000000000000011 /* Shared */,
 				7B0000000000000000000012 /* Phone */,
+				7B0000000000000000000016 /* PhoneIntents */,
 			);
 			name = Minutes;
 			packageProductDependencies = (
@@ -200,6 +252,7 @@
 				7B0000000000000000000074 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				7B0000000000000000000018 /* Brand */,
 				7B0000000000000000000011 /* Shared */,
 				7B0000000000000000000013 /* Watch */,
 				7B0000000000000000000014 /* WatchIntents */,
@@ -235,6 +288,30 @@
 			productReference = 7B0000000000000000000033 /* MinutesWatchWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		7B0000000000000000000044 /* MinutesWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B0000000000000000000085 /* Build configuration list for PBXNativeTarget "MinutesWidgets" */;
+			buildPhases = (
+				7B000000000000000000005C /* Sources */,
+				7B000000000000000000005D /* Frameworks */,
+				7B000000000000000000005E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7B0000000000000000000018 /* Brand */,
+				7B0000000000000000000016 /* PhoneIntents */,
+				7B0000000000000000000017 /* PhoneWidgets */,
+			);
+			name = MinutesWidgets;
+			packageProductDependencies = (
+			);
+			productName = MinutesWidgets;
+			productReference = 7B0000000000000000000034 /* MinutesWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -252,6 +329,9 @@
 						CreatedOnToolsVersion = 27.2;
 					};
 					7B0000000000000000000043 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					7B0000000000000000000044 = {
 						CreatedOnToolsVersion = 27.2;
 					};
 				};
@@ -277,6 +357,7 @@
 				7B0000000000000000000041 /* Minutes */,
 				7B0000000000000000000042 /* MinutesWatch */,
 				7B0000000000000000000043 /* MinutesWatchWidgets */,
+				7B0000000000000000000044 /* MinutesWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -297,6 +378,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		7B000000000000000000005A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B000000000000000000005E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -327,6 +415,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B000000000000000000005C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -339,6 +434,11 @@
 			isa = PBXTargetDependency;
 			target = 7B0000000000000000000043 /* MinutesWatchWidgets */;
 			targetProxy = 7B0000000000000000000073 /* PBXContainerItemProxy */;
+		};
+		7B0000000000000000000076 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7B0000000000000000000044 /* MinutesWidgets */;
+			targetProxy = 7B0000000000000000000075 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -536,6 +636,52 @@
 			};
 			name = Release;
 		};
+		7B0000000000000000000099 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/PhoneWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		7B000000000000000000009A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Support/PhoneWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Minutes;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.pictors.minutes.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -571,6 +717,15 @@
 			buildConfigurations = (
 				7B0000000000000000000097 /* Debug */,
 				7B0000000000000000000098 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B0000000000000000000085 /* Build configuration list for PBXNativeTarget "MinutesWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B0000000000000000000099 /* Debug */,
+				7B000000000000000000009A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

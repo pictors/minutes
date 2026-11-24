@@ -1,14 +1,14 @@
 #!/usr/bin/env swift
-// iPhone と Watch のアプリのアイコン・起動画面の素材を、ロゴの輪郭（Mobile/Shared/BrandLogo.swift）から描いて
+// iPhone と Watch のアプリのアイコン・起動画面の素材を、ロゴの輪郭（Mobile/Brand/BrandGeometry.swift）から描いて
 // Mobile/Phone/Assets.xcassets と Mobile/Watch/Assets.xcassets に置く。色は Mac のアイコン（assets/brand/minutes-b1/app-icon.png）と配色（Palette）に合わせる。
 // 使い方（リポジトリの根で）: swift scripts/build-mobile-brand.swift
 import AppKit
 import Foundation
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let logoSource = try String(contentsOf: root.appendingPathComponent("Mobile/Shared/BrandLogo.swift"), encoding: .utf8)
+let logoSource = try String(contentsOf: root.appendingPathComponent("Mobile/Brand/BrandGeometry.swift"), encoding: .utf8)
 
-// BrandLogo.swift の mark の輪郭（M・L・C・Z の絶対座標）を読む
+// BrandGeometry.swift の BrandLogo.mark の輪郭（M・L・C・Z の絶対座標）を読む
 func markParts() -> [String] {
     guard let start = logoSource.range(of: "static let mark: [String] = ["), let end = logoSource.range(of: "]", range: start.upperBound..<logoSource.endIndex) else { return [] }
     return logoSource[start.upperBound..<end.lowerBound].split(separator: "\n").compactMap { line in

@@ -27,6 +27,14 @@ struct RecordingView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 18)
 
+            // ウィジェット・コントロールから一手で始めると「新しい会議」の念押しを通らないので、録音のたびにここで伝える
+            Label("録音することを、参加者に伝えてください。", systemImage: "person.2.wave.2")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+                .padding(.top, 8)
+
             Spacer(minLength: 12)
 
             TimelineView(.periodic(from: .now, by: 0.25)) { context in

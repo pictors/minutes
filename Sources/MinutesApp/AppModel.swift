@@ -146,6 +146,10 @@ final class AppModel {
     /// 次に見回りで取りに行く時刻（取り込みのたびに、処理中の録音があれば 1 分後、なければ 10 分後。`CloudMeetingImport.nextPullDelay`）
     @ObservationIgnored private var nextCloudPullAt: Date?
     @ObservationIgnored private var cloudPullLoopTask: Task<Void, Never>?
+    /// やることの済みの同期（P7、`CloudActionSync`）を走らせているか。走っているあいだに頼まれたら、終わってからもう一度走らせる。
+    @ObservationIgnored private var actionSyncRunning = false
+    @ObservationIgnored private var actionSyncRequested = false
+    @ObservationIgnored private var actionPushObservation: Task<Void, Never>?
     @ObservationIgnored private var notesDrafts: [String: UserNotesDraft] = [:]
     var privacyModeForNextMeeting: PrivacyMode
     /// 次の録音の言語（既定は設定の「会議の言語」）。英語を選んだら英語のライブ字幕のモデルを先に用意する。
@@ -246,6 +250,7 @@ final class AppModel {
             observeTags()
             observePostProcessingJobs()
             observeCloudSyncFailures()
+            observeCloudActionPushes()
         }
         applyGlobalShortcut()
         // NSApplication の起動処理が終わってから外観を当てる
@@ -816,6 +821,8 @@ final class AppModel {
                 result = "取り込めません（\(error.localizedDescription)）"
                 appendEvent("iPhone・Watch の会議を取り込めません: \(error.localizedDescription)")
             }
+            // やることの済みも同じ見回りで合わせる（P7。取り込んだばかりの会議の済みも重なる）
+            syncCloudActionChecks()
             cloudPullRunning = false
             // 頼まれた取り込みだけ、結果を少しのあいだ出す
             guard cloudPullNotice != nil else { return }
@@ -1164,6 +1171,8 @@ final class AppModel {
         case let .completed(id, warnings):
             appendEvent("後処理完了: \(id)")
             for (step, message) in warnings { appendEvent("後処理の警告 \(step.rawValue): \(message)") }
+            // iPhone・Watch から取り込んだ会議の議事録ができたら、議事録を待っていたやることの済みを重ねる（P7）
+            if (try? store?.meeting(id: id))?.cloudRecordingId != nil { syncCloudActionChecks() }
             if !warnings.isEmpty {
                 let title = (try? store?.meeting(id: id))?.title ?? "会議"
                 let steps = warnings.keys.map(\.title).sorted().joined(separator: "・")
@@ -1176,6 +1185,45 @@ final class AppModel {
         case let .unavailable(message):
             operationError = "後処理を開始できません: \(message)"
             appendEvent(operationError ?? message)
+        }
+    }
+
+    /// この Mac で付けた・外したやることの済み（サーバーにある会議）を、すぐにサーバーへ送る（P7）。送る列が増えたら、少し待ってから送る
+    /// （続けて付けたものをまとめる）。送れなかった分は、iPhone・Watch の会議の見回りでも送り直す。
+    private func observeCloudActionPushes() {
+        actionPushObservation?.cancel()
+        guard let store else { return }
+        actionPushObservation = Task { [weak self] in
+            do {
+                for try await count in store.pendingCloudActionPushObservation().values(in: store.writer) where count > 0 {
+                    try? await Task.sleep(for: .seconds(1))
+                    self?.syncCloudActionChecks()
+                }
+            } catch { self?.appendEvent("やることの済みの監視に失敗: \(error.localizedDescription)") }
+        }
+    }
+
+    /// やることの済みの同期（P7、SPEC §5.6）: この Mac の済みを送り、iPhone・ほかの Mac の済みを手元の会議に重ねる。
+    /// Minutes にログインしているときだけ。同期した Mac の会議は、同期を入れているときだけ。
+    func syncCloudActionChecks() {
+        guard let store, minutesCloudEmail != nil else { return }
+        guard !actionSyncRunning else {
+            actionSyncRequested = true
+            return
+        }
+        actionSyncRunning = true
+        let includesMacMeetings = settings.syncMeetingsToMinutesCloud
+        Task {
+            repeat {
+                actionSyncRequested = false
+                let report = await CloudActionSync.sync(client: .standard(), store: store, includesMacMeetings: includesMacMeetings)
+                if report.applied > 0 { appendEvent("iPhone・ほかの Mac で付けたやることの済みを重ねました: \(report.applied) 件") }
+                if let interruption = report.interruption {
+                    appendEvent("やることの済みの同期を途中でやめました: \(interruption)")
+                    break
+                }
+            } while actionSyncRequested
+            actionSyncRunning = false
         }
     }
 

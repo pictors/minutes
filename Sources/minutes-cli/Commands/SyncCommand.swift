@@ -32,5 +32,8 @@ enum SyncCommand {
         let removals = await pipeline.retryPendingRemovals()
         for line in report + removals { Console.out(line) }
         Console.out("送った会議: \(report.filter { $0.hasSuffix(": ok") }.count) / \(ids.count) 件、サーバーから消した会議: \(removals.filter { $0.hasSuffix(": removed") }.count) 件")
+        // やることの済み（P7）も合わせる
+        let checks = await CloudActionSync.sync(client: .standard(), store: store, includesMacMeetings: true)
+        Console.out("やることの済み: 送った \(checks.pushed) 件、重ねた \(checks.applied) 件\(checks.interruption.map { "（途中でやめました: \($0)）" } ?? "")")
     }
 }

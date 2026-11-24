@@ -32,6 +32,38 @@ enum Formatting {
         return label
     }
 
+    /// やることの期限の出し方。
+    struct Due: Equatable {
+        enum Timing: Equatable { case overdue, today, upcoming, unknown }
+        /// 「11/25（水）」・「今日」・「明日」（読めない形はそのまま）
+        var text: String
+        var timing: Timing
+        /// 読み上げ用（「11月25日（水）、期限を過ぎています」）
+        var spoken: String
+    }
+
+    /// 期限 "2026-11-25" を「11/25（水）」にする（年が違えば「2027/1/5（火）」、今日・明日はそう書く）。
+    /// 期限は人が直せるので（Mac で書き換えた文など）、日付として読めない形はそのまま出す。和暦などの設定でも西暦で読む。
+    static func due(_ raw: String, now: Date = Date(), calendar: Calendar = Calendar(identifier: .gregorian)) -> Due {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: "-", omittingEmptySubsequences: false)
+        guard trimmed.count == 10, parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
+              let date = calendar.date(from: DateComponents(year: year, month: month, day: day)),
+              calendar.component(.month, from: date) == month, calendar.component(.day, from: date) == day
+        else { return Due(text: trimmed, timing: .unknown, spoken: trimmed) }
+        let weekday = date.formatted(Date.FormatStyle(locale: Locale(identifier: "ja_JP")).weekday(.abbreviated))
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        let sameYear = calendar.component(.year, from: now) == year
+        let text = sameYear ? "\(month)/\(day)（\(weekday)）" : "\(year)/\(month)/\(day)（\(weekday)）"
+        let spoken = sameYear ? "\(month)月\(day)日（\(weekday)）" : "\(year)年\(month)月\(day)日（\(weekday)）"
+        switch days {
+        case ..<0: return Due(text: text, timing: .overdue, spoken: "\(spoken)、期限を過ぎています")
+        case 0: return Due(text: "今日", timing: .today, spoken: "今日")
+        case 1: return Due(text: "明日", timing: .upcoming, spoken: "明日")
+        default: return Due(text: text, timing: .upcoming, spoken: spoken)
+        }
+    }
+
     /// やることの担当者の表示名。要約は担当者を "me"・"agent"・話者のラベルか名前で返す（Mac の ActionRow と同じ読み方）。空なら出さない
     static func owner(_ owner: String, in document: TranscriptDocument?) -> String? {
         switch owner {

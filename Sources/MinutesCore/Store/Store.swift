@@ -865,15 +865,16 @@ public final class Store: Sendable {
             let previous = existing?.actionItems ?? []
             var preserved = summary
             // 生成結果には ID がないので、内容が同じ既存アクションから ID と完了状態を引き継ぐ。残りは採番する。
+            // サーバーの要約（iPhone・Watch から取り込んだ会議）はやることの ID を持つので、それを使う（済みの同期で同じやることを指す。P7）。
             var unmatched = previous.filter { $0.manual != true }
             for index in preserved.actionItems.indices {
                 let action = preserved.actionItems[index]
                 if let found = unmatched.firstIndex(where: { $0.matchesContent(of: action) }) {
                     let match = unmatched.remove(at: found)
                     preserved.actionItems[index].done = match.done
-                    preserved.actionItems[index].id = match.id ?? UUID().uuidString.lowercased()
+                    preserved.actionItems[index].id = match.id ?? action.id ?? UUID().uuidString.lowercased()
                 } else {
-                    preserved.actionItems[index].id = UUID().uuidString.lowercased()
+                    preserved.actionItems[index].id = action.id ?? UUID().uuidString.lowercased()
                 }
                 preserved.actionItems[index].manual = nil
             }
@@ -979,6 +980,8 @@ public final class Store: Sendable {
             notes.actionItemsJson = String(decoding: try JSONCoding.encoder(pretty: false).encode(items), as: UTF8.self)
             try notes.save(db)
             try Store.refreshNotesFTS(db, notes: notes)
+            // サーバーにある会議なら、iPhone・ほかの Mac にも届くように送る列に入れる（送るのは CloudActionSync。P7）
+            if let actionId = items[index].id { try Store.queueCloudActionPush(db, meetingId: meetingId, actionId: actionId, done: done) }
             return notes
         }
     }

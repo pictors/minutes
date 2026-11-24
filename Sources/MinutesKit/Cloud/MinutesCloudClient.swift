@@ -296,6 +296,46 @@ public struct MinutesCloudShare: Decodable, Sendable, Equatable, Identifiable {
     public static let defaultExpiryDays = 30
 }
 
+/// やることの済み（P7、GET /v1/action-checks）。ほかのログイン（iPhone・ほかの Mac）で付けた・外した済み。
+public struct MinutesCloudActionCheck: Decodable, Sendable, Equatable {
+    /// サーバーの録音の ID（iPhone・Watch の録音を取り込んだ会議は `cloud_recording_id`）
+    public var recordingId: String
+    /// "recording"（iPhone・Watch の録音）か "meeting"（同期した Mac の会議）
+    public var kind: String
+    /// 同期した Mac の会議のとき、Mac の会議の ID
+    public var meetingId: String?
+    public var source: String?
+    public var actionId: String
+    public var done: Bool
+    public var updatedAt: Date?
+    public var seq: Int
+
+    public init(recordingId: String, kind: String, meetingId: String?, source: String?, actionId: String, done: Bool, updatedAt: Date?, seq: Int) {
+        self.recordingId = recordingId
+        self.kind = kind
+        self.meetingId = meetingId
+        self.source = source
+        self.actionId = actionId
+        self.done = done
+        self.updatedAt = updatedAt
+        self.seq = seq
+    }
+}
+
+/// やることの済みの 1 回分の読み取り。次は `next` を after に渡す（このログインで付けた行は返らないが、next は進む）。
+public struct MinutesCloudActionCheckPage: Decodable, Sendable, Equatable {
+    public var checks: [MinutesCloudActionCheck]
+    public var next: Int
+    /// まだ続きがあるかもしれない
+    public var more: Bool
+
+    public init(checks: [MinutesCloudActionCheck], next: Int, more: Bool) {
+        self.checks = checks
+        self.next = next
+        self.more = more
+    }
+}
+
 public struct MinutesCloudSummaryJob: Decodable, Sendable, Equatable {
     public var id: String
     public var clientId: String
@@ -581,6 +621,27 @@ public struct MinutesCloudClient: Sendable {
         } catch let error as MinutesCloudError where error.status == 404 {
             return
         }
+    }
+
+    // MARK: やることの済み（P7）
+
+    /// やることの済みを付ける・外す（録音の ID で指す。iPhone・Watch の録音も、同期した Mac の会議も）。
+    /// やることがなければ 404 action_not_found、要約がなければ 404 no_summary、処理が終わる前は 409 not_ready。
+    /// 済みに対応していないサーバーは 404 not_found を返す。
+    public func setActionDone(recordingID: String, actionID: String, done: Bool) async throws {
+        _ = try await send("PUT", "/v1/recordings/\(recordingID)/actions/\(actionID)", body: try JSONSerialization.data(withJSONObject: ["done": done]))
+    }
+
+    /// 同期した Mac の会議のやることの済みを付ける・外す（Mac の会議の ID で指す）。会議がサーバーになければ 404 not_found。
+    public func setMeetingActionDone(meetingID: String, actionID: String, done: Bool) async throws {
+        _ = try await send("PUT", "/v1/meetings/\(meetingID)/actions/\(actionID)", body: try JSONSerialization.data(withJSONObject: ["done": done]))
+    }
+
+    /// ほかのログインで付けた・外した済み（after より新しいもの、番号の順。limit は 1〜1000）。
+    public func actionChecks(after: Int, limit: Int? = nil) async throws -> MinutesCloudActionCheckPage {
+        var query = [URLQueryItem(name: "after", value: String(after))]
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
+        return try decode(MinutesCloudActionCheckPage.self, from: try await send("GET", "/v1/action-checks", query: query).0)
     }
 
     // MARK: 要約

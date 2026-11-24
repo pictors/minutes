@@ -98,9 +98,13 @@ $CLI process recordings/2026-09-16_weekly --provider minutes --summary-provider 
 $CLI transcribe recordings/2026-09-16_weekly --provider minutes
 $CLI pull --db /tmp/minutes-test.sqlite --audio-root /tmp/minutes-audio   # iPhone・Watch で録った会議をサーバーから取り込む（SPEC §4.5。--db を省くとアプリの DB）
 $CLI sync --db /tmp/minutes-test.sqlite --export-dir /tmp/minutes-export   # この Mac の会議の文字起こしと議事録を同期する（iPhone で読める。SPEC §5.6。--db を省くとアプリの DB の会議をすべて送る）
+$CLI actions <会議の ID> --db /tmp/minutes-test.sqlite                # 会議のやることと済み（ID つき）を見る
+$CLI actions <会議の ID> --db /tmp/minutes-test.sqlite --done <やることの ID> --sync   # 済みにして、iPhone・ほかの Mac と済みを合わせる（--undone で外す、--add <本文> で足す。SPEC §5.6）
 $CLI account logout
 ```
 
 `MINUTES_CLOUD_BASE_URL` でサーバーの場所を変えられる（既定 `https://api.minutes.tools`）。`MINUTES_CLOUD_TOKEN` でログインの印を渡せる（テスト用）。
+
+`pull` と `sync` も、終わりにやることの済みを合わせる（この Mac の済みを送り、iPhone・ほかの Mac の済みを重ねる。`pull` は同期した Mac の会議をアプリの同期の設定に従って含め、`sync` と `actions --sync` はいつも含める）。
 
 `--db` で別の DB を使える。CLI の `record` / `live` は録音の失敗を受けたら停止・ファイルの終了処理をして、0 以外で終わる。`transcribe` は送信前に、空の音声と、manifest がある場合の録音失敗・時間の不一致・欠けたトラックを確かめる。

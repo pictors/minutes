@@ -192,6 +192,23 @@ public enum StoreSchema {
             );
             """)
         }
+        // やることの済みの同期（P7、SPEC §5.6）: まだサーバーへ送っていない済み（会議・やることごとに最新の 1 つ。会議を消すと消える）と、
+        // サーバーの済みをどこまで読んだかなどの小さな値（キーと値）。
+        migrator.registerMigration("v10_cloud_action_checks") { db in
+            try db.execute(sql: """
+            CREATE TABLE cloud_action_pushes (
+              meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+              action_id TEXT NOT NULL,
+              done INTEGER NOT NULL,
+              queued_at TEXT NOT NULL,
+              PRIMARY KEY (meeting_id, action_id)
+            );
+            CREATE TABLE cloud_state (
+              key TEXT PRIMARY KEY,
+              value TEXT NOT NULL
+            );
+            """)
+        }
         return migrator
     }
 }

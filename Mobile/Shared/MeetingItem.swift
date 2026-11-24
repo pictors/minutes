@@ -7,16 +7,53 @@ struct MeetingItem: Identifiable, Equatable {
     var local: MinutesCloudUpload?
     var server: MinutesCloudRecording?
 
+    /// 題名のない会議の出し方
+    static let untitled = "無題の会議"
+
     var title: String? { server?.title ?? local?.title }
     var startedAt: Date { server?.startedAt ?? local?.startedAt ?? server?.createdAt ?? .distantPast }
     var durationSeconds: Double? { server?.durationSeconds ?? local?.durationSeconds }
     var isDone: Bool { server?.status == "done" }
     /// 同期を入れた Mac が上げた会議（音声はない。直す・消すのは Mac。P7）
     var isMacMeeting: Bool { server?.isSyncedMeeting == true }
-    /// 録った機器の記号と名前（一覧と会議の画面）
-    var origin: (systemImage: String, text: String) {
-        if isMacMeeting { return ("laptopcomputer", "Mac で録音") }
-        if server?.source == "watch" || local?.source == "watch" { return ("applewatch", "Watch で録音") }
-        return ("iphone", "iPhone で録音")
+    /// 題名を直せる（サーバーにある iPhone・Watch の会議。Mac の会議は Mac で直す）
+    var canRename: Bool { server != nil && !isMacMeeting }
+    /// 消せる（Mac の会議は Mac で消す）。録音中の会議かは呼ぶ側で見る
+    var canDelete: Bool { !isMacMeeting }
+    /// リンクで共有できる録音（iPhone・Watch で録ってサーバーで処理が終わったものと、同期した Mac の会議。P7）
+    var shareableRecording: MinutesCloudRecording? {
+        guard let server, server.status == "done", server.isSyncedMeeting || ["iphone", "watch"].contains(server.source ?? "") else { return nil }
+        return server
     }
+    /// 録った機器（一覧の絞り込みと、会議の画面の記号と名前）
+    var origin: MeetingOrigin {
+        if isMacMeeting { return .mac }
+        if server?.source == "watch" || local?.source == "watch" { return .watch }
+        return .iphone
+    }
+}
+
+/// 会議を録った機器。
+enum MeetingOrigin: String, CaseIterable, Identifiable, Sendable {
+    case iphone, watch, mac
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .iphone: "iPhone"
+        case .watch: "Watch"
+        case .mac: "Mac"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .iphone: "iphone"
+        case .watch: "applewatch"
+        case .mac: "laptopcomputer"
+        }
+    }
+
+    var text: String { "\(name) で録音" }
 }

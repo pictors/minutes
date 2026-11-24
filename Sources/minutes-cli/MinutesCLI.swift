@@ -28,6 +28,7 @@ struct MinutesCLI {
             case "account": try await AccountCommand.run(rest)
             case "pull": try await PullCommand.run(rest)
             case "sync": try await SyncCommand.run(rest)
+            case "actions": try await ActionsCommand.run(rest)
             case "help", "--help", "-h": printUsage()
             case "version", "--version": Console.out(version)
             default:
@@ -118,6 +119,10 @@ struct MinutesCLI {
           minutes-cli sync [--db <path>] [--export-dir <dir>] [--meeting <id>] [--delete <id>]
               この Mac の会議の文字起こしと議事録を Minutes クラウドへ同期する（iPhone で読める。音声は送らない）。
               会議を指さなければ、終わった・クラウド OK・取り込んだ会議でない会議をすべて送る。--delete はサーバーの会議だけを消す。
+              やることの済み（この Mac で付けたもの・iPhone で付けたもの）も合わせる。
+
+          minutes-cli actions <meeting-id> [--db <path>] [--add <text>] [--done <action-id> | --undone <action-id>] [--sync]
+              会議のやることと済みを見る・足す・済みを付ける・外す。--sync で iPhone・ほかの Mac と済みを合わせる。
 
         API キー: 環境変数または .env の ELEVENLABS_API_KEY / OPENAI_API_KEY
         """)

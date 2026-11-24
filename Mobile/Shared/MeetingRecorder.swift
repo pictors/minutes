@@ -32,6 +32,9 @@ final class MeetingRecorder {
     }
 
     private(set) var phase: Phase = .idle
+    /// 始めているところ（マイクの許可を待っているあいだ）。phase はまだ idle なので、これで 2 本目を断る
+    /// （「録音」のボタンと、ウィジェット・コントロール・Siri の「録音を始める」が重なったとき。SPEC §5.7）
+    @ObservationIgnored private var isStarting = false
     private(set) var clientId: String?
     private(set) var title: String?
     private(set) var meetingStartedAt: Date?
@@ -71,7 +74,10 @@ final class MeetingRecorder {
     // MARK: 始める・止める
 
     func start(title: String?) async throws {
-        guard phase == .idle else { throw RecorderError.alreadyRecording }
+        // 許可を待つ await のあいだに、もう 1 つの start が idle を見て進まないようにする
+        guard phase == .idle, !isStarting else { throw RecorderError.alreadyRecording }
+        isStarting = true
+        defer { isStarting = false }
         let usesFixture = try prepareFixture()
         if !usesFixture {
             if CloudEnvironment.isSimulator { throw RecorderError.simulatorMicrophone }
