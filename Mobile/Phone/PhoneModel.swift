@@ -41,6 +41,10 @@ final class PhoneModel {
             self?.reloadLocal()
         }
         uploads.onChange = { [weak self] _ in self?.reloadLocal() }
+        // 前に出ているときに「議事録ができた」などの通知が届いた: 通知は出さず、一覧を読み直す（SPEC §5.7）
+        PushNotifications.shared.onForegroundNotification = { [weak self] in
+            Task { await self?.refresh() }
+        }
         // サーバーが購入を受け付けた: 量を読み直し、使える量で断られた送信（complete の 402）をやり直す
         billing.onChange = { [weak self] in
             self?.uploads.kickAll()
@@ -83,6 +87,8 @@ final class PhoneModel {
         reloadLocal()
         uploads.kickAll()
         Task { await refresh() }
+        // 通知の許可は設定のアプリで変えられる（入れたら、APNs に登録する）
+        Task { await PushNotifications.shared.refreshAuthorization() }
     }
 
     /// 録音の途中でアプリが終わった録音は、録れたところまでで止めて送る。
@@ -238,6 +244,8 @@ final class PhoneModel {
         signInNotice = nil
         uploads.kickAll()
         LoginRelay.shared.sendLogin()
+        // 通知の宛先を、新しいログインに登録する
+        PushNotifications.shared.didSignIn()
         Task {
             await refresh()
             // ログインする前の購入（App Store・ほかの端末）も、このアカウントに送る
@@ -357,6 +365,8 @@ final class PhoneModel {
     }
 
     func signOut() async {
+        // 通知の宛先を外してからログアウトする（ログインの印が要る。送れなくても、サーバーはログアウトで登録を消す）
+        await PushNotifications.shared.willSignOut()
         try? await client.signOut()
         signedOutLocally()
     }
@@ -374,6 +384,7 @@ final class PhoneModel {
         passkeyOfferPending = false
         billing.reset()
         LoginRelay.shared.sendLogin()
+        PushNotifications.shared.didSignOutLocally()
     }
 
     /// アカウントを消す（サーバーの録音・文字起こし・要約も消える）。この端末の録音も消す。

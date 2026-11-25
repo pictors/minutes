@@ -371,4 +371,30 @@ struct MinutesCloudClientTests {
         #expect(defaults["include_transcript"] as? Bool == false && defaults["expires_in_days"] as? Int == 30)
         #expect(MinutesCloudError.http(status: 409, code: "no_summary", requestID: nil).localizedDescription.contains("全文"))
     }
+
+    @Test("通知の宛先: 小文字の 16 進で登録し、外す。外すとき、もうない・対応していないサーバー（404）なら済んだとみなす")
+    func pushDevices() async throws {
+        let seen = Mutex<[StubURLProtocol.Request]>([])
+        let token = Data([0x00, 0x0f, 0xa0, 0xff] + [UInt8](repeating: 0xab, count: 28))
+        let hex = "000fa0ff" + String(repeating: "ab", count: 28)
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0.append(request) }
+            switch (request.method, request.path) {
+            case ("PUT", "/v1/push-devices"): return json(["ok": true])
+            case ("DELETE", "/v1/push-devices/\(hex)"): return seen.withLock { $0.count } > 2 ? json(["error": "not_found"], status: 404) : (204, [:], Data())
+            default: return json(["error": "not_found"], status: 404)
+            }
+        }
+        let client = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" })
+        try await client.registerPushDevice(token: token, environment: .sandbox)
+        let put = try #require(seen.withLock { $0.first })
+        #expect(put.headers["authorization"] == "Bearer fictional-token")
+        let body = bodyObject(put)
+        #expect(body["token"] as? String == hex && body["environment"] as? String == "sandbox" && hex.count == 64)
+        try await client.unregisterPushDevice(token: token)
+        try await client.unregisterPushDevice(token: token)
+        #expect(seen.withLock { $0.count } == 3)
+        let signedOut = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { nil })
+        await #expect(throws: MinutesCloudError.notSignedIn) { try await signedOut.registerPushDevice(token: token, environment: .production) }
+    }
 }

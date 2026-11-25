@@ -69,6 +69,11 @@ struct MeetingListView: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
                     }
+                    // 議事録を待つ会議ができたら、通知を受け取るかを聞く（SPEC §5.7）
+                    if NotificationPromptCard.shouldShow(push: PushNotifications.shared, model: model) {
+                        NotificationPromptCard(push: PushNotifications.shared)
+                            .transition(.opacity)
+                    }
                     if !model.meetings.isEmpty {
                         MeetingFilterBar(filter: $filter, meetings: model.meetings, recordingClientId: model.recorder.clientId, searching: $searching)
                     }
@@ -114,6 +119,8 @@ struct MeetingListView: View {
                         .transition(.opacity)
                     }
                 }
+                // 通知の誘いが消える（受け取る・あとで）ときもフェードにする
+                .animation(Motion.layout, value: NotificationPromptCard.shouldShow(push: PushNotifications.shared, model: model))
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 110)
@@ -137,6 +144,8 @@ struct MeetingListView: View {
             .navigationDestination(for: String.self) { id in
                 MeetingDetailView(clientId: id)
             }
+            // 押した通知（議事録ができた・処理できなかった）の会議を開く
+            .modifier(OpensNotifiedMeeting(path: $path))
             .refreshable { await model.refresh() }
             .safeAreaInset(edge: .bottom) {
                 Button {

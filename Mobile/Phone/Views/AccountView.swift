@@ -1,7 +1,7 @@
 import MinutesKit
 import SwiftUI
 
-/// アカウント: ログイン中のアドレス（Mac で使うアドレス）、プランと今月の量、ログアウト、アカウントの削除（ガイドライン 5.1.1(v)）。
+/// アカウント: ログイン中のアドレス（Mac で使うアドレス）、プランと今月の量、通知、ログアウト、アカウントの削除（ガイドライン 5.1.1(v)）。
 /// ログアウトとアカウントの削除は隣に並べない。削除は画面のいちばん下の別の場所に置き、押すと説明と確認の画面（AccountDeletionView）に進む。
 struct AccountView: View {
     @Environment(PhoneModel.self) private var model
@@ -21,6 +21,7 @@ struct AccountView: View {
                     planCard
                     emailCard
                     passkeyCard
+                    NotificationSettingsCard(push: PushNotifications.shared)
                     signOutCard
                     deletionSection
                 }

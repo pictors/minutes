@@ -8,7 +8,7 @@ import UIKit
 /// - 録音中・始めているところ: 何もしない（録音の画面が見える。2 本目は始めない）。
 /// - 録音の告知にまだ同意していない: 告知を出し、「わかりました」で閉じたらすぐに始める。「やめる」なら始めない。
 /// - 始められなければ（マイクの許可がないなど）、アラートで知らせる。
-/// - シート（アカウント・新しい会議・共有など）が開いていたら、先に閉じる（`closePresentedSheets`）。
+/// - シート（アカウント・新しい会議・共有など）が開いていたら、先に閉じる（`PresentedSheets.closeAll`）。
 struct QuickRecordHandler: ViewModifier {
     @Environment(PhoneModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -53,29 +53,15 @@ struct QuickRecordHandler: ViewModifier {
         guard scenePhase == .active, QuickRecord.shared.take() else { return }
         guard model.isSignedIn else { return }
         guard !model.recorder.isActive, !starting, !showingNotice else { return }
-        closePresentedSheets {
+        // 開いているシート（アカウント・新しい会議・共有など）を閉じてから続ける。シートが開いたままだと、録音の画面
+        // （MeetingListView の fullScreenCover）も告知もその上に出ず、録音が見えないまま進む（シミュレータで確かめた）
+        PresentedSheets.closeAll {
             if model.noticeAccepted {
                 start()
             } else {
                 showingNotice = true
             }
         }
-    }
-
-    /// 開いているシート（アカウント・新しい会議・共有など）を閉じてから続ける。シートが開いたままだと、録音の画面
-    /// （MeetingListView の fullScreenCover）も告知もその上に出ず、録音が見えないまま進む（シミュレータで確かめた）。
-    /// UIKit で閉じても、シートを出した側の SwiftUI の状態は戻る（閉じたあと「録音」のボタンとアカウントのシートが、また開けることを確かめた）。
-    private func closePresentedSheets(then action: @escaping @MainActor () -> Void) {
-        let root = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .rootViewController
-        guard let root, root.presentedViewController != nil else {
-            action()
-            return
-        }
-        root.dismiss(animated: true) { action() }
     }
 
     /// 告知のシートが閉じ終えた（閉じてから始めると、録音の画面がシートと重ならずに出る）。

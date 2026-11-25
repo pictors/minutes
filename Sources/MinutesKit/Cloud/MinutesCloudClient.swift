@@ -199,6 +199,14 @@ public enum MinutesCloudRecordingScope: String, Sendable {
     case mobile
 }
 
+/// 通知の宛先の環境（PUT /v1/push-devices）。サーバーは、これで APNs の送り先（本番・sandbox）を選ぶ。
+public enum MinutesCloudPushEnvironment: String, Sendable {
+    /// 開発のビルド（Xcode で入れたもの・シミュレータ）
+    case sandbox
+    /// TestFlight と App Store のビルド
+    case production
+}
+
 /// 同期する Mac の会議（PUT /v1/meetings/:id、P7）。文字起こしは話者をラベル（"me"・"spk_0" など）で指し、名前は speakers[].name に置く
 /// （iPhone・Watch の録音の transcript.json と同じ形）。背景の声として外した話者の発言は入れない。音声は送らない。
 public struct MinutesCloudMeetingUpload: Encodable, Sendable, Equatable {
@@ -784,6 +792,29 @@ public struct MinutesCloudClient: Sendable {
         var query = [URLQueryItem(name: "after", value: String(after))]
         if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try decode(MinutesCloudMeetingEditPage.self, from: try await send("GET", "/v1/meeting-edits", query: query).0)
+    }
+
+    // MARK: 通知（iPhone。処理が終わったときにサーバーが APNs で知らせる）
+
+    /// この端末の通知の宛先（APNs のデバイストークン）を、いまのログインに登録する。
+    /// 同じトークンがほかのログイン・ほかのアカウントにあれば、サーバーがこのログインへ付け替える（同じ iPhone で入り直したとき）。
+    /// ログアウト・ログインの取り消し・アカウントの削除で、サーバーの登録も消える。
+    public func registerPushDevice(token: Data, environment: MinutesCloudPushEnvironment) async throws {
+        _ = try await send("PUT", "/v1/push-devices", json: ["token": Self.pushTokenHex(token), "environment": environment.rawValue])
+    }
+
+    /// 登録を外す（ログアウトの前）。もうない・通知に対応していないサーバー（404）なら、済んだとみなす。
+    public func unregisterPushDevice(token: Data) async throws {
+        do {
+            _ = try await send("DELETE", "/v1/push-devices/\(Self.pushTokenHex(token))")
+        } catch let error as MinutesCloudError where error.status == 404 {
+            return
+        }
+    }
+
+    /// デバイストークンの書き方（小文字の 16 進）。
+    public static func pushTokenHex(_ token: Data) -> String {
+        token.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: 要約
