@@ -191,10 +191,9 @@ struct SignInView: View {
     }
 
     private func field(@ViewBuilder _ content: () -> some View) -> some View {
+        // 入力欄は角丸の四角（すぐ上の「パスキーでログイン」と同じ面・同じカプセルだと、押すものと見分けられない）
         content()
-            .padding(.horizontal, 18)
-            .frame(height: 54)
-            .background(Surface.card, in: .capsule)
+            .inputField(height: 54, horizontalPadding: 18)
     }
 
     private func handleApple(_ result: Result<ASAuthorization, Error>) {

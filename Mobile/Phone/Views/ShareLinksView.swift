@@ -100,13 +100,11 @@ struct ShareLinksView: View {
                 HStack {
                     Text("期限")
                     Spacer()
-                    Picker("期限", selection: $expiryDays) {
-                        ForEach(MinutesCloudShare.expiryChoices, id: \.self) { days in
-                            Text("\(days) 日").tag(days)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 220)
+                    SegmentedTabs(tabs: MinutesCloudShare.expiryChoices, selection: $expiryDays, height: 34) { "\($0) 日" }
+                        .frame(maxWidth: 220)
+                        .sensoryFeedback(.selection, trigger: expiryDays)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel("期限")
                 }
                 Button {
                     create()

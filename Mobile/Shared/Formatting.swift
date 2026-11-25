@@ -15,12 +15,13 @@ enum Formatting {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    /// 1時間2分 / 12分 / 40秒
+    /// 1 時間 2 分 / 12 分 / 40 秒（数字と単位のあいだは空ける。Mac のアプリと同じ書き方）
     static func duration(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded()))
-        if total < 60 { return "\(total)秒" }
+        if total < 60 { return "\(total) 秒" }
         let minutes = (total + 30) / 60
-        return minutes >= 60 ? "\(minutes / 60)時間\(minutes % 60)分" : "\(minutes)分"
+        if minutes < 60 { return "\(minutes) 分" }
+        return minutes % 60 == 0 ? "\(minutes / 60) 時間" : "\(minutes / 60) 時間 \(minutes % 60) 分"
     }
 
     /// 話者の表示名（名前がなければ「話者 1」）
@@ -84,12 +85,12 @@ enum Formatting {
         }
     }
 
-    /// 一覧と詳細に出す状態（空なら出さない）
+    /// 一覧と詳細に出す状態（空なら出さない）。ピルに入る短い語だけを返す（理由は statusDetail）
     static func status(_ item: MeetingItem, recordingClientId: String?) -> String {
         if item.id == recordingClientId { return "録音中" }
         if let local = item.local, !local.completed {
-            if let error = local.lastError { return "送れていません: \(error)" }
-            if !CloudEnvironment.uploadsAllowed { return "この端末に保存（シミュレータからは本番に送りません）" }
+            if local.lastError != nil { return "送れていません" }
+            if !CloudEnvironment.uploadsAllowed { return "この端末に保存" }
             if !local.stopped { return "録音中" }
             return "送っています"
         }
@@ -97,10 +98,26 @@ enum Formatting {
         case "uploading": return "送っています"
         case "queued", "transcribing": return "文字起こし中"
         case "summarizing": return "議事録を作っています"
-        case "failed": return "失敗しました\(item.server?.error.map { "（\($0)）" } ?? "")"
-        case "done": return item.server?.summaryError != nil ? "要約できませんでした（文字起こしはあります）" : ""
-        case nil: return item.local?.lastError ?? "サーバーで処理しています"
+        case "failed": return "失敗しました"
+        case "done": return item.server?.summaryError != nil ? "要約できませんでした" : ""
+        case nil: return item.local?.lastError != nil ? "送れていません" : "サーバーで処理しています"
         default: return ""
+        }
+    }
+
+    /// 状態の理由・補足（ピルには入れず、会議の画面のカードに出す。なければ nil）
+    static func statusDetail(_ item: MeetingItem, recordingClientId: String?) -> String? {
+        if item.id == recordingClientId { return nil }
+        if let local = item.local, !local.completed {
+            if let error = local.lastError { return error }
+            if !CloudEnvironment.uploadsAllowed { return "シミュレータからは本番に送りません" }
+            return nil
+        }
+        switch item.server?.status {
+        case "failed": return item.server?.error
+        case "done": return item.server?.summaryError != nil ? "文字起こしはあります" : nil
+        case nil: return item.local?.lastError
+        default: return nil
         }
     }
 }

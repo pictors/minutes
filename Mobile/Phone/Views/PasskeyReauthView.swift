@@ -96,9 +96,7 @@ struct PasskeyReauthView: View {
                         .keyboardType(.numberPad)
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .focused($codeFocused)
-                        .padding(.horizontal, 18)
-                        .frame(height: 54)
-                        .background(Surface.raised, in: .capsule)
+                        .inputField(height: 54, onCard: true, horizontalPadding: 18)
                         .onChange(of: code) { _, value in
                             let digits = Self.digits(value)
                             if digits != value {

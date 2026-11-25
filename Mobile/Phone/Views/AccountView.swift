@@ -80,8 +80,17 @@ struct AccountView: View {
                     .disabled(passkeyWorking)
                     .accessibilityIdentifier("account.passkey.create")
                 } else {
-                    Text(model.passkeysUnavailable ? "パスキーを読めませんでした" : "読み込んでいます")
-                        .foregroundStyle(.secondary)
+                    if model.passkeysUnavailable {
+                        Text("パスキーを読めませんでした")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            SkeletonBlock(width: 180)
+                            SkeletonBlock(width: 120, height: 12)
+                        }
+                        .accessibilityElement()
+                        .accessibilityLabel("読み込んでいます")
+                    }
                 }
                 if let passkeyMessage {
                     Label(passkeyMessage, systemImage: "exclamationmark.triangle.fill")
@@ -231,7 +240,7 @@ struct AccountView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 0)
-                        InfoChip(text: account.plan == "pro" ? "有料" : "無料", systemImage: account.plan == "pro" ? "star.fill" : nil)
+                        InfoChip(text: account.plan == "pro" ? "Pro" : "無料", systemImage: account.plan == "pro" ? "star.fill" : nil)
                     }
                     GeometryReader { proxy in
                         HStack(spacing: 3) {
@@ -260,7 +269,13 @@ struct AccountView: View {
                     }
                 }
             } else {
-                Text("読み込んでいます").foregroundStyle(.secondary)
+                // 読めたときと同じ高さの仮の表示（数字の行と、量の棒）
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(width: 150, height: 34)
+                    SkeletonBlock(height: 8)
+                }
+                .accessibilityElement()
+                .accessibilityLabel("読み込んでいます")
             }
         }
     }

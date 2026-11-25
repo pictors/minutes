@@ -136,9 +136,7 @@ struct AccountDeletionView: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .focused($fieldFocused)
-                    .padding(.horizontal, 16)
-                    .frame(height: 50)
-                    .background(Surface.raised, in: .capsule)
+                    .inputField(onCard: true)
                     .accessibilityLabel(prompt)
                     .accessibilityIdentifier("deletion.confirm")
                 // 打ち始めるまでは見せない（場所は空けておき、出たときに下の消すボタンがずれないようにする）

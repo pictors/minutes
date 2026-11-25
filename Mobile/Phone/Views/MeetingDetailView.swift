@@ -86,15 +86,11 @@ struct MeetingDetailView: View {
                                 .transition(.opacity)
                         }
                         if let state = Formatting.state(item, recordingClientId: model.recorder.clientId), !item.isDone {
-                            ProgressCard(item: item, state: state) { model.retryUpload(item) }
+                            ProgressCard(item: item, state: state, detail: Formatting.statusDetail(item, recordingClientId: model.recorder.clientId)) { model.retryUpload(item) }
                         }
                         if showsTabs {
-                            Picker("表示", selection: $tab) {
-                                Text("議事録").tag(Tab.minutes)
-                                Text("全文").tag(Tab.transcript)
-                            }
-                            .pickerStyle(.segmented)
-                            .sensoryFeedback(.selection, trigger: tab)
+                            SegmentedTabs(tabs: [Tab.minutes, .transcript], selection: $tab) { $0 == .minutes ? "議事録" : "全文" }
+                                .sensoryFeedback(.selection, trigger: tab)
                         }
                         switch visibleTab {
                         case .minutes: minutesContent(item)
@@ -103,7 +99,7 @@ struct MeetingDetailView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
-                    .padding(.bottom, canPlay ? 140 : 24)
+                    .padding(.bottom, canPlay ? 56 : 24)
                     .animation(Motion.layout, value: summary != nil)
                     .animation(Motion.layout, value: transcript?.segments.count)
                     .animation(Motion.layout, value: visibleTab)
@@ -113,6 +109,8 @@ struct MeetingDetailView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            // 上のバーの下は、ぼかしではなくはっきり切る（送った本文がバーの題名の下に透けて、重なって読みにくかった）
+            .scrollEdgeEffectStyle(.hard, for: .top)
             // 題名が上のバーに隠れたら、バーに題名を出す
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top > titleHeight + 4
@@ -139,7 +137,7 @@ struct MeetingDetailView: View {
         .toolbar { toolbar }
         .safeAreaInset(edge: .bottom) {
             if canPlay, let item {
-                PlaybackBar(player: player) { await prepareAudio(item) }
+                PlaybackBar(player: player, fallbackDuration: item.durationSeconds) { await prepareAudio(item) }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
@@ -232,13 +230,20 @@ struct MeetingDetailView: View {
             summaryCards(summary)
                 .transition(Motion.content(reduceMotion: reduceMotion))
         } else if item.isDone, loadError == nil, !summaryUnavailable {
-            HStack(spacing: 10) {
-                ProgressView()
-                Text("議事録を読んでいます").foregroundStyle(.secondary)
+            // 読めたあとの「要約」のカードと同じ形の仮の表示（見出しはそのまま、文の代わりに薄い行）
+            SectionCard("要約", systemImage: "sparkles", tint: Palette.violet) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SkeletonBlock(height: 16)
+                    SkeletonBlock(width: 220, height: 16)
+                    SkeletonBlock()
+                    SkeletonBlock()
+                    SkeletonBlock(width: 160)
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement()
+                .accessibilityLabel("議事録を読んでいます")
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .cardBackground()
+            .transition(.opacity)
         }
     }
 
@@ -294,10 +299,13 @@ struct MeetingDetailView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(tint)
                 .frame(width: 16)
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 4)
-            evidenceButton(evidence)
+            // 根拠の時刻は本文の下に置く（右端に置くと本文の幅が削られて、短い行に折れる。やることと同じ置き方）
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text)
+                    .fixedSize(horizontal: false, vertical: true)
+                evidenceButton(evidence)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -330,7 +338,8 @@ struct MeetingDetailView: View {
                     .foregroundStyle(done ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if owner != nil || due != nil || evidence != nil {
-                    FlowRow(spacing: 6) {
+                    // 担当・期限・根拠は面を付けずに並べる（色の面を付けるのは、過ぎた期限と今日の期限だけ。本文より目立たせない）
+                    FlowRow(spacing: 12) {
                         if let owner {
                             HStack(spacing: 5) {
                                 if action.owner == "agent" {
@@ -344,10 +353,8 @@ struct MeetingDetailView: View {
                                 Text(owner)
                             }
                             .font(.caption.weight(.medium))
-                            .padding(.leading, 3)
-                            .padding(.trailing, 8)
-                            .padding(.vertical, 3)
-                            .background(Surface.raised, in: .capsule)
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 26)
                         }
                         if let due { DueChip(due: Formatting.due(due), done: done) }
                         evidenceButton(action.evidence)
@@ -371,11 +378,12 @@ struct MeetingDetailView: View {
                     .labelStyle(.titleAndIcon)
                     .font(.caption.weight(.medium))
                     .monospacedDigit()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Palette.periwinkle.opacity(0.12), in: .capsule)
-                    .foregroundStyle(Palette.periwinkle)
+                    .foregroundStyle(.secondary)
                     .fixedSize()
+                    // 面を付けない代わりに、押せる範囲を上下に広げる
+                    .frame(minHeight: 26)
+                    .padding(.trailing, 8)
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(Formatting.clock(segment.tStart)) の発言を全文で見る")
@@ -432,8 +440,7 @@ struct MeetingDetailView: View {
         }
         .padding(.leading, 14)
         .padding(.trailing, matchingSegments == nil ? 14 : 6)
-        .frame(height: 44)
-        .background(Surface.card, in: .capsule)
+        .inputField(height: 44, horizontalPadding: 0)
     }
 
     private func speakersCard(_ transcript: TranscriptDocument) -> some View {
@@ -475,9 +482,11 @@ struct MeetingDetailView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(segments, id: \.id) { segment in
-                        segmentRow(segment, transcript: transcript, terms: terms)
+                // 同じ話者が続く発言は、丸印と名前を省いて本文だけを続ける（検索で絞っているときは、前後が飛ぶので毎回出す）
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                        let continues = terms.isEmpty && matchingSegments == nil && index > 0 && segments[index - 1].speaker == segment.speaker
+                        segmentRow(segment, transcript: transcript, terms: terms, continues: continues)
                     }
                 }
                 .padding(.horizontal, -8)
@@ -485,7 +494,7 @@ struct MeetingDetailView: View {
         }
     }
 
-    private func segmentRow(_ segment: TranscriptDocument.Segment, transcript: TranscriptDocument, terms: [String]) -> some View {
+    private func segmentRow(_ segment: TranscriptDocument.Segment, transcript: TranscriptDocument, terms: [String], continues: Bool) -> some View {
         let name = Formatting.speaker(segment.speaker, in: transcript)
         let active = segment.id == activeSegmentID || segment.id == focusedSegment
         let tint = SpeakerPalette.color(for: segment.speaker)
@@ -494,15 +503,21 @@ struct MeetingDetailView: View {
             if terms.isEmpty { play(from: segment) } else { jump(to: segment) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                SpeakerBadge(label: segment.speaker, name: name, size: 26)
+                if continues {
+                    Color.clear.frame(width: 26, height: 1)
+                } else {
+                    SpeakerBadge(label: segment.speaker, name: name, size: 26)
+                }
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(name).font(.caption.weight(.semibold))
-                            .foregroundStyle(tint)
-                        Text(Formatting.clock(segment.tStart))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(.tertiary)
+                    if !continues {
+                        HStack(spacing: 6) {
+                            Text(name).font(.caption.weight(.semibold))
+                                .foregroundStyle(tint)
+                            Text(Formatting.clock(segment.tStart))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     Text(terms.isEmpty ? AttributedString(segment.text) : TextSearch.highlighted(segment.text, terms: terms, tint: Palette.amber))
                         .foregroundStyle(.primary)
@@ -511,10 +526,14 @@ struct MeetingDetailView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 8)
+            .padding(.top, continues ? 3 : 10)
+            .padding(.bottom, 5)
             .padding(.horizontal, 8)
-            .background(active ? tint.opacity(0.14) : .clear, in: .rect(cornerRadius: 12, style: .continuous))
+            // 強調は色を付けない面にする（話者の色の面は、琥珀などで暗くにごる。話者は丸印と名前の色で分かる）
+            .background(active ? Surface.raised : .clear, in: .rect(cornerRadius: 12, style: .continuous))
             .contentShape(.rect)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(name)、\(Formatting.clock(segment.tStart))、\(segment.text)")
         }
         .buttonStyle(.plain)
         .id(segment.id)
@@ -573,6 +592,8 @@ struct MeetingDetailView: View {
                 Image(systemName: "ellipsis")
             }
             .accessibilityLabel("会議の操作")
+            // 「⋯」は戻るボタンと同じ色にする（アプリ全体の色（青紫）が付いて、左右のボタンの色が違っていた）
+            .tint(Color.primary)
             .disabled(item == nil)
             // 確認は操作のメニューから出す（画面全体に付けると、関係のない場所から出る）
             .confirmationDialog("この会議を消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -745,9 +766,10 @@ private struct DueChip: View {
         Label(due.text, systemImage: tint == nil ? "calendar" : (due.timing == .overdue ? "calendar.badge.exclamationmark" : "calendar.badge.clock"))
             .labelStyle(.titleAndIcon)
             .font(.caption.weight(tint == nil ? .regular : .semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(tint.map { $0.opacity(0.14) } ?? Surface.raised, in: .capsule)
+            // 面を付けるのは、過ぎた期限と今日の期限だけ
+            .padding(.horizontal, tint == nil ? 0 : 8)
+            .frame(minHeight: 26)
+            .background(tint.map { $0.opacity(0.14) } ?? .clear, in: .capsule)
             .foregroundStyle(tint ?? .secondary)
             .fixedSize()
             .accessibilityLabel("期限 \(due.spoken)")
@@ -758,6 +780,7 @@ private struct DueChip: View {
 private struct ProgressCard: View {
     let item: MeetingItem
     let state: MeetingState
+    var detail: String?
     let retry: () -> Void
 
     private var step: Int {
@@ -772,6 +795,14 @@ private struct ProgressCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             StatusPill(text: state.text, tint: state.tint, systemImage: state.systemImage, isBusy: state.isBusy)
+            // 理由・補足はピルに入れず、ここに折り返して出す（ピルは 1 行で、長い文は切れる）
+            if let detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
             if !state.isError, item.local?.stopped != false || item.server != nil {
                 HStack(spacing: 6) {
                     ForEach(Array(["送る", "文字起こし", "議事録"].enumerated()), id: \.offset) { index, title in
@@ -852,15 +883,109 @@ private struct SummaryBody: View {
     }
 }
 
-/// 下に浮かぶ再生バー: 上の段に位置と時間、下の段に速さ・15 秒戻す・再生・15 秒送る。速さは止めても変わらない。
+/// 下に浮かぶ再生バー。止まっているあいだは 1 段（再生・時間・細い進み）で、議事録を広く読めるようにする。
+/// 再生を始めるかバーを押すと 2 段に広がる: 上の段に位置と時間、下の段に速さ・15 秒戻す・再生・15 秒送る。速さは止めても変わらない。
+/// 止めたまま 5 秒さわらなければ 1 段に戻る（VoiceOver では戻さない。読み上げの途中で操作が消えないように）。
 private struct PlaybackBar: View {
     let player: AudioPlayback
+    /// 音声を読む前に出す全体の長さ（会議の長さ）
+    var fallbackDuration: Double?
     let prepare: () async -> Void
     @State private var scrubbing: Double?
+    @State private var isExpanded = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     private var rateText: String { String(format: "%g×", player.rate) }
 
+    /// さわったかどうかを見る鍵（変わるたびに、1 段に戻すまでの待ちをやり直す）
+    private struct IdleKey: Hashable {
+        var expanded: Bool
+        var playing: Bool
+        var loading: Bool
+        var scrubbing: Bool
+        var rate: Double
+        var second: Int
+    }
+
     var body: some View {
+        let expanded = isExpanded || player.isPlaying || scrubbing != nil || player.error != nil
+        Group {
+            if expanded {
+                expandedRows.transition(.opacity)
+            } else {
+                compactRow.transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .rect(cornerRadius: 30, style: .continuous))
+        .animation(Motion.layout, value: expanded)
+        .sensoryFeedback(.selection, trigger: player.rate)
+        .onChange(of: player.isPlaying) { _, playing in
+            if playing { isExpanded = true }
+        }
+        .task(id: IdleKey(expanded: isExpanded, playing: player.isPlaying, loading: player.isLoading, scrubbing: scrubbing != nil,
+                          rate: Double(player.rate), second: Int(player.currentTime))) {
+            guard isExpanded, !voiceOver, !player.isPlaying, !player.isLoading, scrubbing == nil, player.error == nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled { isExpanded = false }
+        }
+    }
+
+    private func togglePlay() {
+        if player.isReady {
+            player.toggle()
+        } else {
+            Task {
+                await prepare()
+                player.play()
+            }
+        }
+    }
+
+    /// 止まっているあいだの 1 段: 再生、いまの位置、細い進み、全体の長さ。バーを押すと広がる
+    private var compactRow: some View {
+        let progress = player.isReady && player.duration > 0 ? min(1, max(0, player.currentTime / player.duration)) : 0
+        return HStack(spacing: 12) {
+            Button {
+                togglePlay()
+            } label: {
+                ZStack {
+                    if player.isLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                }
+                .frame(width: 40, height: 40)
+                .background(Surface.raised, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("再生")
+            Text(Formatting.clock(player.currentTime))
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Surface.raised)
+                    Capsule().fill(Palette.periwinkle).frame(width: proxy.size.width * progress)
+                }
+            }
+            .frame(height: 4)
+            .accessibilityHidden(true)
+            Text(player.isReady ? Formatting.clock(player.duration) : fallbackDuration.map(Formatting.clock) ?? "--:--")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .padding(.trailing, 8)
+        .contentShape(.rect)
+        .onTapGesture { isExpanded = true }
+        .accessibilityAction(named: "再生の操作を広げる") { isExpanded = true }
+    }
+
+    private var expandedRows: some View {
         VStack(spacing: 2) {
             if let error = player.error {
                 Text(error)
@@ -907,14 +1032,7 @@ private struct PlaybackBar: View {
                 Spacer(minLength: 0)
                 skipButton(-15, systemImage: "gobackward.15", label: "15 秒戻す")
                 Button {
-                    if player.isReady {
-                        player.toggle()
-                    } else {
-                        Task {
-                            await prepare()
-                            player.play()
-                        }
-                    }
+                    togglePlay()
                 } label: {
                     ZStack {
                         if player.isLoading {
@@ -937,11 +1055,6 @@ private struct PlaybackBar: View {
                 Color.clear.frame(width: 56, height: 40)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 30, style: .continuous))
-        .sensoryFeedback(.selection, trigger: player.rate)
     }
 
     private func skipButton(_ seconds: Double, systemImage: String, label: String) -> some View {

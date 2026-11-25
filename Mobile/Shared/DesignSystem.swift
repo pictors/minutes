@@ -51,6 +51,8 @@ enum Surface {
     static let raised = Color.primary.opacity(0.09)
     static let pressed = Color.primary.opacity(0.16)
     static let hairline = Color.primary.opacity(0.1)
+    /// タブの選んだ面
+    static let selectedTab = Color(light: 0xFFFFFF, dark: 0x3A3A40)
 }
 
 enum SpeakerPalette {
@@ -460,6 +462,81 @@ struct CardPressStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.7 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(Motion.press, value: configuration.isPressed)
+    }
+}
+
+// MARK: - 入力欄・タブ・仮の表示
+
+extension View {
+    /// 入力欄の面。押すもの（カプセル）と形で見分けられるように、入力欄は角丸の四角にする。
+    /// 地の上では card、カードやシートの上では raised（onCard）。
+    func inputField(height: CGFloat = 50, onCard: Bool = false, horizontalPadding: CGFloat = 16) -> some View {
+        padding(.horizontal, horizontalPadding)
+            .frame(height: height)
+            .background(onCard ? Surface.raised : Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// 面で選択を示すタブ切り替え（Mac の SegmentedTabs と同じ組み。選んだ面が動く。Reduce Motion では入れ替えるだけ）。
+struct SegmentedTabs<Tab: Hashable>: View {
+    let tabs: [Tab]
+    @Binding var selection: Tab
+    var height: CGFloat = 36
+    let title: (Tab) -> String
+    @Namespace private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(tabs, id: \.self) { tab in
+                let selected = tab == selection
+                Button {
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { selection = tab }
+                } label: {
+                    Text(title(tab))
+                        .font(.subheadline.weight(selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height - 6)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: (height - 6) / 2, style: .continuous)
+                                    .fill(Surface.selectedTab)
+                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+                                    .matchedGeometryEffect(id: "selection", in: namespace)
+                            }
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Surface.raised, in: .capsule)
+    }
+}
+
+/// 読み込み中の仮の表示（文字や数字の代わりの薄い面。ゆっくり明滅する。Reduce Motion では明滅しない）。
+/// 読めたときと同じ高さにして、中身が入っても下がずれないようにする。
+struct SkeletonBlock: View {
+    var width: CGFloat?
+    var height: CGFloat = 14
+    @State private var dim = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: min(6, height / 2), style: .continuous)
+            .fill(Surface.raised)
+            .frame(maxWidth: width ?? .infinity)
+            .frame(width: width, height: height)
+            .opacity(dim ? 0.45 : 1)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true }
+            }
+            .accessibilityHidden(true)
     }
 }
 

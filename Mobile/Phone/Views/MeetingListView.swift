@@ -305,8 +305,7 @@ private struct MeetingCard: View {
                     }
                     if let count = item.server?.speakerCount, count > 0 {
                         Text("·")
-                        Label("\(count)", systemImage: "person.2.fill")
-                            .labelStyle(.titleAndIcon)
+                        Text("\(count) 人")
                     }
                 }
                 .font(.subheadline)
@@ -318,12 +317,16 @@ private struct MeetingCard: View {
                 }
             }
             Spacer(minLength: 0)
+        }
+        .padding(14)
+        // 山形はカードの縦の中央に置く（題名が 2 行でも、状態のピルが付いても浮かない）
+        .padding(.trailing, 18)
+        .overlay(alignment: .trailing) {
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
-                .padding(.top, 4)
+                .padding(.trailing, 14)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground()
         .contentShape(.rect(cornerRadius: 20, style: .continuous))
@@ -343,6 +346,15 @@ private struct MeetingFilterBar: View {
         // 1 種類しかなければ出さない（選んでも変わらない）。選んだままその機器の会議がなくなったら、外せるように残す
         guard present.count > 1 || filter.origin != nil else { return [] }
         return MeetingOrigin.allCases.filter { present.contains($0) || $0 == filter.origin }
+    }
+
+    /// 範囲のチップ。処理中・失敗は、当てはまる会議があるときだけ出す（0 件の「失敗」をいつも見せない）。
+    /// 選んだままその会議がなくなったら、外せるように残す
+    private var scopes: [MeetingListFilter.Scope] {
+        MeetingListFilter.Scope.allCases.filter { scope in
+            guard scope == .processing || scope == .failed else { return true }
+            return scope == filter.scope || (count(scope) ?? 0) > 0
+        }
     }
 
     var body: some View {
@@ -372,16 +384,16 @@ private struct MeetingFilterBar: View {
             }
             .padding(.leading, 14)
             .padding(.trailing, filter.query.isEmpty ? 14 : 6)
-            .frame(height: 44)
-            .background(Surface.card, in: .capsule)
+            .inputField(height: 44, horizontalPadding: 0)
             .animation(Motion.press, value: filter.query.isEmpty)
 
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    ForEach(MeetingListFilter.Scope.allCases) { scope in
+                    ForEach(scopes) { scope in
                         FilterChip(title: scope.title, count: count(scope), isOn: filter.scope == scope) {
                             filter.scope = scope
                         }
+                        .transition(.opacity)
                     }
                     if !origins.isEmpty {
                         Rectangle()
@@ -396,6 +408,7 @@ private struct MeetingFilterBar: View {
                     }
                 }
                 .padding(.horizontal, 16)
+                .animation(Motion.layout, value: scopes)
             }
             .scrollIndicators(.hidden)
             // チップの並びは画面の端まで流す（一覧の左右の余白の外へ）
@@ -542,9 +555,7 @@ private struct NewMeetingView: View {
                 .focused($focused)
                 .submitLabel(.go)
                 .onSubmit { start() }
-                .padding(.horizontal, 16)
-                .frame(height: 50)
-                .background(Surface.raised, in: .rect(cornerRadius: 14, style: .continuous))
+                .inputField(onCard: true)
             Label("録音することを、参加者に伝えてから始めてください。", systemImage: "person.2.wave.2")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
