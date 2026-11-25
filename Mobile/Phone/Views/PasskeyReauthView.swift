@@ -17,10 +17,13 @@ struct PasskeyReauthView: View {
     @State private var codeSent = false
     @State private var working = false
     @State private var message: String?
+    /// アカウントに Apple のログインがつながっているか（サーバーに聞く。この iPhone ではほかの方法で入っていても、Apple で確かめられる）
+    @State private var appleLinked = false
     @FocusState private var codeFocused: Bool
 
     private var email: String? { model.user?.email }
-    private var offersApple: Bool { model.signInMethod == .apple }
+    // 別の Apple ID で新しいアカウントを作らないように、Apple はこのアカウントにつながっているときだけ出す
+    private var offersApple: Bool { model.signInMethod == .apple || appleLinked }
     private var offersPasskey: Bool { model.signInMethod == .passkey || model.passkeys?.isEmpty == false }
 
     var body: some View {
@@ -77,6 +80,7 @@ struct PasskeyReauthView: View {
             }
             .disabled(working)
             .overlay { if working { ProgressView().controlSize(.large) } }
+            .task { appleLinked = await model.accountUsesApple() }
         }
     }
 

@@ -228,7 +228,8 @@ final class PhoneModel {
         try signedIn(try await passkeySession(), method: .passkey)
     }
 
-    private func signedIn(_ session: MinutesCloudSession, method: TokenStore.Method) throws {
+    /// offerPasskey: メールのコードで入ったときにパスキーを勧めるか（確かめ直しのときは勧めない。そのまま作るので）
+    private func signedIn(_ session: MinutesCloudSession, method: TokenStore.Method, offerPasskey: Bool = true) throws {
         let user = session.userID.map { MinutesCloudUser(id: $0, email: session.email) }
         try TokenStore.shared.save(token: session.token, user: user, method: method)
         self.user = user
@@ -242,7 +243,7 @@ final class PhoneModel {
             // ログインする前の購入（App Store・ほかの端末）も、このアカウントに送る
             if !Self.isRunningTests { await billing.syncWithServer() }
             // メールのコードで入った人に、パスキーを 1 度だけ勧める（ログインしたばかりのセッションなら、確かめ直さずに作れる）
-            if method == .email { await offerPasskeyIfUseful() }
+            if method == .email, offerPasskey { await offerPasskeyIfUseful() }
         }
     }
 
@@ -320,7 +321,18 @@ final class PhoneModel {
             throw PasskeyFailure.differentAccount
         }
         // いまの印は取り消さない（Watch が新しい印を受け取るまで使う。使わなくなった印は期限で切れる）
-        try signedIn(session, method: method)
+        try signedIn(session, method: method, offerPasskey: false)
+    }
+
+    /// このアカウントに Apple のログインがつながっているか（アカウントの削除で Apple の取り消しを頼むか・確かめ直しで Apple を出すか）。
+    /// Apple で作ったアカウントでも、この iPhone ではパスキーやメールのコードで入っていることがあるので、サーバーに聞く。
+    /// 聞けなければ、この iPhone で Apple で入ったかで決める。
+    func accountUsesApple() async -> Bool {
+        do {
+            return try await client.loginProviders().contains("apple")
+        } catch {
+            return signedInWithApple
+        }
     }
 
     private func passkeySession() async throws -> MinutesCloudSession {

@@ -192,10 +192,11 @@ struct AccountDeletionView: View {
         message = nil
         Task {
             defer { working = false }
-            // Apple でログインしたアカウントは、Apple のログインも取り消す（その場で取ったコードを渡す）。
+            // Apple のログインがつながったアカウントは、Apple のログインも取り消す（その場で取ったコードを渡す）。
+            // この iPhone ではパスキーやメールのコードで入っていても、アカウントに Apple があれば頼む（サーバーに聞く）。
             // Apple の確認を閉じたら消さない。ほかの理由でコードが取れないときは、コードなしで消す
             var code: String?
-            if model.signedInWithApple {
+            if await model.accountUsesApple() {
                 do {
                     code = try await apple.request(nonce: MinutesCloudAppleNonce.make()).authorizationCodeString
                 } catch let error as ASAuthorizationError where error.code == .canceled {

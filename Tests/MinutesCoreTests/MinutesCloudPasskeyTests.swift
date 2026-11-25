@@ -192,6 +192,24 @@ struct MinutesCloudPasskeyTests {
         }
     }
 
+    @Test("アカウントにつないだログインの方法を読む（Apple の取り消しを、この端末で入った方法ではなくアカウントで決める）")
+    func loginProviders() async throws {
+        let seen = Mutex<StubURLProtocol.Request?>(nil)
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0 = request }
+            return Self.answer([
+                ["id": "a1", "providerId": "apple", "accountId": "fictional-apple-sub", "userId": "u1", "createdAt": "2026-11-25T10:00:00.000Z", "updatedAt": "2026-11-25T10:00:00.000Z", "scopes": []],
+                ["id": "a2", "providerId": "credential", "accountId": "u1", "userId": "u1", "createdAt": "2026-11-25T10:00:00.000Z", "updatedAt": "2026-11-25T10:00:00.000Z", "scopes": []],
+            ])
+        }
+        let providers = try await MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" }).loginProviders()
+        #expect(providers == ["apple", "credential"])
+        let request = try #require(seen.withLock { $0 })
+        #expect(request.method == "GET")
+        #expect(request.path == "/v1/auth/list-accounts")
+        #expect(request.headers["authorization"] == "Bearer fictional-token")
+    }
+
     @Test("一覧（ミリ秒つきの日時）と、消す（ID を送る）。サーバーにないパスキーでのログインは PASSKEY_NOT_FOUND")
     func listAndDelete() async throws {
         let seen = Mutex<[StubURLProtocol.Request]>([])

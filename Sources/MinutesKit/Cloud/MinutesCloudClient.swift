@@ -475,6 +475,15 @@ public struct MinutesCloudClient: Sendable {
         return user
     }
 
+    /// このアカウントにつないだログインの方法（Better Auth の providerId。"apple"・"credential" など）。
+    /// アカウントの削除で Apple のログインも取り消すかを、この端末でどの方法で入ったかではなく、アカウントで決めるのに使う。
+    public func loginProviders() async throws -> [String] {
+        struct Account: Decodable {
+            var providerId: String
+        }
+        return try decode([Account].self, from: try await send("GET", "/v1/auth/list-accounts").0).map(\.providerId)
+    }
+
     /// この端末のログインを取り消す（印はサーバーで使えなくなる）。
     public func signOut() async throws {
         _ = try await send("POST", "/v1/auth/sign-out", json: [String: String]())
