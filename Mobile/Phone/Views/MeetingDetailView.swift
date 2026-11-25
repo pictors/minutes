@@ -247,14 +247,15 @@ struct MeetingDetailView: View {
         // 要約の文がない議事録（Mac で手で足したやることだけの会議など）は、要約のカードを出さない
         if !summary.summaryMd.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             SectionCard("要約", systemImage: "sparkles", tint: Palette.violet) {
-                SummaryBody(markdown: summary.summaryMd)
+                // 文の中の話者のラベル（spk_0 など）は、全文と同じ名前か「話者 1」で出す
+                SummaryBody(markdown: Formatting.summaryText(summary.summaryMd, in: transcript))
             }
         }
         if !summary.decisions.isEmpty {
             SectionCard("決まったこと", systemImage: "checkmark.seal.fill", count: summary.decisions.count, tint: Palette.mint) {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(summary.decisions.enumerated()), id: \.offset) { _, decision in
-                        bulletRow(decision.text, symbol: "checkmark", tint: Palette.mint, evidence: decision.evidence)
+                        bulletRow(Formatting.summaryText(decision.text, in: transcript), symbol: "checkmark", tint: Palette.mint, evidence: decision.evidence)
                     }
                 }
             }
@@ -280,7 +281,7 @@ struct MeetingDetailView: View {
             SectionCard("確かめること", systemImage: "questionmark.circle.fill", count: summary.openQuestions.count, tint: Palette.amber) {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(summary.openQuestions.enumerated()), id: \.offset) { _, question in
-                        bulletRow(question.text, symbol: "questionmark", tint: Palette.amber, evidence: question.evidence)
+                        bulletRow(Formatting.summaryText(question.text, in: transcript), symbol: "questionmark", tint: Palette.amber, evidence: question.evidence)
                     }
                 }
             }
@@ -304,7 +305,7 @@ struct MeetingDetailView: View {
     private func actionRow(_ action: MinutesSummary.ActionItem) -> some View {
         let done = action.done == true
         let sending = action.id.map { sendingChecks.contains($0) } ?? false
-        let owner = Formatting.owner(action.owner, in: transcript)
+        let owner = Formatting.owner(action, in: transcript)
         let due = action.due.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
         let evidence = evidenceSegment(action.evidence)
         return HStack(alignment: .top, spacing: 10) {
@@ -324,7 +325,7 @@ struct MeetingDetailView: View {
             .accessibilityLabel(done ? "済みを外す" : "済みにする")
             .accessibilityValue(done ? "済み" : "まだ")
             VStack(alignment: .leading, spacing: 6) {
-                Text(action.text)
+                Text(Formatting.summaryText(action.text, in: transcript))
                     .strikethrough(done, color: .secondary)
                     .foregroundStyle(done ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)

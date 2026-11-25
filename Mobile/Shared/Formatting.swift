@@ -64,12 +64,23 @@ enum Formatting {
         }
     }
 
-    /// やることの担当者の表示名。要約は担当者を "me"・"agent"・話者のラベルか名前で返す（Mac の ActionRow と同じ読み方）。空なら出さない
-    static func owner(_ owner: String, in document: TranscriptDocument?) -> String? {
-        switch owner {
-        case "": nil
-        case "agent": "エージェント"
-        default: speaker(owner, in: document)
+    /// 要約の文（要約・決まったこと・やること・確かめること）の中の話者のラベル（spk_0 など）を、全文と同じ見せ方（名前か「話者 1」）にする。
+    /// 保存した要約は変えないので、あとで話者の名前を付けても、要約し直さずに出る（共有のページと同じ決まり。SummarySpeakerText）
+    static func summaryText(_ text: String, in document: TranscriptDocument?) -> String {
+        SummarySpeakerText.replacingLabels(in: text) { speaker($0, in: document) }
+    }
+
+    /// やることの担当者の表示名。要約は担当者を "me"・"agent"・話者のラベルか名前で返す（Mac の ActionRow と同じ読み方）。空なら出さない。
+    /// 担当「me」を「自分」と出すのは、その会議に「me」の話者がいる（同期した Mac の会議）か、手で足したやることのときだけ。
+    /// iPhone・Watch の会議には「me」の話者がいないので、要約が書いた「me」は推し量りとして出さない
+    static func owner(_ action: MinutesSummary.ActionItem, in document: TranscriptDocument?) -> String? {
+        switch action.owner {
+        case "": return nil
+        case "agent": return "エージェント"
+        case "me":
+            let hasSelf = document.map { $0.speakers.contains { $0.label == "me" } }
+            return SummarySpeakerText.ownerIsSelf(action, meetingHasSelfSpeaker: hasSelf) ? speaker("me", in: document) : nil
+        default: return speaker(action.owner, in: document)
         }
     }
 

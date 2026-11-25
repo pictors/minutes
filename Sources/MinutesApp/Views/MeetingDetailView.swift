@@ -111,6 +111,22 @@ struct MeetingDetailContent: View {
     private var notesDraft: UserNotesDraft { detail.notesDraft }
     private var selfName: String { model.selfDisplayName }
 
+    /// 話者のラベル（spk_0 など）の見せ方。全文と同じ（名前がなければ「話者 1」）。ラベルでない担当（参加者名など）はそのまま
+    private func speakerTitle(_ label: String) -> String {
+        if let speaker = detail.speakers.first(where: { $0.clusterLabel == label }) {
+            return SpeakerNaming.title(for: speaker, clusterLabel: label, selfName: selfName)
+        }
+        return SummarySpeakerText.labelNumber(label) != nil ? SpeakerNaming.title(for: nil, clusterLabel: label, selfName: selfName) : label
+    }
+
+    /// 要約の文の中の話者のラベルを、全文と同じ見せ方にする（保存した要約は変えない。iPhone・共有のページと同じ決まり）
+    private func speakerText(_ text: String) -> String {
+        SummarySpeakerText.replacingLabels(in: text) { speakerTitle($0) }
+    }
+
+    /// 自分のマイクの話者（me）がいる会議か。iPhone・Watch から取り込んだ会議と外部の録音の取り込み（1 トラック）にはいない
+    private var hasSelfSpeaker: Bool { detail.speakers.contains { $0.clusterLabel == TrackMerger.micSpeakerLabel } }
+
     /// 表示する発話（旧世代の根拠へジャンプしたときはその発話も含める）。背景の声として除外した話者の発話は、開いたときだけ出す。
     private var displayedSegments: [SegmentRecord] {
         var segments = detail.segments
@@ -526,7 +542,7 @@ struct MeetingDetailContent: View {
     private func summaryCard(_ meeting: MeetingRecord) -> some View {
         SectionCard("要約", systemImage: "text.alignleft") {
             if let summary = detail.notes?.summaryMd, !summary.isEmpty {
-                MarkdownBlocks(text: summary)
+                MarkdownBlocks(text: speakerText(summary))
                     // 生成・更新で本文が変わったら、新しい本文として出す（古い本文は残さない）
                     .id(summary)
                     .transition(Motion.content(reduceMotion: reduceMotion))
@@ -570,7 +586,7 @@ struct MeetingDetailContent: View {
         return SectionCard("決定事項", systemImage: "checkmark.seal", count: decisions.count) {
             if decisions.isEmpty { EmptyRow(text: "決定事項はありません").transition(Motion.placeholder) }
             ForEach(Array(decisions.enumerated()), id: \.offset) { _, decision in
-                EvidenceRow(text: decision.text, evidence: decision.evidence, tint: Palette.mint, resolve: resolveEvidence, onJump: jump)
+                EvidenceRow(text: speakerText(decision.text), evidence: decision.evidence, tint: Palette.mint, resolve: resolveEvidence, onJump: jump)
                     .transition(Motion.content(reduceMotion: reduceMotion))
             }
         }
@@ -582,7 +598,8 @@ struct MeetingDetailContent: View {
             if actions.isEmpty { EmptyRow(text: "アクションはありません").transition(Motion.placeholder) }
             ForEach(actions) { item in
                 let action = item.action
-                ActionRow(action: action, selfName: selfName, onToggle: { detail.toggleAction(action, done: $0) }, resolve: resolveEvidence, onJump: jump)
+                ActionRow(action: action, selfName: selfName, speakerTitle: speakerTitle, hasSelfSpeaker: hasSelfSpeaker,
+                          onToggle: { detail.toggleAction(action, done: $0) }, resolve: resolveEvidence, onJump: jump)
                     .contextMenu {
                         if action.id != nil {
                             Button(role: .destructive) { detail.removeAction(action) } label: { Label("削除", systemImage: "trash") }
@@ -613,7 +630,7 @@ struct MeetingDetailContent: View {
         return SectionCard("未決・論点", systemImage: "questionmark.bubble", count: questions.count) {
             if questions.isEmpty { EmptyRow(text: "未決の論点はありません").transition(Motion.placeholder) }
             ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
-                EvidenceRow(text: question.text, evidence: question.evidence, tint: Palette.amber, resolve: resolveEvidence, onJump: jump)
+                EvidenceRow(text: speakerText(question.text), evidence: question.evidence, tint: Palette.amber, resolve: resolveEvidence, onJump: jump)
                     .transition(Motion.content(reduceMotion: reduceMotion))
             }
         }
@@ -1388,6 +1405,10 @@ struct EvidenceChips: View {
 struct ActionRow: View {
     let action: MinutesSummary.ActionItem
     var selfName = "自分"
+    /// 話者のラベル（spk_0 など）の見せ方（全文と同じ）。担当と本文の中のラベルに使う
+    var speakerTitle: (String) -> String = { $0 }
+    /// 自分のマイクの話者（me）がいる会議か。いなければ（iPhone・Watch の会議など 1 トラック）、要約が書いた担当「me」と「自分のタスク／相手のタスク」は出さない
+    var hasSelfSpeaker = true
     let onToggle: (Bool) -> Void
     let resolve: (Int) -> EvidenceInfo?
     let onJump: (Int) -> Void
@@ -1395,14 +1416,20 @@ struct ActionRow: View {
     private var done: Bool { action.done ?? false }
 
     /// 担当者。種別で自明な me / agent はチップを出さない。
+    /// 担当「me」を自分として出すのは、自分のマイクの話者がいる会議か、手で足したやることのときだけ（1 トラックの会議の「me」は推し量り。SummarySpeakerText）
     private var ownerTitle: String? {
         switch action.owner {
-        case "me": action.kind == .ownCommitment ? nil : selfName
-        case "agent": action.kind == .delegable ? nil : "エージェント"
-        case "": nil
-        default: action.owner
+        case "me":
+            guard SummarySpeakerText.ownerIsSelf(action, meetingHasSelfSpeaker: hasSelfSpeaker) else { return nil }
+            return action.kind == .ownCommitment ? nil : selfName
+        case "agent": return action.kind == .delegable ? nil : "エージェント"
+        case "": return nil
+        default: return speakerTitle(action.owner)
         }
     }
+
+    /// 「自分のタスク／相手のタスク」は、だれが自分か決まっている会議（自分のマイクの話者がいる）か、手で足したやることのときだけ出す
+    private var showsKind: Bool { action.kind == .delegable || hasSelfSpeaker || action.manual == true }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1411,7 +1438,7 @@ struct ActionRow: View {
                 .labelsHidden()
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
-                Text(action.text)
+                Text(SummarySpeakerText.replacingLabels(in: action.text, name: speakerTitle))
                     .strikethrough(done)
                     .foregroundStyle(done ? .secondary : .primary)
                     .textSelection(.enabled)
@@ -1419,7 +1446,9 @@ struct ActionRow: View {
                     if let ownerTitle {
                         InfoChip(text: ownerTitle, systemImage: "person")
                     }
-                    InfoChip(text: action.kind.title, tint: action.kind.tint)
+                    if showsKind {
+                        InfoChip(text: action.kind.title, tint: action.kind.tint)
+                    }
                     if action.manual == true {
                         InfoChip(text: "手動", systemImage: "hand.point.up.left")
                     }
