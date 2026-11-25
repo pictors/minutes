@@ -80,7 +80,7 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
         case "limit_exceeded": return "今月の使える量を超えました"
         case "no_plan": return "文字起こしと要約は、有料のプランで使えます"
         case "no_transcription": return "Minutes クラウドの要約は、Minutes クラウドで文字起こしした会議（30 日以内）だけで使えます"
-        case "too_many_summaries": return "この会議の要約は、もう作り直せません（10 回まで）"
+        case "too_many_summaries": return "この会議の要約は、Minutes クラウドではもう作り直せません（回数の上限に達しました）"
         case "group_full": return "この会議はもう送れません（同じ会議の録音は 2 本まで）"
         case "parts_missing": return "録音の一部がまだサーバーに届いていません"
         case "no_audio": return "サーバーに録音が届いていません"
