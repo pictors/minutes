@@ -99,7 +99,7 @@ Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカ
 Mobile/                      iPhone と Watch のアプリ（製品版、SPEC §5.7）。Minutes.xcodeproj（フォルダと同期するグループ。ファイルを足してもプロジェクトを直さなくてよい）
   Brand/                     ロゴの輪郭（BrandGeometry: BrandLogo・BrandShape）。iPhone・Watch のアプリとウィジェットの拡張で共有する（Palette に頼らない）。scripts/build-mobile-brand.swift もここを読む
   Shared/                    iPhone と Watch で共通: 見た目の決まり（DesignSystem: Palette・Surface・Motion・BigTimerText・PillButtonStyle・SectionCard。Mac の DesignSystem と同じ言葉。system の赤・橙を直接使わない）、録音（MeetingRecorder・AudioCapture）、送信（UploadEngine、裏の URLSession）、端末の録音（RecordingStore）、ログインの印（TokenStore）
-  Phone/                     iPhone のアプリ（PhoneModel、Views/。入口からの「録音を始める」は Views/QuickRecordHandler、Siri とショートカットの言い方は MinutesPhoneShortcuts）
+  Phone/                     iPhone のアプリ（PhoneModel、Views/。入口からの「録音を始める」は Views/QuickRecordHandler、Siri とショートカットの言い方は MinutesPhoneShortcuts。アカウントの削除（ガイドライン 5.1.1(v)）は Views/AccountDeletionView で、打ち込む文字の照らし合わせは MinutesKit の MinutesCloudDeletionConfirmation）
   Phone/Billing/             App 内課金（StoreKit 2）: 商品 ID と規約の URL（BillingCatalog。仮）、購入・復元・取引の受け渡し（BillingStore）。画面は Views/PlanView
   PhoneTests/                iPhone のアプリに載せて走るテスト（MinutesTests）。StoreKit Testing in Xcode の試しの商品（Minutes.storekit）と、買う・返金・復元のテスト
   PhoneIntents/              iPhone のアプリと拡張で共通: 録音を始める App Intent（StartRecordingIntent）と、入口からアプリへ求めを渡す口（QuickRecord）。WatchIntents と同じ名前・同じ形（入るターゲットが別）
