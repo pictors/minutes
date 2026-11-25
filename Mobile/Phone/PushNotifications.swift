@@ -56,8 +56,32 @@ final class PushNotifications {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         authorization = settings.authorizationStatus
         authorizationLoaded = true
-        if isAllowed, deviceToken == nil { UIApplication.shared.registerForRemoteNotifications() }
+        guard isAllowed, deviceToken == nil else { return }
+        #if DEBUG
+        // 開発のビルドだけ: シミュレータは APNs につながらず、トークンが届かないことがある。
+        // 環境変数 MINUTES_PUSH_TEST_TOKEN（16 進）の偽のトークンで、サーバーへの登録の道を確かめる（AGENTS.md）
+        if let token = Self.debugToken {
+            didRegister(deviceToken: token)
+            return
+        }
+        #endif
+        UIApplication.shared.registerForRemoteNotifications()
     }
+
+    #if DEBUG
+    private static var debugToken: Data? {
+        guard let hex = ProcessInfo.processInfo.environment["MINUTES_PUSH_TEST_TOKEN"], !hex.isEmpty, hex.count.isMultiple(of: 2) else { return nil }
+        var data = Data()
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            data.append(byte)
+            index = next
+        }
+        return data
+    }
+    #endif
 
     /// 「通知を受け取る」: OS の確認を出す。許されたら登録する。
     func requestAuthorization() async {
@@ -149,19 +173,37 @@ struct PushPayload: Sendable, Equatable {
 }
 
 /// UNUserNotificationCenter の delegate（NSObject が要る）。受けたものを PushNotifications に渡す。
+/// 完了の知らせ（completionHandler）は、呼ばれたスレッド（メインスレッド）のまま、その場で返す。
+/// async 版で書くと、完了の知らせが裏のスレッドから呼ばれ、押した通知でアプリが開くときに UIKit の確かめで落ちた
+/// （-[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]。2026-11-25 にシミュレータで確かめた）。
 private final class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
     /// アプリが前に出ているとき: Minutes の通知は出さず、一覧を読み直す（処理中の会議は、一覧が数秒ごとに読み直して出している）。
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        guard PushPayload(notification.request.content.userInfo) != nil else { return [.banner, .list, .sound] }
-        await MainActor.run { PushNotifications.shared.receivedInForeground() }
-        return []
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        guard PushPayload(notification.request.content.userInfo) != nil else {
+            completionHandler([.banner, .list, .sound])
+            return
+        }
+        Self.onMain { PushNotifications.shared.receivedInForeground() }
+        completionHandler([])
     }
 
     /// 通知を押した: その会議を開く。
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let payload = PushPayload(response.notification.request.content.userInfo) else { return }
-        await MainActor.run { PushNotifications.shared.open(payload) }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier, let payload = PushPayload(response.notification.request.content.userInfo) {
+            Self.onMain { PushNotifications.shared.open(payload) }
+        }
+        completionHandler()
+    }
+
+    /// UserNotifications は delegate をメインスレッドで呼ぶ。そうでなかったときだけ、メインスレッドへ回す。
+    private nonisolated static func onMain(_ action: @escaping @MainActor @Sendable () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { action() }
+        } else {
+            Task { @MainActor in action() }
+        }
     }
 }
 
