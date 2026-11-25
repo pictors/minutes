@@ -13,6 +13,8 @@ struct SignInView: View {
     @State private var codeSent = false
     @State private var working = false
     @State private var message: String?
+    /// 「パスキーでログイン」を押したが、この iPhone にパスキーがなかった（作り方を案内する）
+    @State private var noPasskeyHere = false
     @State private var position = ScrollPosition(edge: .top)
     @FocusState private var focus: Field?
 
@@ -58,7 +60,8 @@ struct SignInView: View {
                 .disabled(working)
                 .padding(.top, 36)
 
-                // パスキー（iCloud キーチェーン）。作ったことのある人だけが使う。近くのほかの端末のパスキーも選べる
+                // パスキー（iCloud キーチェーン）。作ったことのある人だけが使う。この iPhone にパスキーがないときは、
+                // ほかの端末のパスキーの QR を出さずに、作り方を案内する
                 Button { signInWithPasskey() } label: {
                     Label("パスキーでログイン", systemImage: "person.badge.key.fill")
                 }
@@ -66,6 +69,17 @@ struct SignInView: View {
                 .disabled(working)
                 .padding(.top, 12)
                 .accessibilityIdentifier("signIn.passkey")
+
+                if noPasskeyHere {
+                    Label("\(PasskeyFailure.noPasskeyOnDevice.localizedDescription)。Apple かメールでログインしたあと、アカウントの画面で作れます。", systemImage: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 10)
+                        .padding(.horizontal, 4)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("signIn.noPasskey")
+                }
 
                 HStack(spacing: 12) {
                     Rectangle().fill(Surface.hairline).frame(height: 1)
@@ -199,10 +213,13 @@ struct SignInView: View {
     private func signInWithPasskey() {
         working = true
         message = nil
+        noPasskeyHere = false
         Task {
             defer { working = false }
             do {
                 try await model.signInWithPasskey()
+            } catch PasskeyFailure.noPasskeyOnDevice {
+                withAnimation(Motion.layout) { noPasskeyHere = true }
             } catch where PasskeyAuthorization.isCancellation(error) {
                 // 閉じた
             } catch {

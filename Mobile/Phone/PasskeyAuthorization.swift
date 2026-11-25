@@ -1,5 +1,6 @@
 import AuthenticationServices
 import MinutesKit
+import os
 import UIKit
 
 /// パスキーを作る・確かめる（ASAuthorizationPlatformPublicKeyCredentialProvider。RP は minutes.tools、関連ドメインは
@@ -9,6 +10,7 @@ import UIKit
 final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     private var continuation: CheckedContinuation<ASAuthorization, Error>?
     private var controller: ASAuthorizationController?
+    private static let log = Logger(subsystem: "jp.pictors.minutes", category: "passkey")
 
     /// パスキーを作る（サーバーの準備をそのまま渡す。同じアカウントのパスキーがこの Apple アカウントにあれば、iOS が断る）
     func register(_ options: MinutesCloudPasskeyCreationOptions) async throws -> MinutesCloudPasskeyRegistration {
@@ -30,7 +32,9 @@ final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, A
         )
     }
 
-    /// パスキーで確かめる（端末にあるパスキーから選ぶ。近くのほかの端末のパスキーも使える）
+    /// パスキーで確かめる（この端末にあるパスキーから選ぶ。iCloud キーチェーンで同期したものも含む）。
+    /// 使えるパスキーがこの端末にないとき、iOS はほかの端末のパスキーを使う QR を出すが、それは出さずに
+    /// PasskeyFailure.noPasskeyOnDevice を投げる（作り方を案内する）。あるときのシートからは、ほかの端末のパスキーも選べる。
     func assert(_ options: MinutesCloudPasskeyRequestOptions) async throws -> MinutesCloudPasskeyAssertion {
         guard let challenge = options.challengeData else { throw PasskeyFailure.badOptions }
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.relyingPartyID)
@@ -38,7 +42,7 @@ final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, A
         let allowed = (options.allowCredentials ?? []).compactMap(\.idData)
         if !allowed.isEmpty { request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) } }
         request.userVerificationPreference = Self.preference(options.userVerification)
-        let authorization = try await perform(request)
+        let authorization = try await perform(request, onlyOnThisDevice: true)
         guard let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else { throw PasskeyFailure.unexpectedCredential }
         let authenticatorData: Data? = credential.rawAuthenticatorData
         let signature: Data? = credential.signature
@@ -59,9 +63,24 @@ final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, A
         try? await ASCredentialUpdater().reportUnknownPublicKeyCredential(relyingPartyIdentifier: MinutesCloudPasskeys.relyingPartyID, credentialID: credentialID)
     }
 
-    /// 利用者が閉じた（何もしない）か
+    /// 利用者が閉じた（何もしない）か。続けて押して前の求めを閉じたときも
     static func isCancellation(_ error: Error) -> Bool {
-        (error as? ASAuthorizationError)?.code == .canceled
+        (error as? ASAuthorizationError)?.code == .canceled || error is CancellationError
+    }
+
+    /// この端末だけのパスキーを求めて断られたとき、この端末に使えるパスキーがなかったのか。
+    /// iOS は、パスキーがないときも利用者が閉じたときも「取り消し」（canceled）を返し、どちらでも画面を出す場所を聞いてくる。
+    /// パスキーがないときは画面を出さずにすぐ断り、理由に「No credentials available for login.」を付ける
+    /// （2026-11-26、iOS 26.5 のシミュレータで 0.4 秒）。理由の文言か、画面を出して閉じるには短すぎる時間（1 秒未満）なら、ないとみなす。
+    nonisolated static func foundNoPasskey(_ code: ASAuthorizationError.Code, failureReason: String?, elapsed: Duration) -> Bool {
+        switch code {
+        case .notInteractive:
+            true
+        case .canceled:
+            failureReason?.localizedCaseInsensitiveContains("no credentials") == true || elapsed < .seconds(1)
+        default:
+            false
+        }
     }
 
     /// 画面に出す言葉
@@ -72,7 +91,7 @@ final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, A
             case .matchedExcludedCredential:
                 return "この Apple アカウントには、もうこのアカウントのパスキーがあります"
             case .notInteractive:
-                return "この iPhone に Minutes のパスキーがありません"
+                return PasskeyFailure.noPasskeyOnDevice.localizedDescription
             default:
                 break
             }
@@ -92,17 +111,33 @@ final class PasskeyAuthorization: NSObject, ASAuthorizationControllerDelegate, A
         value == .crossPlatform ? .crossPlatform : .platform
     }
 
-    private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
+    /// onlyOnThisDevice: この端末にすぐ使えるパスキーがあるときだけ画面を出す（ないときは画面を出さずに断られ、ほかの端末の QR も出さない。
+    /// あるときのシートには、iOS の「ほかの端末でサインイン」が残る）
+    private func perform(_ request: ASAuthorizationRequest, onlyOnThisDevice: Bool = false) async throws -> ASAuthorization {
         // 前の求めが残っていれば閉じる（続けて 2 回押したとき）
-        continuation?.resume(throwing: ASAuthorizationError(.canceled))
+        continuation?.resume(throwing: CancellationError())
         continuation = nil
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
         self.controller = controller
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            controller.performRequests()
+        let started = ContinuousClock.now
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                if onlyOnThisDevice {
+                    controller.performRequests(options: .preferImmediatelyAvailableCredentials)
+                } else {
+                    controller.performRequests()
+                }
+            }
+        } catch let error as ASAuthorizationError where onlyOnThisDevice {
+            let elapsed = ContinuousClock.now - started
+            let reason = (error as NSError).localizedFailureReason
+            let noPasskey = Self.foundNoPasskey(error.code, failureReason: reason, elapsed: elapsed)
+            Self.log.debug("assert failed: code \(error.code.rawValue, privacy: .public) elapsed \(elapsed.description, privacy: .public) reason \(reason ?? "-", privacy: .public) -> noPasskey \(noPasskey, privacy: .public)")
+            if noPasskey { throw PasskeyFailure.noPasskeyOnDevice }
+            throw error
         }
     }
 
@@ -140,6 +175,8 @@ enum PasskeyFailure: Error, LocalizedError, Equatable {
     case needsReauthentication
     /// 確かめ直しで、別の Minutes アカウントに入った
     case differentAccount
+    /// この端末に、使える Minutes のパスキーがない（作ったことがない・iCloud キーチェーンを切っている）
+    case noPasskeyOnDevice
 
     var errorDescription: String? {
         switch self {
@@ -147,6 +184,7 @@ enum PasskeyFailure: Error, LocalizedError, Equatable {
         case .unexpectedCredential: "パスキーの結果を読めませんでした"
         case .needsReauthentication: "パスキーを作るには、確かめのためにもう一度ログインしてください"
         case .differentAccount: "いまの Minutes アカウントとは別のアカウントでした。いまのアカウントのログインで確かめてください"
+        case .noPasskeyOnDevice: "この iPhone には、まだ Minutes のパスキーがありません"
         }
     }
 }

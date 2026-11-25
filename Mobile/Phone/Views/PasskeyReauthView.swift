@@ -167,6 +167,8 @@ struct PasskeyReauthView: View {
                 try await work()
                 dismiss()
                 onDone()
+            } catch PasskeyFailure.noPasskeyOnDevice {
+                message = "\(PasskeyFailure.noPasskeyOnDevice.localizedDescription)。ほかの方法で確かめてください"
             } catch where PasskeyAuthorization.isCancellation(error) {
                 // 閉じた
             } catch {
