@@ -39,10 +39,16 @@ struct NotificationPromptCard: View {
         .cardBackground()
     }
 
-    /// 誘いを出すか: 許可をまだ選んでいない・「あとで」で閉じていない・議事録を待つ（録り終えた）会議が一覧にある。
+    /// 誘いを出すか: 許可をまだ選んでいない・「あとで」で閉じていない・議事録を待つ会議が一覧にある。
+    /// 議事録を待つ会議は、サーバーが処理を受け付けた iPhone・Watch の録音（通知が来るもの）だけ。使える量で断られた録音（uploading のまま。
+    /// 無料の利用者は録るたびにそうなる）と、同期した Mac の会議では出さない。
     static func shouldShow(push: PushNotifications, model: PhoneModel) -> Bool {
-        push.authorizationLoaded && push.authorization == .notDetermined && !push.promptDismissed
-            && model.meetings.contains { $0.id != model.recorder.clientId }
+        guard push.authorizationLoaded, push.authorization == .notDetermined, !push.promptDismissed else { return false }
+        return model.meetings.contains { item in
+            guard item.id != model.recorder.clientId, let server = item.server, !server.isSyncedMeeting,
+                  ["iphone", "watch"].contains(server.source ?? "") else { return false }
+            return ["queued", "transcribing", "summarizing", "done", "failed"].contains(server.status)
+        }
     }
 }
 
