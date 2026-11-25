@@ -14,6 +14,10 @@ struct RootView: View {
         }
         .tint(Palette.periwinkle)
         .animation(Motion.layout, value: model.isSignedIn)
+        // メールのコードでログインした直後に、1 度だけパスキーを勧める
+        .sheet(isPresented: Bindable(model).passkeyOfferPending) {
+            PasskeyOfferView()
+        }
         // ウィジェット・コントロール・Siri・ショートカットの「録音を始める」（QuickRecord。SPEC §5.7）
         .handlesQuickRecord()
         .onChange(of: scenePhase) { _, phase in

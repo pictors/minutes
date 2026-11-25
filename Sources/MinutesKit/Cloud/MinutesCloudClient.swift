@@ -19,6 +19,7 @@ import Foundation
 //   アカウントの削除: DELETE /v1/account {apple_authorization_code?} → {deleted, apple_revoked, apple_reason}
 //   App 内課金（P6、2026-11-25）: GET /v1/billing、POST /v1/billing/app-store/transactions {signed_transaction}（MinutesCloudBilling.swift）。
 //            GET /v1/me に plan_source（manual・app_store）・plan_expires_at と、usage の period_start・period_end（使える量の区切り）を足した
+//   パスキー（2026-11-25）: /v1/auth/passkey/*（MinutesCloudPasskey.swift）。確かめの 1 往復だけ、challenge の Cookie と Origin を見出しで渡す
 
 /// サーバーの場所と、Cookie を使わない URLSession。
 public extension URLSession {
@@ -103,6 +104,12 @@ public enum MinutesCloudError: Error, LocalizedError, Equatable, Sendable {
         case "TOO_MANY_ATTEMPTS": return "コードを 3 回まちがえました。コードを送り直してください"
         case "INVALID_EMAIL_OR_PASSWORD": return "メールアドレスかパスワードが違います"
         case "INVALID_EMAIL": return "メールアドレスの形が違います"
+        case "SESSION_NOT_FRESH": return "パスキーを作るには、確かめのためにもう一度ログインしてください"
+        case "PASSKEY_NOT_FOUND": return "このパスキーは Minutes アカウントにありません（消したパスキーかもしれません）"
+        case "AUTHENTICATION_FAILED": return "パスキーを確かめられませんでした"
+        case "CHALLENGE_NOT_FOUND": return "時間がたちすぎました。もう一度試してください"
+        case "FAILED_TO_VERIFY_REGISTRATION": return "パスキーを登録できませんでした"
+        case "PREVIOUSLY_REGISTERED": return "このパスキーはもう登録してあります"
         default: return status == 429 ? "混み合っています。しばらくしてからもう一度試してください" : nil
         }
     }
@@ -482,12 +489,58 @@ public struct MinutesCloudClient: Sendable {
         return try decode(MinutesCloudAccountDeletion.self, from: try await send("DELETE", "/v1/account", json: body).0)
     }
 
+    // MARK: パスキー（MinutesCloudPasskey.swift）
+
+    /// パスキーを作る準備。作ってから 1 日以内のセッションだけ（古いと 403 SESSION_NOT_FRESH。確かめ直してから作る）。
+    public func passkeyCreationOptions() async throws -> MinutesCloudPasskeyCeremony<MinutesCloudPasskeyCreationOptions> {
+        let (data, response) = try await send("GET", "/v1/auth/passkey/generate-register-options")
+        return try ceremony(data, response)
+    }
+
+    /// 作ったパスキーをアカウントに足す。name は一覧に出す名前（端末の種類。「iPhone」）。cookie は準備の応答のもの。
+    public func registerPasskey(_ registration: MinutesCloudPasskeyRegistration, name: String, cookie: String) async throws {
+        _ = try await send("POST", "/v1/auth/passkey/verify-registration", body: try registration.verificationBody(name: name), headers: passkeyHeaders(cookie: cookie))
+    }
+
+    /// パスキーでログインする準備（印は要らない）。
+    public func passkeySignInOptions() async throws -> MinutesCloudPasskeyCeremony<MinutesCloudPasskeyRequestOptions> {
+        let (data, response) = try await send("GET", "/v1/auth/passkey/generate-authenticate-options", authorized: false)
+        return try ceremony(data, response)
+    }
+
+    /// パスキーでログインする。サーバーにないパスキー（消したもの）は 401 PASSKEY_NOT_FOUND。
+    public func signIn(passkey assertion: MinutesCloudPasskeyAssertion, cookie: String) async throws -> MinutesCloudSession {
+        try await signIn(path: "/v1/auth/passkey/verify-authentication", body: try assertion.verificationBody(), headers: passkeyHeaders(cookie: cookie))
+    }
+
+    /// このアカウントのパスキー
+    public func passkeys() async throws -> [MinutesCloudPasskey] {
+        try decode([MinutesCloudPasskey].self, from: try await send("GET", "/v1/auth/passkey/list-user-passkeys").0)
+    }
+
+    /// パスキーをアカウントから外す（端末のパスキーは残るので、呼び出し側が ASCredentialUpdater で知らせる）。
+    public func deletePasskey(id: String) async throws {
+        _ = try await send("POST", "/v1/auth/passkey/delete-passkey", json: ["id": id])
+    }
+
+    /// 確かめの要求の見出し: 準備で受けた challenge の Cookie と、Cookie を伴う要求に要る Origin
+    private func passkeyHeaders(cookie: String) -> [String: String] {
+        ["cookie": cookie, "origin": MinutesCloudPasskeys.origin]
+    }
+
+    private func ceremony<Options: Decodable & Sendable & Equatable>(_ data: Data, _ response: HTTPURLResponse) throws -> MinutesCloudPasskeyCeremony<Options> {
+        guard let cookie = MinutesCloudPasskeys.challengeCookie(from: response) else {
+            throw MinutesCloudError.invalidResponse("パスキーの確かめの Cookie（better-auth-passkey）がない")
+        }
+        return MinutesCloudPasskeyCeremony(options: try decode(Options.self, from: data), cookie: cookie)
+    }
+
     private func signIn(path: String, body: [String: String]) async throws -> MinutesCloudSession {
         try await signIn(path: path, body: try JSONSerialization.data(withJSONObject: body))
     }
 
-    private func signIn(path: String, body: Data) async throws -> MinutesCloudSession {
-        let (data, response) = try await send("POST", path, body: body, authorized: false)
+    private func signIn(path: String, body: Data, headers: [String: String] = [:]) async throws -> MinutesCloudSession {
+        let (data, response) = try await send("POST", path, body: body, authorized: false, headers: headers)
         guard let token = response.value(forHTTPHeaderField: "set-auth-token"), !token.isEmpty else {
             throw MinutesCloudError.invalidResponse("ログインの印（set-auth-token）がない")
         }
@@ -777,12 +830,13 @@ public struct MinutesCloudClient: Sendable {
         try await send(method, path, body: try JSONSerialization.data(withJSONObject: json), authorized: authorized)
     }
 
-    private func send(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authorized: Bool = true) async throws -> (Data, HTTPURLResponse) {
+    private func send(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authorized: Bool = true, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
         var request = try makeRequest(method, path, query: query, authorized: authorized)
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "content-type")
         }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         let (data, response) = try await session.data(for: request)
         return try check(data, response)
     }

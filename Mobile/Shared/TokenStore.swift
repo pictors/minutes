@@ -16,6 +16,8 @@ final class TokenStore: @unchecked Sendable {
     enum Method: String, Codable, Sendable {
         case apple
         case email
+        /// パスキー（iPhone）
+        case passkey
         /// iPhone から受け取った（Watch）
         case phone
     }

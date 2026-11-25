@@ -58,6 +58,15 @@ struct SignInView: View {
                 .disabled(working)
                 .padding(.top, 36)
 
+                // パスキー（iCloud キーチェーン）。作ったことのある人だけが使う。近くのほかの端末のパスキーも選べる
+                Button { signInWithPasskey() } label: {
+                    Label("パスキーでログイン", systemImage: "person.badge.key.fill")
+                }
+                .buttonStyle(QuietPillButtonStyle(height: 54))
+                .disabled(working)
+                .padding(.top, 12)
+                .accessibilityIdentifier("signIn.passkey")
+
                 HStack(spacing: 12) {
                     Rectangle().fill(Surface.hairline).frame(height: 1)
                     Text("またはメールで").font(.footnote).foregroundStyle(.secondary).fixedSize()
@@ -184,6 +193,21 @@ struct SignInView: View {
             run { try await model.signInWithApple(identityToken: token, nonce: nonce) }
         case let .failure(error):
             if (error as? ASAuthorizationError)?.code != .canceled { message = error.localizedDescription }
+        }
+    }
+
+    private func signInWithPasskey() {
+        working = true
+        message = nil
+        Task {
+            defer { working = false }
+            do {
+                try await model.signInWithPasskey()
+            } catch where PasskeyAuthorization.isCancellation(error) {
+                // 閉じた
+            } catch {
+                message = PasskeyAuthorization.message(for: error)
+            }
         }
     }
 

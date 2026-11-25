@@ -6,6 +6,12 @@ import SwiftUI
 struct AccountView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var passkeyWorking = false
+    @State private var passkeyMessage: String?
+    /// パスキーを作る前の確かめ直し（ログインから 1 日を過ぎたセッション）
+    @State private var reauthenticating = false
+    @State private var reauthenticated = false
+    @State private var removingPasskey: MinutesCloudPasskey?
 
     var body: some View {
         NavigationStack {
@@ -14,6 +20,7 @@ struct AccountView: View {
                     usageCard
                     planCard
                     emailCard
+                    passkeyCard
                     signOutCard
                     deletionSection
                 }
@@ -29,7 +36,124 @@ struct AccountView: View {
                     Button("閉じる") { dismiss() }
                 }
             }
-            .task { await model.refresh() }
+            .task {
+                async let refresh: Void = model.refresh()
+                async let passkeys: Void = model.loadPasskeys()
+                _ = await (refresh, passkeys)
+            }
+            // 確かめ直しのシートが閉じきってから、パスキーを作る（閉じている途中にはパスキーの画面を出さない）
+            .sheet(isPresented: $reauthenticating, onDismiss: {
+                if reauthenticated {
+                    reauthenticated = false
+                    createPasskey()
+                }
+            }) {
+                PasskeyReauthView(onDone: { reauthenticated = true })
+            }
+            .confirmationDialog("このパスキーを外しますか？", isPresented: Binding(get: { removingPasskey != nil }, set: { if !$0 { removingPasskey = nil } }), titleVisibility: .visible, presenting: removingPasskey) { passkey in
+                Button("外す", role: .destructive) { removePasskey(passkey) }
+            } message: { _ in
+                Text("外したパスキーでは、ログインできなくなります。Apple やメールのコードでは、これまでどおりログインできます。")
+            }
+        }
+    }
+
+    /// パスキー（iCloud キーチェーン）: 一覧・作る・外す
+    private var passkeyCard: some View {
+        SectionCard("パスキー", systemImage: "person.badge.key.fill", tint: Palette.violet) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let passkeys = model.passkeys {
+                    ForEach(passkeys) { passkey in
+                        passkeyRow(passkey)
+                    }
+                    if passkeys.isEmpty {
+                        Text("パスキーを作ると、次から Face ID や Touch ID だけでログインできます。パスキーは iCloud キーチェーンに入り、同じ Apple アカウントのほかの iPhone・iPad でも使えます。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button { createPasskey() } label: {
+                        Label(passkeys.isEmpty ? "パスキーを作る" : "パスキーをもう 1 つ作る", systemImage: "plus")
+                    }
+                    .buttonStyle(PillButtonStyle(height: 36))
+                    .disabled(passkeyWorking)
+                    .accessibilityIdentifier("account.passkey.create")
+                } else {
+                    Text(model.passkeysUnavailable ? "パスキーを読めませんでした" : "読み込んでいます")
+                        .foregroundStyle(.secondary)
+                }
+                if let passkeyMessage {
+                    Label(passkeyMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.rose)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .overlay { if passkeyWorking { ProgressView() } }
+        }
+    }
+
+    private func passkeyRow(_ passkey: MinutesCloudPasskey) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(passkey.name.flatMap { $0.isEmpty ? nil : $0 } ?? "パスキー")
+                    .font(.body.weight(.medium))
+                Text(Self.passkeyDetail(passkey))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button {
+                removingPasskey = passkey
+            } label: {
+                Image(systemName: "trash")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Palette.rose)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(passkeyWorking)
+            .accessibilityLabel("このパスキーを外す")
+        }
+    }
+
+    static func passkeyDetail(_ passkey: MinutesCloudPasskey) -> String {
+        var parts: [String] = []
+        if let created = passkey.createdAt {
+            parts.append(created.formatted(.dateTime.year().month(.wide).day().locale(Locale(identifier: "ja_JP"))) + "に作成")
+        }
+        parts.append(passkey.isSynced ? "iCloud キーチェーン" : "この端末だけ")
+        return parts.joined(separator: "・")
+    }
+
+    private func createPasskey() {
+        passkeyWorking = true
+        passkeyMessage = nil
+        Task {
+            defer { passkeyWorking = false }
+            do {
+                try await model.createPasskey()
+            } catch PasskeyFailure.needsReauthentication {
+                reauthenticating = true
+            } catch where PasskeyAuthorization.isCancellation(error) {
+                // 閉じた
+            } catch {
+                passkeyMessage = PasskeyAuthorization.message(for: error)
+            }
+        }
+    }
+
+    private func removePasskey(_ passkey: MinutesCloudPasskey) {
+        passkeyWorking = true
+        passkeyMessage = nil
+        Task {
+            defer { passkeyWorking = false }
+            do {
+                try await model.deletePasskey(passkey)
+            } catch {
+                passkeyMessage = "外せませんでした（\(error.localizedDescription)）"
+            }
         }
     }
 

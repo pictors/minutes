@@ -1,6 +1,7 @@
 import Foundation
 import MinutesKit
 import Observation
+import UIKit
 
 /// iPhone のアプリの状態（ログイン・会議の一覧・録音・送信）。
 @MainActor
@@ -222,6 +223,11 @@ final class PhoneModel {
         try signedIn(session, method: .apple)
     }
 
+    /// パスキーでログインする（端末にあるパスキーを選ぶ）。サーバーにないパスキーなら、端末の一覧から外すよう知らせる。
+    func signInWithPasskey() async throws {
+        try signedIn(try await passkeySession(), method: .passkey)
+    }
+
     private func signedIn(_ session: MinutesCloudSession, method: TokenStore.Method) throws {
         let user = session.userID.map { MinutesCloudUser(id: $0, email: session.email) }
         try TokenStore.shared.save(token: session.token, user: user, method: method)
@@ -235,7 +241,107 @@ final class PhoneModel {
             await refresh()
             // ログインする前の購入（App Store・ほかの端末）も、このアカウントに送る
             if !Self.isRunningTests { await billing.syncWithServer() }
+            // メールのコードで入った人に、パスキーを 1 度だけ勧める（ログインしたばかりのセッションなら、確かめ直さずに作れる）
+            if method == .email { await offerPasskeyIfUseful() }
         }
+    }
+
+    // MARK: パスキー
+
+    /// このアカウントのパスキー（アカウントの画面）。まだ読んでいない・読めなかったら nil
+    private(set) var passkeys: [MinutesCloudPasskey]?
+    /// ログインのあとに、パスキーを作るかを 1 度だけ聞く（RootView のシート）
+    var passkeyOfferPending = false
+    private let passkeyAuthorization = PasskeyAuthorization()
+    private static let passkeyOfferedKey = "passkeyOffered"
+
+    /// パスキーの一覧に出す名前（端末の種類。端末に付けた名前は送らない）
+    private static var passkeyName: String { UIDevice.current.model }
+
+    /// パスキーの一覧を読めなかった（アカウントの画面に出す）
+    private(set) var passkeysUnavailable = false
+
+    func loadPasskeys() async {
+        guard isSignedIn else { return }
+        do {
+            passkeys = try await client.passkeys()
+            passkeysUnavailable = false
+        } catch where Self.isCancellation(error) {
+            // 画面を離れた。前の一覧のまま
+        } catch {
+            passkeysUnavailable = passkeys == nil
+        }
+    }
+
+    /// パスキーを作る。ログインから 1 日を過ぎていたら PasskeyFailure.needsReauthentication（確かめ直してから、もう一度呼ぶ）
+    func createPasskey() async throws {
+        let ceremony: MinutesCloudPasskeyCeremony<MinutesCloudPasskeyCreationOptions>
+        do {
+            ceremony = try await client.passkeyCreationOptions()
+        } catch let error as MinutesCloudError where error.code == "SESSION_NOT_FRESH" {
+            throw PasskeyFailure.needsReauthentication
+        }
+        let registration = try await passkeyAuthorization.register(ceremony.options)
+        try await client.registerPasskey(registration, name: Self.passkeyName, cookie: ceremony.cookie)
+        UserDefaults.standard.set(true, forKey: Self.passkeyOfferedKey)
+        await loadPasskeys()
+    }
+
+    /// パスキーをアカウントから外し、端末のパスキーの一覧からも外すよう知らせる
+    func deletePasskey(_ passkey: MinutesCloudPasskey) async throws {
+        try await client.deletePasskey(id: passkey.id)
+        if let credentialID = passkey.credentialIDData { await PasskeyAuthorization.reportUnknown(credentialID: credentialID) }
+        passkeys?.removeAll { $0.id == passkey.id }
+        await loadPasskeys()
+    }
+
+    /// 確かめ直す（パスキーを作る前。サーバーはログインから 1 日以内のセッションでしか作らせない）。
+    /// 新しいセッションが、いまと同じ利用者のときだけ使う。別のアカウントに入ったら、そのセッションを取り消して断る。
+    func reauthenticate(email: String, code: String) async throws {
+        try await adoptReauthentication(try await client.signIn(email: email, code: code.trimmingCharacters(in: .whitespacesAndNewlines)), method: .email)
+    }
+
+    func reauthenticateWithApple(identityToken: String, nonce: MinutesCloudAppleNonce) async throws {
+        try await adoptReauthentication(try await client.signInWithApple(identityToken: identityToken, rawNonce: nonce.raw), method: .apple)
+    }
+
+    func reauthenticateWithPasskey() async throws {
+        try await adoptReauthentication(try await passkeySession(), method: .passkey)
+    }
+
+    /// どの方法でこの iPhone にログインしたか（確かめ直しで出す方法を選ぶ）
+    var signInMethod: TokenStore.Method? { TokenStore.shared.stored?.method }
+
+    private func adoptReauthentication(_ session: MinutesCloudSession, method: TokenStore.Method) async throws {
+        guard let current = user?.id, session.userID == current else {
+            // 別のアカウント（Apple の別のメールなど）: 入ったセッションはすぐ取り消し、いまのログインのまま
+            let other = MinutesCloudClient(baseURL: client.baseURL, session: client.session) { session.token }
+            try? await other.signOut()
+            throw PasskeyFailure.differentAccount
+        }
+        // いまの印は取り消さない（Watch が新しい印を受け取るまで使う。使わなくなった印は期限で切れる）
+        try signedIn(session, method: method)
+    }
+
+    private func passkeySession() async throws -> MinutesCloudSession {
+        let ceremony = try await client.passkeySignInOptions()
+        let assertion = try await passkeyAuthorization.assert(ceremony.options)
+        do {
+            return try await client.signIn(passkey: assertion, cookie: ceremony.cookie)
+        } catch let error as MinutesCloudError where error.code == "PASSKEY_NOT_FOUND" {
+            await PasskeyAuthorization.reportUnknown(credentialID: assertion.credentialID)
+            throw error
+        }
+    }
+
+    /// パスキーを勧めるか（この端末でまだ勧めていない・アカウントにパスキーがない）
+    private func offerPasskeyIfUseful() async {
+        guard !UserDefaults.standard.bool(forKey: Self.passkeyOfferedKey) else { return }
+        await loadPasskeys()
+        // 録音を始めていたら勧めない（録音の画面の上にシートを出さない）
+        guard passkeys?.isEmpty == true, isSignedIn, !recorder.isActive else { return }
+        UserDefaults.standard.set(true, forKey: Self.passkeyOfferedKey)
+        passkeyOfferPending = true
     }
 
     func signOut() async {
@@ -251,13 +357,19 @@ final class PhoneModel {
         serverRecordings = []
         // 次にログインしたアカウントの一覧を読み終えるまで、「まだありません」と言わない
         meetingsLoaded = false
+        passkeys = nil
+        passkeysUnavailable = false
+        passkeyOfferPending = false
         billing.reset()
         LoginRelay.shared.sendLogin()
     }
 
     /// アカウントを消す（サーバーの録音・文字起こし・要約も消える）。この端末の録音も消す。
+    /// アカウントのパスキーは、端末のパスキーの一覧からも外すよう知らせる（読めなければ知らせずに消す）。
     func deleteAccount(appleAuthorizationCode: String?) async throws -> MinutesCloudAccountDeletion {
+        let passkeyIDs = ((try? await client.passkeys()) ?? []).compactMap(\.credentialIDData)
         let result = try await client.deleteAccount(appleAuthorizationCode: appleAuthorizationCode, appleClientID: Bundle.main.bundleIdentifier)
+        for credentialID in passkeyIDs { await PasskeyAuthorization.reportUnknown(credentialID: credentialID) }
         for upload in localUploads {
             uploads.cancel(upload.clientId)
             try? store.delete(clientId: upload.clientId)

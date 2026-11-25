@@ -424,6 +424,35 @@ struct FilledPillButtonStyle: ButtonStyle {
     }
 }
 
+/// 色を付けない面のカプセル（パスキーでログインなど、決定ほど強くない操作）。幅いっぱい。
+struct QuietPillButtonStyle: ButtonStyle {
+    var height: CGFloat = 50
+
+    func makeBody(configuration: Configuration) -> some View {
+        QuietBody(configuration: configuration, height: height)
+    }
+
+    private struct QuietBody: View {
+        let configuration: ButtonStyleConfiguration
+        let height: CGFloat
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: height * 0.34, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .background(configuration.isPressed ? Surface.pressed : Surface.card, in: .capsule)
+                .contentShape(.capsule)
+                .opacity(isEnabled ? 1 : 0.4)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(Motion.press, value: configuration.isPressed)
+        }
+    }
+}
+
 /// カードの行を押したときの応答（少し縮んで面が濃くなる）。
 struct CardPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
