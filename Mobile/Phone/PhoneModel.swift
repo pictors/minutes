@@ -12,6 +12,9 @@ final class PhoneModel {
     private(set) var serverRecordings: [MinutesCloudRecording] = []
     private(set) var localUploads: [MinutesCloudUpload] = []
     private(set) var isRefreshing = false
+    /// このアカウントのサーバーの一覧を一度でも読めたか。読めるまで（起動・ログインの直後）は、一覧が空でも「会議はまだありません」と言わない。
+    /// 読み直し（引き下げ・アカウントのシート・前に出したとき）のあいだは true のまま（一覧の表示を変えない）。ログアウトで戻す
+    private(set) var meetingsLoaded = false
     /// 一覧の上に出す知らせ（読み込みの失敗など）
     var banner: String?
     /// ログインの画面に出す知らせ（アカウントを消したあと）。次にログインしたら消す
@@ -139,6 +142,8 @@ final class PhoneModel {
             async let recordings = client.recordings(scope: .meetings)
             async let account = client.account()
             serverRecordings = try await recordings
+            // 一覧と同じ更新で立てる（空の一覧なら、読み込みの印から「まだありません」へ一度で切り替わる）
+            meetingsLoaded = true
             self.account = try await account
             banner = nil
             await resolveMissingServerRecordings()
@@ -244,6 +249,8 @@ final class PhoneModel {
         user = nil
         account = nil
         serverRecordings = []
+        // 次にログインしたアカウントの一覧を読み終えるまで、「まだありません」と言わない
+        meetingsLoaded = false
         billing.reset()
         LoginRelay.shared.sendLogin()
     }

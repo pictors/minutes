@@ -95,10 +95,18 @@ struct MeetingListView: View {
                             }
                         }
                     }
-                    if model.meetings.isEmpty && !model.isRefreshing {
-                        EmptyMeetings()
-                            .transition(.opacity)
-                    } else if shown.isEmpty && !model.meetings.isEmpty {
+                    if model.meetings.isEmpty {
+                        // 「まだありません」は一覧を一度読めてから出し、読み直しのあいだも出したままにする（引き下げにはシステムの印が出る。
+                        // アカウントのシートは一覧を隠している）。読めるまで（起動・ログインの直後）は読み込みの印を出す。
+                        // 最初の読み込みが失敗したら上の知らせだけにする（分からないのに「ない」と言わない）
+                        if model.meetingsLoaded {
+                            EmptyMeetings()
+                                .transition(.opacity)
+                        } else if model.banner == nil {
+                            LoadingMeetings()
+                                .transition(.opacity)
+                        }
+                    } else if shown.isEmpty {
                         NoMatchingMeetings(filter: filter) {
                             filter = MeetingListFilter()
                             searching = false
@@ -110,6 +118,9 @@ struct MeetingListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 110)
                 .animation(Motion.layout, value: shown.map(\.id))
+                // 読み込みの印 → 「まだありません」・知らせの入れ替わりもフェードにする（会議の ID は変わらないので、上だけでは動きが付かない）
+                .animation(Motion.layout, value: model.meetingsLoaded)
+                .animation(Motion.layout, value: model.banner == nil)
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Surface.page.ignoresSafeArea())
@@ -454,6 +465,33 @@ private struct NoMatchingMeetings: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
         .padding(.vertical, 56)
+    }
+}
+
+/// 一覧をまだ一度も読めていないとき（起動・ログインの直後）。議事録・リンクの読み込みと同じ形。
+/// 読み込みが長いときだけ出す（1 秒待つ）。ふつうの回線では 1 秒より前に読み終えるので、出ない。
+/// 待ちが短いと、出たカードがすぐ消えてちらつく（0.4 秒待ちのとき、0.6 秒の読み込みで一瞬だけ出て消えた）。
+private struct LoadingMeetings: View {
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text("会議を読んでいます").foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardBackground()
+        .opacity(visible ? 1 : 0)
+        .accessibilityHidden(!visible)
+        .task {
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
+            withAnimation(Motion.layout) { visible = true }
+        }
     }
 }
 
