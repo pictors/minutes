@@ -38,8 +38,10 @@ jobs:
       - name: 公開するファイルだけを集める
         run: rsync -a --exclude node_modules --exclude src --exclude 'package*.json' site/ _site/
       - uses: actions/configure-pages@v6
+      # .well-known/apple-app-site-association（パスキーの関連ドメイン）を出すため、「.」で始まるフォルダも入れる（既定では外す）
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+          include-hidden-files: true
       - id: deployment
         uses: actions/deploy-pages@v5
