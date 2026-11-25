@@ -18,6 +18,8 @@ final class PhoneModel {
     let recorder: MeetingRecorder
     let uploads: UploadEngine
     let store: RecordingStore
+    /// App 内課金（P6）
+    let billing: BillingStore
 
     private static let noticeAcceptedKey = "recordingNoticeAccepted"
 
@@ -25,6 +27,7 @@ final class PhoneModel {
         self.store = store
         recorder = MeetingRecorder(source: "iphone", store: store)
         uploads = UploadEngine(store: store) { CloudEnvironment.client() }
+        billing = BillingStore()
         isSignedIn = TokenStore.shared.isSignedIn
         user = TokenStore.shared.stored?.user
         recorder.onProgress = { [weak self] clientId in
@@ -32,7 +35,15 @@ final class PhoneModel {
             self?.reloadLocal()
         }
         uploads.onChange = { [weak self] _ in self?.reloadLocal() }
+        // サーバーが購入を受け付けた: 量を読み直し、使える量で断られた送信（complete の 402）をやり直す
+        billing.onChange = { [weak self] in
+            self?.uploads.kickAll()
+            Task { await self?.refresh() }
+        }
     }
+
+    /// テスト（StoreKit の試し。Mobile/PhoneTests）の中で動いているか。テストが取引を自分で送るので、アプリは取引を聞かない
+    private static var isRunningTests: Bool { ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil }
 
     var client: MinutesCloudClient { CloudEnvironment.client() }
 
@@ -50,7 +61,16 @@ final class PhoneModel {
         uploads.restore()
         // Watch にログインを渡す（Watch は受け取った印で録音を直接上げる）
         LoginRelay.shared.activate()
-        Task { await refresh() }
+        // App 内課金: 取引（自動更新・ほかの端末での購入・返金）は起動してすぐから聞き、終わっていない取引といまの権利をサーバーへ送る
+        guard !Self.isRunningTests else {
+            Task { await refresh() }
+            return
+        }
+        billing.startListening()
+        Task {
+            await refresh()
+            await billing.syncWithServer()
+        }
     }
 
     func becameActive() {
@@ -203,7 +223,11 @@ final class PhoneModel {
         banner = nil
         uploads.kickAll()
         LoginRelay.shared.sendLogin()
-        Task { await refresh() }
+        Task {
+            await refresh()
+            // ログインする前の購入（App Store・ほかの端末）も、このアカウントに送る
+            if !Self.isRunningTests { await billing.syncWithServer() }
+        }
     }
 
     func signOut() async {
@@ -217,6 +241,7 @@ final class PhoneModel {
         user = nil
         account = nil
         serverRecordings = []
+        billing.reset()
         LoginRelay.shared.sendLogin()
     }
 

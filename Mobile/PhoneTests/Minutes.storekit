@@ -1,0 +1,64 @@
+{
+  "identifier" : "7B6C2A10",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ja",
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21000001",
+      "localizations" : [
+        {
+          "description" : "",
+          "displayName" : "Minutes Pro",
+          "locale" : "ja"
+        }
+      ],
+      "name" : "Minutes Pro（仮）",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1500",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6700000101",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "自分の API キーなしで、文字起こしと議事録を使えます（Minutes クラウド）",
+              "displayName" : "Minutes Pro",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "jp.pictors.minutes.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro 月額（仮）",
+          "subscriptionGroupID" : "21000001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

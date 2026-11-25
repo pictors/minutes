@@ -15,6 +15,7 @@ struct AccountView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     usageCard
+                    planCard
                     emailCard
                     if let message {
                         Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -43,7 +44,9 @@ struct AccountView: View {
                         .confirmationDialog("アカウントを消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
                             Button("アカウントを消す", role: .destructive) { deleteAccount() }
                         } message: {
-                            Text("サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。")
+                            Text(model.account?.planSource == "app_store"
+                                ? "サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。App Store のサブスクリプションは止まらないので、先に「プラン」の「契約を管理」から解約してください。"
+                                : "サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。")
                         }
                     }
                     .buttonStyle(CardPressStyle())
@@ -109,6 +112,47 @@ struct AccountView: View {
                 Text("読み込んでいます").foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// プラン（P6）: 無料なら Pro にする入口、Pro なら期限・自動更新と契約の管理
+    private var planCard: some View {
+        NavigationLink {
+            PlanView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: model.account?.plan == "pro" ? "star.fill" : "sparkles")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(model.account?.plan == "pro" ? Palette.amber : Palette.periwinkle)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.account?.plan == "pro" ? "プラン" : "Pro にする")
+                        .foregroundStyle(.primary)
+                    Text(planSubtitle)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 54)
+            .contentShape(.rect)
+        }
+        .buttonStyle(CardPressStyle())
+        .cardBackground()
+        .accessibilityIdentifier("account.plan")
+    }
+
+    private var planSubtitle: String {
+        guard let account = model.account else { return "読み込んでいます" }
+        guard account.plan == "pro" else { return "文字起こしと議事録を使う・購入を復元する" }
+        if account.planSource == "manual" { return "Pro（手で設定）" }
+        if let end = account.planExpiresAt { return "Pro・いまの期間は\(PlanView.date(end))まで" }
+        return "Pro"
     }
 
     private var emailCard: some View {

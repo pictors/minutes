@@ -17,6 +17,8 @@ import Foundation
 //   録音: POST /v1/recordings（summarize は既定の true）→ PUT /v1/recordings/:id/parts/:run/:offset（区切り）→ POST /complete {duration_seconds, runs:[{run, bytes}]}
 //         GET /v1/recordings → {recordings:[…]}（新しい順に 100 件）、GET /:id/transcript（transcript.json）・/:id/summary（summary.json）・/:id/audio
 //   アカウントの削除: DELETE /v1/account {apple_authorization_code?} → {deleted, apple_revoked, apple_reason}
+//   App 内課金（P6、2026-11-25）: GET /v1/billing、POST /v1/billing/app-store/transactions {signed_transaction}（MinutesCloudBilling.swift）。
+//            GET /v1/me に plan_source（manual・app_store）と plan_expires_at を足した
 
 /// サーバーの場所と、Cookie を使わない URLSession。
 public extension URLSession {
@@ -134,6 +136,10 @@ public struct MinutesCloudAccount: Decodable, Sendable, Equatable {
     /// "free" | "pro"
     public var plan: String
     public var usage: Usage
+    /// 有料の出どころ（"manual" | "app_store"）。P6 より前のサーバーは送らない
+    public var planSource: String?
+    /// 有料が切れる日時（App Store なら期限か猶予期間の終わり）
+    public var planExpiresAt: Date?
 }
 
 /// サーバーの録音（GET /v1/recordings・/:id）。Mac の Minutes クラウドが使う欄のほかは、iPhone・Watch の一覧と議事録の表示に使う。
@@ -497,6 +503,19 @@ public struct MinutesCloudClient: Sendable {
 
     public func account() async throws -> MinutesCloudAccount {
         try decode(MinutesCloudAccount.self, from: try await send("GET", "/v1/me").0)
+    }
+
+    // MARK: App 内課金（P6）
+
+    /// 有料かどうかと、購入に付ける appAccountToken（利用者の ID）
+    public func billing() async throws -> MinutesCloudBilling {
+        try decode(MinutesCloudBilling.self, from: try await send("GET", "/v1/billing").0)
+    }
+
+    /// StoreKit 2 の取引（Transaction の jwsRepresentation）をサーバーに送る。サーバーが Apple の署名を確かめ、有料かどうかを決め直す
+    public func submitAppStoreTransaction(signedTransaction: String) async throws -> MinutesCloudBilling {
+        let body = try await send("POST", "/v1/billing/app-store/transactions", json: ["signed_transaction": signedTransaction]).0
+        return try decode(MinutesCloudBilling.self, from: body)
     }
 
     // MARK: 文字起こし

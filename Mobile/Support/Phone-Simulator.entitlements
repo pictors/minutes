@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  シミュレータ向けの開発のビルド（Debug）だけの entitlements（Phone.entitlements と同じものに get-task-allow を足したもの）。
+  StoreKit Testing in Xcode（storekitd）は「開発で入れたアプリ」だけを相手にし、get-task-allow のないアプリには
+  "is not installed for development" と答えて試しの商品を出さない（2026-11-25 にシミュレータの iOS 26.3 で確かめた）。
+  xcodebuild のシミュレータ向けの署名（Sign to Run Locally）は get-task-allow を付けないので、ここで付ける。実機と Release は Phone.entitlements のまま。
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<key>get-task-allow</key>
+	<true/>
+</dict>
+</plist>
