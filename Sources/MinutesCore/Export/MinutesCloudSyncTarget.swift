@@ -45,19 +45,29 @@ public struct MinutesCloudSyncTarget: SyncTarget {
         return SyncReceipt(targetId: id, location: "minutes-cloud:\(recording.id)", checksum: export.manifest.checksum, uploadedAt: Date())
     }
 
-    /// ローカルのみにした会議をサーバーから消す。
+    /// ローカルのみにした会議をサーバーから消す（もうなければ、それでよい）。
     public func remove(meeting: MeetingRecord) async throws -> [String] {
-        try await client.deleteMeeting(id: meeting.id)
+        try await deleteIfPresent(meeting.id)
         return ["minutes-cloud:meeting:\(meeting.id)"]
     }
 
     /// 消した会議をサーバーから消す（もうなければ、それでよい）。
     public func removeDeleted(meetingID: String) async throws {
-        try await client.deleteMeeting(id: meetingID)
+        try await deleteIfPresent(meetingID)
+    }
+
+    /// 消す要求の 404 は、サーバーにもうないということ（アカウントを作り直した・すでに消えた会議・同期のないサーバー）なので、消えたものとして扱う。
+    /// 待たせたままにすると、毎回 404 になり、`haltsRetries` でその回の残りの消す処理まで止まる（2026-11-25）。
+    private func deleteIfPresent(_ meetingID: String) async throws {
+        do {
+            try await client.deleteMeeting(id: meetingID)
+        } catch let error as MinutesCloudError where error.status == 404 {
+            return
+        }
     }
 
     /// ログイン切れ・有料でない・混雑・サーバーの誤り・回線は、ほかの会議でも同じなので、この回の残りを送らない。
-    /// 404 も同じ（会議の ID の形はいつも通るので、404 はサーバーにこの道がない＝同期のないサーバー）。
+    /// 送るときの 404 も同じ（会議の ID の形はいつも通るので、404 はサーバーにこの道がない＝同期のないサーバー）。消すときの 404 は `deleteIfPresent` が消えたものとして扱う。
     public func haltsRetries(_ error: Error) -> Bool {
         if error is URLError || error is CancellationError { return true }
         guard let cloud = error as? MinutesCloudError else { return false }

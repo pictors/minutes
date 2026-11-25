@@ -262,4 +262,64 @@ struct MinutesCloudSyncTests {
         try store.updateMeeting(local)
         #expect(try store.meetingIdsForCloudSync() == [a.id])
     }
+
+    @Test("消す要求の 404 は、もう消えたものとして扱う（作り直したアカウント・すでに消えた会議）。その回の残りも消す。ローカルのみにしたときも同じ")
+    func removeTreatsNotFoundAsRemoved() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let seen = Mutex<[String]>([])
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0.append("\(request.method) \(request.path)") }
+            return request.method == "DELETE" ? Self.reply(["error": "not_found"], status: 404) : Self.recordingReply()
+        }
+        let store = try Store.inMemory()
+        let first = try seed(store)
+        let second = try seed(store)
+        var local = try seed(store)
+        let pipe = pipeline(store, base: base, export: root)
+        for meeting in [first, second, local] { try await pipe.refreshExport(meetingId: meeting.id) }
+        try store.deleteMeeting(id: first.id)
+        try store.deleteMeeting(id: second.id)
+        #expect(Set(try store.pendingRemovals().map(\.meetingId)) == [first.id, second.id])
+        _ = await pipe.retryPendingRemovals()
+        #expect(try store.pendingRemovals().isEmpty)
+        #expect(try latestStatus(store, first.id) == ExportStatus.removed.rawValue)
+        #expect(try latestStatus(store, second.id) == ExportStatus.removed.rawValue)
+
+        local.privacy = .localOnly
+        try store.updateMeeting(local)
+        _ = try await pipe.removeExportedFiles(meetingId: local.id)
+        #expect(try latestStatus(store, local.id) == ExportStatus.removed.rawValue)
+        #expect(seen.withLock { $0 }.filter { $0.hasPrefix("DELETE") }.count == 3)
+    }
+
+    @Test("ログインし直したら、送った会議も含めて同期する会議をまとめて送り直す（取り込んだ会議は送らない。同期を切っている・同期先がないときは戻さない）")
+    func requeueAllAfterSignIn() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let puts = Mutex<[String]>([])
+        let base = StubURLProtocol.host { request in
+            if request.method == "PUT" { puts.withLock { $0.append(request.path) } }
+            return Self.recordingReply()
+        }
+        let store = try Store.inMemory()
+        let a = try seed(store)
+        let b = try seed(store)
+        _ = try seed(store, cloudRecordingId: "rec-iphone")
+        let pipe = pipeline(store, base: base, export: root)
+        for meeting in [a, b] { try await pipe.refreshExport(meetingId: meeting.id) }
+        #expect(puts.withLock { $0 }.count == 2)
+
+        #expect(pipeline(store, base: base, uploads: false, export: root).requeueAllForCloudSync() == nil)
+        let noTarget = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: LocalTranscriber(), summarizer: nil, exportDirectory: root))
+        #expect(noTarget.requeueAllForCloudSync() == nil)
+        #expect(try store.pendingExports().filter { $0.target == MinutesCloudSyncTarget.targetID }.isEmpty)
+
+        #expect(pipe.requeueAllForCloudSync() == 2)
+        _ = await pipe.retryPendingExports()
+        let resent = puts.withLock { $0 }.dropFirst(2)
+        #expect(Set(resent) == ["/v1/meetings/\(a.id)", "/v1/meetings/\(b.id)"])
+        #expect(try latestStatus(store, a.id) == ExportStatus.ok.rawValue && latestStatus(store, b.id) == ExportStatus.ok.rawValue)
+        #expect(try store.pendingExports().filter { $0.target == MinutesCloudSyncTarget.targetID }.isEmpty)
+    }
 }

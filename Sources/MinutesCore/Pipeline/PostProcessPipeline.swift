@@ -768,6 +768,21 @@ public final class PostProcessPipeline: Sendable {
         }
     }
 
+    /// Minutes クラウドへ同期する会議（`meetingIdsForCloudSync`）を、送ったものも含めてすべて待ちに戻す（ログインし直したとき）。
+    /// アカウントを作り直した・替えたときは、サーバーにこの Mac の会議がないので、送り直さないと iPhone に出ない（2026-11-25）。
+    /// 同じアカウントなら、サーバーは同じ会議を置き換えるだけ。同期を切っている・同期先がないときは nil。戻した数を返す（送るのは `retryPendingExports`）。
+    public func requeueAllForCloudSync() -> Int? {
+        guard let target = providers.syncTargets.first(where: { $0.id == MinutesCloudSyncTarget.targetID }) as? MinutesCloudSyncTarget,
+              target.uploads else { return nil }
+        do {
+            let ids = try store.meetingIdsForCloudSync()
+            if !ids.isEmpty { try store.queueExports(meetingIds: ids, target: target.id) }
+            return ids.count
+        } catch {
+            return nil
+        }
+    }
+
     public func retryPendingExports() async -> [String] {
         guard begin("exports") else { return [] }
         defer { end("exports") }

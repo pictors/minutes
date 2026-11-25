@@ -526,8 +526,20 @@ final class AppModel {
         minutesCloudEmail = address
         // 同期の同期先を置く（ログインしたら、消した会議をサーバーから消せる）
         rebuildPipeline()
+        // 同期を入れていれば、これまでの会議を送り直す（アカウントを作り直した・替えたときは、サーバーにこの Mac の会議がない）
+        resendSyncedMeetingsAfterSignIn()
         // iPhone・Watch で録った会議があれば、すぐ取り込む
         pullCloudMeetings(.scheduled)
+    }
+
+    /// ログインし直したら、同期する会議をまとめて送り直す（同期を入れているときだけ。同じアカウントなら、サーバーは置き換えるだけ）。
+    private func resendSyncedMeetingsAfterSignIn() {
+        guard settings.syncMeetingsToMinutesCloud, let pipeline, let count = pipeline.requeueAllForCloudSync(), count > 0 else { return }
+        appendEvent("Minutes クラウドにログインしたので、同期する会議を送り直します: \(count) 件")
+        Task { [weak self] in
+            let report = await pipeline.retryPendingExports()
+            for line in report { self?.appendEvent("sync: \(line)") }
+        }
     }
 
     /// この Mac のログインを取り消す（サーバーに伝えられなくても、手元の印は消す）。
