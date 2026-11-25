@@ -82,6 +82,9 @@ struct PlanView: View {
         }
         guard let subscription else { return [] }
         var lines: [String] = []
+        if billing.billing?.entitlement.trial == true, let limit = entitlement?.monthlySecondsLimit {
+            lines.append("無料の試用中です（試用のあいだに使えるのは、合計 \(Self.hours(limit))まで）。")
+        }
         if subscription.inBillingRetry, let grace = subscription.gracePeriodExpiresAt, grace > Date() {
             lines.append("支払いに問題があります。\(Self.date(grace))までは使えます。App Store のお支払い方法を確かめてください。")
         } else if let end = subscription.expiresAt {
@@ -124,7 +127,7 @@ struct PlanView: View {
                 Spacer(minLength: 0)
                 if let period { Text("\(period.length)ごとの自動更新").font(.caption).foregroundStyle(.secondary) }
             }
-            if let offer = introOfferText(product) {
+            if !owned, let offer = introOfferText(product) {
                 Text(offer).font(.footnote.weight(.medium)).foregroundStyle(Palette.mint)
             }
             if !owned {
@@ -168,7 +171,9 @@ struct PlanView: View {
         guard let offer = product.subscription?.introductoryOffer, billing.introEligible[product.id] == true else { return nil }
         let period = Self.period(offer.period)
         switch offer.paymentMode {
-        case .freeTrial: return "最初の\(period.length)は無料。その後 \(product.displayPrice) / \(Self.period(product.subscription!.subscriptionPeriod).unit)"
+        case .freeTrial:
+            let cap = billing.billing?.trialSecondsLimit(productID: product.id).map { "（試用のあいだは合計 \(Self.hours($0))まで）" } ?? ""
+            return "最初の\(period.length)は無料\(cap)。その後 \(product.displayPrice) / \(Self.period(product.subscription!.subscriptionPeriod).unit)"
         case .payUpFront: return "最初の\(period.length)は \(offer.displayPrice)"
         case .payAsYouGo: return "最初の \(offer.periodCount) \(period.unit)は \(offer.displayPrice) / \(period.unit)"
         default: return nil

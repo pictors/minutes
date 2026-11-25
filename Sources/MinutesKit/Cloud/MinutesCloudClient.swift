@@ -18,7 +18,7 @@ import Foundation
 //         GET /v1/recordings → {recordings:[…]}（新しい順に 100 件）、GET /:id/transcript（transcript.json）・/:id/summary（summary.json）・/:id/audio
 //   アカウントの削除: DELETE /v1/account {apple_authorization_code?} → {deleted, apple_revoked, apple_reason}
 //   App 内課金（P6、2026-11-25）: GET /v1/billing、POST /v1/billing/app-store/transactions {signed_transaction}（MinutesCloudBilling.swift）。
-//            GET /v1/me に plan_source（manual・app_store）と plan_expires_at を足した
+//            GET /v1/me に plan_source（manual・app_store）・plan_expires_at と、usage の period_start・period_end（使える量の区切り）を足した
 
 /// サーバーの場所と、Cookie を使わない URLSession。
 public extension URLSession {
@@ -127,9 +127,13 @@ public struct MinutesCloudAccount: Decodable, Sendable, Equatable {
     }
 
     public struct Usage: Decodable, Sendable, Equatable {
+        /// いまの区切りの秒数（区切りは periodStart〜periodEnd。App Store の契約は契約した日から 1 か月ごと、ほかは UTC の暦の月）
         public var secondsThisMonth: Double
         public var secondsPending: Double
         public var secondsLimit: Double
+        /// いまの区切り（P6 より前のサーバーは送らない）
+        public var periodStart: Date?
+        public var periodEnd: Date?
     }
 
     public var user: User

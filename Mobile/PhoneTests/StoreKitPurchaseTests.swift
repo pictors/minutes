@@ -45,7 +45,7 @@ final class StoreKitPurchaseTests: XCTestCase {
         }
         print("[storekit] bundled=\(Bundle(for: Self.self).url(forResource: "Minutes", withExtension: "storekit")?.lastPathComponent ?? "なし") storefront=\(session.storefront) locale=\(session.locale.identifier) products=\(products.count)")
         let product = try XCTUnwrap(products.first, "仮の商品を読めない")
-        XCTAssertEqual(product.displayName, "Minutes Pro")
+        XCTAssertEqual(product.displayName, "Minutes Pro 月額")
         XCTAssertEqual(product.subscription?.subscriptionPeriod.unit, .month)
 
         // 0. 無料のまま上げた録音は、処理を頼むと 402（使える量 0）で断られる
@@ -70,6 +70,9 @@ final class StoreKitPurchaseTests: XCTestCase {
         XCTAssertEqual(store.message?.kind, .success, store.message?.text ?? "知らせなし")
         let purchased = try await client.billing()
         XCTAssertEqual(purchased.entitlement.plan, "pro")
+        // 試しの商品には 7 日の無料の試用があるので、最初の購入は試用（使えるのは合計 3 時間）
+        XCTAssertEqual(purchased.entitlement.trial, true)
+        XCTAssertEqual(purchased.entitlement.monthlySecondsLimit, purchased.trialSecondsLimit(productID: BillingCatalog.proMonthly))
         XCTAssertEqual(purchased.entitlement.source, "app_store")
         XCTAssertEqual(purchased.subscriptions.first?.environment, "Xcode")
         XCTAssertEqual(purchased.subscriptions.first?.productId, BillingCatalog.proMonthly)
@@ -77,6 +80,7 @@ final class StoreKitPurchaseTests: XCTestCase {
         XCTAssertEqual(account.plan, "pro")
         XCTAssertGreaterThan(account.usage.secondsLimit, 0)
         XCTAssertEqual(account.planSource, "app_store")
+        XCTAssertNotNil(account.usage.periodEnd)
 
         // 1'. 断られていた録音の処理を頼み直すと、キーなしの文字起こしと要約までできる（アプリは購入のあと送信をやり直す）
         _ = try await client.complete(recordingID: pending, durationSeconds: 2)

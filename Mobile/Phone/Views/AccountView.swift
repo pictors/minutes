@@ -74,7 +74,8 @@ struct AccountView: View {
     }
 
     private var usageCard: some View {
-        SectionCard("今月の録音", systemImage: "chart.bar.fill", tint: Palette.periwinkle) {
+        // App Store の契約は契約した日から 1 か月ごと、ほかは暦の月で数える（P6）
+        SectionCard(model.account?.planSource == "app_store" ? "この 1 か月の録音" : "今月の録音", systemImage: "chart.bar.fill", tint: Palette.periwinkle) {
             if let account = model.account {
                 let limit = max(account.usage.secondsLimit, 1)
                 let used = min(1, account.usage.secondsThisMonth / limit)
@@ -99,6 +100,12 @@ struct AccountView: View {
                     .animation(Motion.layout, value: used)
                     if account.usage.secondsPending > 0 {
                         Text("処理中 \(Formatting.duration(account.usage.secondsPending))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    // App Store の契約は、契約した日から 1 か月ごとに戻る（P6）
+                    if account.plan == "pro", account.planSource == "app_store", let end = account.usage.periodEnd {
+                        Text("\(PlanView.date(end))に 0 に戻ります（契約した日から 1 か月ごと）")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

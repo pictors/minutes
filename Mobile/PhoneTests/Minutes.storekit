@@ -24,7 +24,7 @@
           "locale" : "ja"
         }
       ],
-      "name" : "Minutes Pro（仮）",
+      "name" : "Minutes Pro",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -33,21 +33,59 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "1500",
+          "displayPrice" : "1980",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6700000101",
-          "introductoryOffer" : null,
+          "introductoryOffer" : {
+            "internalID" : "6700000111",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
           "localizations" : [
             {
-              "description" : "自分の API キーなしで、文字起こしと議事録を使えます（Minutes クラウド）",
-              "displayName" : "Minutes Pro",
+              "description" : "文字起こしと議事録を月 20 時間まで。閲覧用のリンクと同期つき",
+              "displayName" : "Minutes Pro 月額",
               "locale" : "ja"
             }
           ],
           "productID" : "jp.pictors.minutes.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Pro 月額（仮）",
+          "referenceName" : "Minutes Pro 月額",
+          "subscriptionGroupID" : "21000001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "19800",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6700000102",
+          "introductoryOffer" : {
+            "internalID" : "6700000112",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "文字起こしと議事録を月 20 時間まで。閲覧用のリンクと同期つき",
+              "displayName" : "Minutes Pro 年額",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "jp.pictors.minutes.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Minutes Pro 年額",
           "subscriptionGroupID" : "21000001",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

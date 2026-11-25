@@ -15,7 +15,11 @@ struct MinutesCloudBillingTests {
 
     private static var proBilling: [String: Any] { [
         "app_account_token": fictionalUserID,
-        "entitlement": ["plan": "pro", "source": "app_store", "expires_at": "2026-12-25T03:00:00.000Z", "monthly_seconds_limit": 108000],
+        "entitlement": ["plan": "pro", "source": "app_store", "expires_at": "2026-12-25T03:00:00.000Z", "monthly_seconds_limit": 10800, "trial": true],
+        "products": [
+            ["product_id": "jp.pictors.minutes.pro.monthly", "plan": "pro", "monthly_seconds_limit": 72000, "trial_seconds_limit": 10800],
+            ["product_id": "jp.pictors.minutes.pro.yearly", "plan": "pro", "monthly_seconds_limit": 72000, "trial_seconds_limit": 10800],
+        ],
         "subscriptions": [[
             "original_transaction_id": "2000000000000001",
             "product_id": "jp.pictors.minutes.pro.monthly",
@@ -41,7 +45,9 @@ struct MinutesCloudBillingTests {
         let billing = try await MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" })
             .submitAppStoreTransaction(signedTransaction: "header.payload.signature")
         #expect(received.withLock { $0["signed_transaction"] as? String } == "header.payload.signature")
-        #expect(billing.entitlement.isPro && billing.entitlement.source == "app_store" && billing.entitlement.monthlySecondsLimit == 108000)
+        #expect(billing.entitlement.isPro && billing.entitlement.source == "app_store" && billing.entitlement.monthlySecondsLimit == 10800 && billing.entitlement.trial == true)
+        #expect(billing.monthlySecondsLimit(productID: "jp.pictors.minutes.pro.yearly") == 72000 && billing.trialSecondsLimit(productID: "jp.pictors.minutes.pro.monthly") == 10800)
+        #expect(billing.monthlySecondsLimit(productID: "jp.example.unknown") == nil)
         #expect(billing.entitlement.expiresAt == JSONCoding.parseISO8601("2026-12-25T03:00:00Z"))
         #expect(billing.appAccountTokenUUID == UUID(uuidString: "6F1B2C4E-0000-4000-8000-00000000ABCD"))
         let subscription = try #require(billing.subscriptions.first)
@@ -59,13 +65,16 @@ struct MinutesCloudBillingTests {
     @Test("GET /v1/me の有料の出どころと期限（前のサーバーは送らない）")
     func accountPlanDetails() async throws {
         let withDetails = StubURLProtocol.host { _ in
-            Self.reply(["user": ["id": "u1"], "plan": "pro", "usage": ["seconds_this_month": 0, "seconds_pending": 0, "seconds_limit": 108000],
+            Self.reply(["user": ["id": "u1"], "plan": "pro",
+                        "usage": ["seconds_this_month": 0, "seconds_pending": 0, "seconds_limit": 72000,
+                                  "period_start": "2026-11-25T03:00:00.000Z", "period_end": "2026-12-25T03:00:00.000Z"],
                         "plan_source": "app_store", "plan_expires_at": "2026-12-25T03:00:00.000Z"])
         }
         let account = try await MinutesCloudClient(baseURL: withDetails, session: StubURLProtocol.session(), token: { "t" }).account()
         #expect(account.planSource == "app_store" && account.planExpiresAt == JSONCoding.parseISO8601("2026-12-25T03:00:00Z"))
+        #expect(account.usage.periodStart == JSONCoding.parseISO8601("2026-11-25T03:00:00Z") && account.usage.periodEnd == JSONCoding.parseISO8601("2026-12-25T03:00:00Z"))
         let older = StubURLProtocol.host { _ in Self.reply(["user": ["id": "u1"], "plan": "free", "usage": ["seconds_this_month": 0, "seconds_pending": 0, "seconds_limit": 0]]) }
         let previous = try await MinutesCloudClient(baseURL: older, session: StubURLProtocol.session(), token: { "t" }).account()
-        #expect(previous.planSource == nil && previous.planExpiresAt == nil)
+        #expect(previous.planSource == nil && previous.planExpiresAt == nil && previous.usage.periodEnd == nil)
     }
 }

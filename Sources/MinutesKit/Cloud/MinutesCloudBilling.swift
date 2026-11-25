@@ -17,6 +17,8 @@ public struct MinutesCloudBilling: Decodable, Sendable, Equatable {
         /// 使えなくなる日時（App Store なら期限か猶予期間の終わり。手で決めたものは nil のことがある）
         public var expiresAt: Date?
         public var monthlySecondsLimit: Double
+        /// App Store の無料の試用のあいだ（monthlySecondsLimit は試用の上限）。前のサーバーは送らない
+        public var trial: Bool?
 
         public var isPro: Bool { plan == "pro" }
     }
@@ -43,6 +45,8 @@ public struct MinutesCloudBilling: Decodable, Sendable, Equatable {
         public var productId: String
         public var plan: String
         public var monthlySecondsLimit: Double
+        /// 無料の試用のあいだに使える量（秒、試用の期間の合計）
+        public var trialSecondsLimit: Double?
     }
 
     /// 購入のときに appAccountToken として渡す UUID（利用者の ID）
@@ -56,6 +60,11 @@ public struct MinutesCloudBilling: Decodable, Sendable, Equatable {
     /// 商品の 1 か月の量（秒）。知らない商品なら nil
     public func monthlySecondsLimit(productID: String) -> Double? {
         products?.first { $0.productId == productID }?.monthlySecondsLimit
+    }
+
+    /// 商品の無料の試用のあいだの量（秒）。知らない商品なら nil
+    public func trialSecondsLimit(productID: String) -> Double? {
+        products?.first { $0.productId == productID }?.trialSecondsLimit
     }
 }
 
