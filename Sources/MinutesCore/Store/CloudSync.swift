@@ -51,6 +51,28 @@ public extension Store {
         """, arguments: [target, target])
     }
 
+    /// 会議ごとの Minutes クラウドへの最新の記録（一覧の同期の印、`CloudSyncMark`）。会議の ID → 状態と時刻。
+    func cloudSyncRecords() throws -> [String: CloudSyncRecord] {
+        try writer.read { db in try Store.fetchCloudSyncRecords(db) }
+    }
+
+    func cloudSyncRecordsObservation() -> ValueObservation<ValueReducers.Fetch<[String: CloudSyncRecord]>> {
+        ValueObservation.tracking { db in try Store.fetchCloudSyncRecords(db) }
+    }
+
+    internal static func fetchCloudSyncRecords(_ db: Database) throws -> [String: CloudSyncRecord] {
+        let latest = try ExportLogRecord.fetchAll(db, sql: """
+        SELECT e.* FROM export_log e
+        WHERE e.target = ? AND e.id = (SELECT MAX(id) FROM export_log WHERE meeting_id = e.meeting_id AND target = e.target)
+        """, arguments: [MinutesCloudSyncTarget.targetID])
+        var records: [String: CloudSyncRecord] = [:]
+        for entry in latest {
+            guard let status = ExportStatus(rawValue: entry.status) else { continue }
+            records[entry.meetingId] = CloudSyncRecord(status: status, at: entry.exportedAt)
+        }
+        return records
+    }
+
     /// 会議をまとめて送る（pending にする。送るのは `PostProcessPipeline.retryPendingExports`）。
     func queueExports(meetingIds: [String], target: String) throws {
         try writer.write { db in

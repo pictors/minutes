@@ -260,6 +260,68 @@ enum Formatting {
             : Date.FormatStyle(locale: ja).year().month().day().weekday(.short)
         return date.formatted(style)
     }
+
+    /// 同期した時刻（今日なら 16:30、ほかの日なら 11月24日 16:30）
+    static func syncTime(_ date: Date) -> String {
+        let style = Calendar.current.isDateInToday(date)
+            ? Date.FormatStyle(locale: ja).hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
+            : Date.FormatStyle(locale: ja).month().day().hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
+        return date.formatted(style)
+    }
+}
+
+/// 一覧の同期の印（SPEC §5.6）。ふだんの状態は灰色の小さな記号、色は「送れなかった」だけ。くるくるは送っている最中だけ。
+struct CloudSyncMarkView: View {
+    let mark: CloudSyncMark
+
+    var body: some View {
+        switch mark {
+        case .synced(let at):
+            Image(systemName: "iphone")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .help(at.map { "iPhone でも読めます（\(Formatting.syncTime($0)) に同期）" } ?? "iPhone・Apple Watch で録った会議です（iPhone でも読めます）")
+                .accessibilityLabel("iPhone でも読めます")
+        case .syncing:
+            SyncSpinner()
+                .frame(width: 10, height: 10)
+                .help("Minutes クラウドへ送っています")
+                .accessibilityLabel("Minutes クラウドへ送っています")
+        case .waiting:
+            Image(systemName: "clock")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .help("送るのを待っています（回線がつながる・ログインし直すと送ります）")
+                .accessibilityLabel("送るのを待っています")
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(Palette.amber)
+                .help("送れませんでした。右クリックで送り直せます")
+                .accessibilityLabel("送れませんでした")
+        }
+    }
+}
+
+/// 小さなくるくる（同期中）。止まらない動きは AppKit に描かせる（SwiftUI の状態を毎フレーム変えない。G7、`AnimatedSymbol` と同じ考え）。
+struct SyncSpinner: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSProgressIndicator {
+        let view = NSProgressIndicator()
+        view.style = .spinning
+        view.controlSize = .mini
+        view.isIndeterminate = true
+        view.isDisplayedWhenStopped = false
+        // 意味はヘルプと読み上げのラベルが持つ
+        view.setAccessibilityElement(false)
+        view.startAnimation(nil)
+        return view
+    }
+
+    func updateNSView(_ view: NSProgressIndicator, context: Context) {}
+
+    static func dismantleNSView(_ view: NSProgressIndicator, coordinator: ()) {
+        view.stopAnimation(nil)
+    }
 }
 
 // MARK: - カード・チップ・バッジ

@@ -76,8 +76,10 @@ public struct PipelineProviders: Sendable {
     public var onProgress: (@Sendable (String, PipelineStep, String) -> Void)?
     /// 手順の途中のスリープの見張り方（SPEC §8.2。テストで差し替える）。
     public var sleepMonitor: SleepMonitor
+    /// 同期先へ送っているあいだ（会議の ID、同期先の ID、送り始めたら true・終えたら false）。一覧の「送っています」の印に使う（SPEC §5.6）。
+    public var onSyncActivity: (@Sendable (String, String, Bool) -> Void)?
 
-    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, englishSummaryLanguage: MeetingLanguage = .en, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil, sleepMonitor: SleepMonitor = .system) {
+    public init(cloud: (any BatchTranscriber)?, local: any BatchTranscriber, summarizer: (any Summarizing)?, exportDirectory: URL, syncTargets: [any SyncTarget] = [], learnKeyterms: Bool = true, englishSummaryLanguage: MeetingLanguage = .en, notify: (@Sendable (MeetingRecord, NotesRecord?) -> Void)? = nil, onProgress: (@Sendable (String, PipelineStep, String) -> Void)? = nil, sleepMonitor: SleepMonitor = .system, onSyncActivity: (@Sendable (String, String, Bool) -> Void)? = nil) {
         self.cloud = cloud
         self.local = local
         self.summarizer = summarizer
@@ -88,6 +90,7 @@ public struct PipelineProviders: Sendable {
         self.notify = notify
         self.onProgress = onProgress
         self.sleepMonitor = sleepMonitor
+        self.onSyncActivity = onSyncActivity
     }
 }
 
@@ -720,7 +723,7 @@ public final class PostProcessPipeline: Sendable {
             guard try store.meeting(id: meeting.id)?.privacy == .cloudOk else { break }
             guard target.accepts(export.input.meeting) else { continue }
             do {
-                let receipt = try await target.upload(export: export)
+                let receipt = try await upload(export, to: target)
                 try store.logExport(meetingId: meeting.id, target: target.id, status: .ok, checksum: receipt.checksum)
                 statuses.append("\(target.id): ok")
             } catch {
@@ -732,6 +735,14 @@ public final class PostProcessPipeline: Sendable {
         }
         try store.logExport(meetingId: meeting.id, target: "local_export", status: .ok, checksum: folder.manifest.checksum)
         return (folder.url.path, statuses.joined(separator: "; "))
+    }
+
+    /// 同期先へ送る。送っているあいだを `onSyncActivity` に知らせる（一覧の「送っています」の印）。
+    private func upload(_ export: SyncExport, to target: any SyncTarget) async throws -> SyncReceipt {
+        let meetingId = export.input.meeting.id
+        providers.onSyncActivity?(meetingId, target.id, true)
+        defer { providers.onSyncActivity?(meetingId, target.id, false) }
+        return try await target.upload(export: export)
     }
 
     /// DB の内容から書き出しフォルダを（再）生成する。
@@ -804,7 +815,7 @@ public final class PostProcessPipeline: Sendable {
                 guard target.accepts(meeting) else { continue }
                 let export = try writeExport(meetingId: entry.meetingId)
                 guard try store.meeting(id: entry.meetingId)?.privacy == .cloudOk else { continue }
-                let receipt = try await target.upload(export: export)
+                let receipt = try await upload(export, to: target)
                 try store.logExport(meetingId: entry.meetingId, target: target.id, status: .ok, checksum: receipt.checksum)
                 report.append("\(entry.meetingId) → \(target.id): ok")
             } catch StoreError.meetingBusy {

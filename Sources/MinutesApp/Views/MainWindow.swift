@@ -481,7 +481,8 @@ struct MeetingListView: View {
                             meeting: meeting,
                             isLive: model.isRecording && model.currentMeeting?.id == meeting.id,
                             sessionState: model.currentMeeting?.id == meeting.id ? model.sessionState : nil,
-                            preview: model.meetingPreviews[meeting.id]
+                            preview: model.meetingPreviews[meeting.id],
+                            syncMark: model.cloudSyncMark(for: meeting)
                         )
                         .tag(meeting.id)
                         .contextMenu { contextMenu(for: meeting) }
@@ -512,6 +513,14 @@ struct MeetingListView: View {
 
     @ViewBuilder
     private func contextMenu(for meeting: MeetingRecord) -> some View {
+        if let mark = model.cloudSyncMark(for: meeting), mark == .failed || mark == .waiting {
+            Button {
+                model.resendMeetingToCloud(meeting)
+            } label: {
+                Label("Minutes クラウドへ送り直す", systemImage: "arrow.clockwise")
+            }
+            Divider()
+        }
         if meeting.privacy == .cloudOk {
             Button {
                 ExportFolderOpener.open(meeting: meeting, exportDirectory: model.settings.exportDirectoryURL)
@@ -612,6 +621,8 @@ struct MeetingRow: View {
     /// この会議が現在のセッションなら、その状態（armed を「準備中」と出すため）。
     var sessionState: SessionState?
     var preview: String?
+    /// Minutes クラウドへの同期の印（同期を入れていて、ログインしているときだけ。SPEC §5.6）
+    var syncMark: CloudSyncMark?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -627,6 +638,9 @@ struct MeetingRow: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .help("ローカルのみ（クラウドへ送信しない）")
+                    }
+                    if let syncMark {
+                        CloudSyncMarkView(mark: syncMark)
                     }
                     if sessionState == .armed {
                         StatusPill(status: .recording, titleOverride: "準備中", tintOverride: Palette.amber, symbolOverride: "waveform.badge.magnifyingglass")

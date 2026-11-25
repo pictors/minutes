@@ -178,6 +178,11 @@ final class AppModel {
     private(set) var minutesCloudEmail: String? = MinutesCloudCredentials.isSignedIn ? (MinutesCloudCredentials.email() ?? "") : nil
     /// Minutes クラウドへ送れなかった会議の数（P7。設定のアカウントのタブに出す。DB を監視して変わる）
     private(set) var cloudSyncFailedCount = 0
+    /// 会議ごとの Minutes クラウドへの最新の記録（一覧の同期の印。DB を監視して変わる）
+    private(set) var cloudSyncRecords: [String: CloudSyncRecord] = [:]
+    /// いま Minutes クラウドへ送っている会議（一覧の「送っています」の印。後処理の `onSyncActivity` で変わる）
+    private(set) var syncingMeetingIds: Set<String> = []
+    private var cloudSyncRecordsObservation: Task<Void, Never>?
     /// 送れなかった会議を「送り直す」で送っているあいだ
     private(set) var isRetryingCloudSync = false
     /// 送れなかった会議を、この起動で送り直したか（起動のたびに 1 回）
@@ -254,6 +259,7 @@ final class AppModel {
             observeTags()
             observePostProcessingJobs()
             observeCloudSyncFailures()
+            observeCloudSyncRecords()
             observeCloudActionPushes()
             observeCloudEditPushes()
         }
@@ -408,6 +414,12 @@ final class AppModel {
             },
             onProgress: { [weak self] _, step, message in
                 Task { @MainActor in self?.appendEvent("\(step.rawValue): \(message)") }
+            },
+            onSyncActivity: { [weak self] meetingId, targetId, active in
+                guard targetId == MinutesCloudSyncTarget.targetID else { return }
+                Task { @MainActor in
+                    if active { self?.syncingMeetingIds.insert(meetingId) } else { self?.syncingMeetingIds.remove(meetingId) }
+                }
             }
         )
         let pipeline = PostProcessPipeline(store: store, providers: providers)
@@ -1286,6 +1298,41 @@ final class AppModel {
     }
 
     /// Minutes クラウドへ送れなかった会議の数を、設定のアカウントのタブに出す（P7）。
+    /// 一覧の同期の印のために、会議ごとの Minutes クラウドへの最新の記録を見張る。
+    private func observeCloudSyncRecords() {
+        cloudSyncRecordsObservation?.cancel()
+        guard let store else { return }
+        cloudSyncRecordsObservation = Task { [weak self] in
+            do {
+                for try await records in store.cloudSyncRecordsObservation().removeDuplicates().values(in: store.writer) {
+                    self?.cloudSyncRecords = records
+                }
+            } catch { self?.appendEvent("同期の記録の監視に失敗: \(error.localizedDescription)") }
+        }
+    }
+
+    /// 一覧に出す同期の印（同期を入れていて、ログインしているときだけ。SPEC §5.6）。
+    func cloudSyncMark(for meeting: MeetingRecord) -> CloudSyncMark? {
+        CloudSyncMark.make(meeting: meeting, record: cloudSyncRecords[meeting.id], isSyncing: syncingMeetingIds.contains(meeting.id),
+                           enabled: minutesCloudEmail != nil && settings.syncMeetingsToMinutesCloud)
+    }
+
+    /// 一覧の右クリックの「Minutes クラウドへ送り直す」: この会議を待ちに戻して、いま送る。
+    func resendMeetingToCloud(_ meeting: MeetingRecord) {
+        guard let store, let pipeline else { return }
+        do {
+            try store.queueExports(meetingIds: [meeting.id], target: MinutesCloudSyncTarget.targetID)
+        } catch {
+            operationError = "送り直せません: \(error.localizedDescription)"
+            return
+        }
+        appendEvent("Minutes クラウドへ送り直します: \(meeting.title)")
+        Task { [weak self] in
+            let report = await pipeline.retryPendingExports()
+            for line in report { self?.appendEvent("sync: \(line)") }
+        }
+    }
+
     private func observeCloudSyncFailures() {
         cloudSyncFailuresObservation?.cancel()
         guard let store else { return }

@@ -322,4 +322,56 @@ struct MinutesCloudSyncTests {
         #expect(try latestStatus(store, a.id) == ExportStatus.ok.rawValue && latestStatus(store, b.id) == ExportStatus.ok.rawValue)
         #expect(try store.pendingExports().filter { $0.target == MinutesCloudSyncTarget.targetID }.isEmpty)
     }
+
+    @Test("一覧の同期の印: 同期を入れていてログインしているときだけ。送っている最中・送れた・待ち・送れなかった・取り込んだ会議。ローカルのみと終わっていない会議には出さない")
+    func syncMarks() throws {
+        let started = Date(timeIntervalSince1970: 1_790_000_000)
+        let done = MeetingRecord(title: "架空の定例", startedAt: started, endedAt: started.addingTimeInterval(600), privacyMode: .cloudOk, status: .done)
+        let at = started.addingTimeInterval(700)
+        func record(_ status: ExportStatus) -> CloudSyncRecord { CloudSyncRecord(status: status, at: at) }
+
+        #expect(CloudSyncMark.make(meeting: done, record: record(.ok), isSyncing: false, enabled: false) == nil)
+        #expect(CloudSyncMark.make(meeting: done, record: record(.ok), isSyncing: false, enabled: true) == .synced(at))
+        #expect(CloudSyncMark.make(meeting: done, record: record(.pending), isSyncing: false, enabled: true) == .waiting)
+        #expect(CloudSyncMark.make(meeting: done, record: record(.failed), isSyncing: false, enabled: true) == .failed)
+        #expect(CloudSyncMark.make(meeting: done, record: record(.pending), isSyncing: true, enabled: true) == .syncing)
+        #expect(CloudSyncMark.make(meeting: done, record: record(.removed), isSyncing: false, enabled: true) == nil)
+        #expect(CloudSyncMark.make(meeting: done, record: nil, isSyncing: false, enabled: true) == nil)
+
+        let local = MeetingRecord(title: "架空の相談", startedAt: started, endedAt: started.addingTimeInterval(600), privacyMode: .localOnly, status: .done)
+        #expect(CloudSyncMark.make(meeting: local, record: record(.ok), isSyncing: false, enabled: true) == nil)
+        let unfinished = MeetingRecord(title: "架空の録音中", startedAt: started, privacyMode: .cloudOk, status: .recording)
+        #expect(CloudSyncMark.make(meeting: unfinished, record: record(.ok), isSyncing: false, enabled: true) == nil)
+        let imported = MeetingRecord(title: "架空の対面", startedAt: started, endedAt: started.addingTimeInterval(600), privacyMode: .cloudOk, status: .done,
+                                     cloudRecordingId: "rec-iphone")
+        #expect(CloudSyncMark.make(meeting: imported, record: nil, isSyncing: false, enabled: true) == .synced(nil))
+    }
+
+    @Test("会議ごとの最新の記録（Minutes クラウドだけ。書き出しの記録は混ぜない）と、送っているあいだの知らせ")
+    func syncRecordsAndActivity() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let accepts = Mutex(false)
+        let base = StubURLProtocol.host { _ in
+            accepts.withLock { $0 } ? Self.recordingReply() : Self.reply(["error": "unavailable"], status: 503)
+        }
+        let store = try Store.inMemory()
+        let meeting = try seed(store)
+        let activity = Mutex<[String]>([])
+        let client = MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" })
+        let providers = PipelineProviders(cloud: nil, local: LocalTranscriber(), summarizer: nil, exportDirectory: root,
+                                          syncTargets: [MinutesCloudSyncTarget(client: client, uploads: true, timeZone: TimeZone(identifier: "Asia/Tokyo")!)],
+                                          onSyncActivity: { id, target, active in activity.withLock { $0.append("\(id)/\(target)/\(active)") } })
+        let pipe = PostProcessPipeline(store: store, providers: providers)
+
+        try await pipe.refreshExport(meetingId: meeting.id)
+        #expect(try store.cloudSyncRecords()[meeting.id]?.status == .pending)
+        accepts.withLock { $0 = true }
+        _ = await pipe.retryPendingExports()
+        let records = try store.cloudSyncRecords()
+        #expect(records.count == 1 && records[meeting.id]?.status == .ok)
+        let target = MinutesCloudSyncTarget.targetID
+        #expect(activity.withLock { $0 } == ["\(meeting.id)/\(target)/true", "\(meeting.id)/\(target)/false",
+                                              "\(meeting.id)/\(target)/true", "\(meeting.id)/\(target)/false"])
+    }
 }
