@@ -14,6 +14,8 @@ final class PhoneModel {
     private(set) var isRefreshing = false
     /// 一覧の上に出す知らせ（読み込みの失敗など）
     var banner: String?
+    /// ログインの画面に出す知らせ（アカウントを消したあと）。次にログインしたら消す
+    private(set) var signInNotice: String?
 
     let recorder: MeetingRecorder
     let uploads: UploadEngine
@@ -221,6 +223,7 @@ final class PhoneModel {
         self.user = user
         isSignedIn = true
         banner = nil
+        signInNotice = nil
         uploads.kickAll()
         LoginRelay.shared.sendLogin()
         Task {
@@ -254,6 +257,7 @@ final class PhoneModel {
         }
         signedOutLocally()
         reloadLocal()
+        signInNotice = "アカウントを消しました"
         return result
     }
 

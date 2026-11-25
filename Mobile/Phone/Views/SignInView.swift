@@ -33,6 +33,18 @@ struct SignInView: View {
                     .padding(.top, 12)
                     .fixedSize(horizontal: false, vertical: true)
 
+                // アカウントを消したあとの知らせ（消せたことを伝える）
+                if let notice = model.signInNotice {
+                    Label(notice, systemImage: "checkmark.circle.fill")
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(Palette.mint)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .cardBackground()
+                        .padding(.top, 24)
+                        .accessibilityIdentifier("signIn.notice")
+                }
+
                 SignInWithAppleButton(.signIn) { request in
                     nonce = MinutesCloudAppleNonce.make()
                     request.requestedScopes = [.email]

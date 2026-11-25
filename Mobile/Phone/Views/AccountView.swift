@@ -2,13 +2,10 @@ import MinutesKit
 import SwiftUI
 
 /// アカウント: ログイン中のアドレス（Mac で使うアドレス）、プランと今月の量、ログアウト、アカウントの削除（ガイドライン 5.1.1(v)）。
+/// ログアウトとアカウントの削除は隣に並べない。削除は画面のいちばん下の別の場所に置き、押すと説明と確認の画面（AccountDeletionView）に進む。
 struct AccountView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmingDelete = false
-    @State private var working = false
-    @State private var message: String?
-    @State private var apple = AppleAuthorization()
 
     var body: some View {
         NavigationStack {
@@ -17,47 +14,12 @@ struct AccountView: View {
                     usageCard
                     planCard
                     emailCard
-                    if let message {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(Palette.rose)
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .cardBackground()
-                    }
-                    VStack(spacing: 0) {
-                        Button {
-                            Task {
-                                await model.signOut()
-                                dismiss()
-                            }
-                        } label: {
-                            row("ログアウト", systemImage: "rectangle.portrait.and.arrow.right", tint: .primary)
-                        }
-                        Rectangle().fill(Surface.hairline).frame(height: 1).padding(.leading, 52)
-                        Button {
-                            confirmingDelete = true
-                        } label: {
-                            row("アカウントを消す", systemImage: "trash", tint: Palette.rose)
-                        }
-                        // 確認は押したボタンから出す（画面全体に付けると、関係のない場所から出る）
-                        .confirmationDialog("アカウントを消しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
-                            Button("アカウントを消す", role: .destructive) { deleteAccount() }
-                        } message: {
-                            Text(model.account?.planSource == "app_store"
-                                ? "サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。App Store のサブスクリプションは止まらないので、先に「プラン」の「契約を管理」から解約してください。"
-                                : "サーバーの録音・文字起こし・議事録と、この iPhone の録音を消します。元に戻せません。")
-                        }
-                    }
-                    .buttonStyle(CardPressStyle())
-                    .cardBackground()
-                    Text("アカウントを消すと、サーバーの録音・文字起こし・議事録もすべて消えます。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
+                    signOutCard
+                    deletionSection
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
+                .padding(.bottom, 32)
             }
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("アカウント")
@@ -67,10 +29,67 @@ struct AccountView: View {
                     Button("閉じる") { dismiss() }
                 }
             }
-            .disabled(working)
-            .overlay { if working { ProgressView().controlSize(.large) } }
             .task { await model.refresh() }
         }
+    }
+
+    /// ログアウト（1 回で済む。この iPhone の録音とサーバーのものは残る）
+    private var signOutCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task {
+                    await model.signOut()
+                    dismiss()
+                }
+            } label: {
+                row("ログアウト", systemImage: "rectangle.portrait.and.arrow.right", tint: .primary)
+            }
+            .buttonStyle(CardPressStyle())
+            .cardBackground()
+            .accessibilityIdentifier("account.signOut")
+            Text("ログアウトしても、この iPhone の録音とサーバーの議事録は消えません。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+        }
+    }
+
+    /// アカウントの削除（ガイドライン 5.1.1(v)）: 見つけやすい場所（アカウントの画面）のまま、ログアウトから離して画面のいちばん下に置く。
+    /// 押してもすぐには消さず、消えるものを並べた画面に進む
+    private var deletionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("アカウントの削除")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+            NavigationLink {
+                AccountDeletionView(onDeleted: { dismiss() })
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "trash")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(Palette.rose)
+                        .frame(width: 24)
+                    Text("アカウントを消す")
+                        .foregroundStyle(Palette.rose)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 54)
+                .contentShape(.rect)
+            }
+            .buttonStyle(CardPressStyle())
+            .cardBackground()
+            .accessibilityIdentifier("account.delete")
+            Text("アカウントと、サーバーの録音・文字起こし・議事録を消します。消えるものを確かめてから消せます。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+        }
+        .padding(.top, 36)
     }
 
     private var usageCard: some View {
@@ -191,24 +210,5 @@ struct AccountView: View {
         .padding(.horizontal, 16)
         .frame(height: 54)
         .contentShape(.rect)
-    }
-
-    private func deleteAccount() {
-        working = true
-        message = nil
-        Task {
-            defer { working = false }
-            do {
-                // Apple でログインしたアカウントは、Apple のログインも取り消す（その場で取ったコードを渡す。取れなくても消す）
-                var code: String?
-                if model.signedInWithApple {
-                    code = try? await apple.request(nonce: MinutesCloudAppleNonce.make()).authorizationCodeString
-                }
-                _ = try await model.deleteAccount(appleAuthorizationCode: code)
-                dismiss()
-            } catch {
-                message = "消せませんでした（\(error.localizedDescription)）"
-            }
-        }
     }
 }
