@@ -47,6 +47,9 @@ final class StoreKitPurchaseTests: XCTestCase {
         let product = try XCTUnwrap(products.first, "仮の商品を読めない")
         XCTAssertEqual(product.displayName, "Minutes Pro 月額")
         XCTAssertEqual(product.subscription?.subscriptionPeriod.unit, .month)
+        // 画面と同じく、商品と試用を使えるかを読む（買う前は年額も試用を使える）
+        await store.loadProducts()
+        XCTAssertEqual(store.introEligible[BillingCatalog.proYearly], true, "買う前に年額の試用を使えない")
 
         // 0. 無料のまま上げた録音は、処理を頼むと 402（使える量 0）で断られる
         let pending = try await uploadRecording(client, title: "架空の課金の確かめ")
@@ -68,11 +71,20 @@ final class StoreKitPurchaseTests: XCTestCase {
         XCTAssertEqual(transaction.appAccountToken, token)
         await store.handle(result)
         XCTAssertEqual(store.message?.kind, .success, store.message?.text ?? "知らせなし")
+        // 無料から Pro になったので、演出を出す（試用の 3 時間と、試用の終わる日と、そのあとの 1 か月の量）
+        let celebration = try XCTUnwrap(store.celebration, "購入のあとの演出がない")
+        XCTAssertTrue(celebration.trial)
+        XCTAssertNotNil(celebration.trialEndsAt)
+        XCTAssertNotNil(celebration.monthlySecondsLimit)
+        // 試用を使ったので、同じグループの年額も試用を使えない（切り替えた年額にも試用の文を出さない）
+        XCTAssertEqual(store.introEligible[BillingCatalog.proYearly], false, "買ったあとも年額の試用を使えることになっている")
         let purchased = try await client.billing()
         XCTAssertEqual(purchased.entitlement.plan, "pro")
         // 試しの商品には 7 日の無料の試用があるので、最初の購入は試用（使えるのは合計 3 時間）
         XCTAssertEqual(purchased.entitlement.trial, true)
         XCTAssertEqual(purchased.entitlement.monthlySecondsLimit, purchased.trialSecondsLimit(productID: BillingCatalog.proMonthly))
+        XCTAssertEqual(celebration.secondsLimit, purchased.trialSecondsLimit(productID: BillingCatalog.proMonthly))
+        XCTAssertEqual(celebration.monthlySecondsLimit, purchased.monthlySecondsLimit(productID: BillingCatalog.proMonthly))
         XCTAssertEqual(purchased.entitlement.source, "app_store")
         XCTAssertEqual(purchased.subscriptions.first?.environment, "Xcode")
         XCTAssertEqual(purchased.subscriptions.first?.productId, BillingCatalog.proMonthly)
@@ -112,6 +124,8 @@ final class StoreKitPurchaseTests: XCTestCase {
         XCTAssertEqual(beforeRestore.entitlement.plan, "free", "聞いていないので、まだ送っていない")
         await store.restore()
         XCTAssertEqual(store.message?.kind, .success, store.message?.text ?? "知らせなし")
+        // 復元では演出を出さない（無料から Pro に戻っても）
+        XCTAssertNil(store.celebration, "復元で演出が出た")
         let restored = try await client.billing()
         XCTAssertEqual(restored.entitlement.plan, "pro")
     }

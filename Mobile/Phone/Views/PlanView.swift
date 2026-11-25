@@ -7,10 +7,18 @@ import SwiftUI
 /// 2026-11-25 に確かめた）: サブスクリプションの名前・期間・価格（と単位あたりの価格）を、買う前にはっきり出す。利用規約とプライバシーポリシーへの
 /// リンクをアプリの中に置く。何が使えるか（量）も買う前に書く。名前・期間・価格は StoreKit の Product から出し、量はサーバー（/v1/billing の products）から出す。
 /// 購入の復元（3.1.1）と、契約の管理（App Store のサブスクリプションの画面）も置く。
+/// 商品は「月額｜年額」の切り替えとカード 1 枚で出す: 機能の説明は 1 回だけにし、切り替えで名前・値段・期間・ボタンを替える。
+/// 最初に選んでおくのは、契約中の商品か月額（試用のあとに年額が請求されて驚く人を出さない）。年額には何か月分お得かを添え、
+/// 月あたりの額は請求される額より小さく出す（3.1.2(c)）。購入のあと、無料から Pro になったら演出を出す（ProCelebrationView）。
 struct PlanView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.purchase) private var purchase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var managing = false
+    /// 切り替えで選んだ商品（押すまでは nil: 契約中の商品か月額を出す）
+    @State private var chosenProductID: String?
+    /// 紙吹雪を降らせた購入（カードを閉じても、降っている紙吹雪は最後まで落とす）
+    @State private var confettiTrigger: UUID?
 
     private var billing: BillingStore { model.billing }
     private var entitlement: MinutesCloudBilling.Entitlement? { billing.billing?.entitlement }
@@ -21,10 +29,15 @@ struct PlanView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 statusCard
-                if let message = billing.message { messageCard(message) }
+                // 演出のカードを出しているあいだは、同じ「Pro になりました」の知らせを重ねない
+                if let message = billing.message, billing.celebration == nil { messageCard(message) }
                 if !isPro || entitlement?.source == "app_store" {
-                    ForEach(billing.products, id: \.id) { product in offerCard(product) }
-                    if billing.products.isEmpty { productsPlaceholder }
+                    if let product = selectedProduct {
+                        if billing.products.count > 1 { periodPicker }
+                        offerCard(product)
+                    } else {
+                        productsPlaceholder
+                    }
                 }
                 actionsCard
                 legalFooter
@@ -39,15 +52,50 @@ struct PlanView: View {
         .navigationBarTitleDisplayMode(.inline)
         .disabled(billing.isWorking)
         .overlay { if billing.isWorking { ProgressView().controlSize(.large) } }
+        // 演出は .disabled の外に重ねる（カードはタップで閉じる）
+        .overlay {
+            ZStack {
+                if let celebration = billing.celebration {
+                    // 画面のカードと同じ左右の余白にする（後ろのカードの端がのぞかない）
+                    ProCelebrationCard(celebration: celebration) { dismissCelebration() }
+                        .padding(.horizontal, 16)
+                        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.88)), removal: .opacity.combined(with: .scale(scale: 0.96))))
+                }
+            }
+            .animation(reduceMotion ? Motion.layout : Motion.pop, value: billing.celebration?.id)
+        }
+        // 紙吹雪はカードの上に降らせる（後ろだとカードに隠れる）。触れても下（カード・画面）に届く
+        .overlay {
+            if let confettiTrigger, !reduceMotion {
+                ConfettiView(trigger: confettiTrigger)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .sensoryFeedback(.success, trigger: billing.celebration?.id) { _, id in id != nil }
+        .onChange(of: billing.celebration?.id) { _, id in
+            if let id { confettiTrigger = id }
+        }
+        .onDisappear { dismissCelebration() }
         .manageSubscriptionsSheet(isPresented: $managing)
         .task {
-            await billing.loadProducts()
-            await billing.refreshBilling()
+            // StoreKit の商品と、サーバーの量（1 か月の量・試用の量）を並べて読む（StoreKit が遅くても量を待たせない）
+            async let products: Void = billing.loadProducts()
+            async let server: Void = billing.refreshBilling()
+            _ = await (products, server)
         }
         .onChange(of: managing) { _, open in
             // 契約の画面を閉じたら、サーバーと StoreKit の状態を読み直す（自動更新の切り替えなど）
             if !open { Task { await billing.syncWithServer(); await billing.refreshRenewalState() } }
         }
+    }
+
+    /// 購入のあとの演出を閉じる。演出で伝えたので、同じ「Pro になりました」の知らせは残さない
+    private func dismissCelebration() {
+        guard billing.celebration != nil else { return }
+        billing.celebration = nil
+        if billing.message?.kind == .success { billing.message = nil }
     }
 
     // MARK: いまのプラン
@@ -101,11 +149,44 @@ struct PlanView: View {
 
     // MARK: 商品
 
+    /// 契約中の商品（App Store で Pro のとき）
+    private var ownedProductID: String? {
+        guard isPro, entitlement?.source == "app_store", let id = subscription?.productId, billing.products.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    /// カードに出す商品: 押して選んだもの、なければ契約中の商品、なければ月額（いちばん前の商品）
+    private var selectedProduct: Product? {
+        let products = billing.products
+        let id = chosenProductID ?? ownedProductID ?? BillingCatalog.proMonthly
+        return products.first { $0.id == id } ?? products.first
+    }
+
+    private func owned(_ product: Product) -> Bool {
+        subscription?.productId == product.id && isPro
+    }
+
+    /// 「月額｜年額」の切り替え（SegmentedTabs。年額には何か月分お得かを添える。月額を選んでいるときも見える）
+    private var periodPicker: some View {
+        SegmentedTabs(
+            tabs: billing.products.map(\.id),
+            selection: Binding(
+                get: { selectedProduct?.id ?? BillingCatalog.proMonthly },
+                set: { id in if id != selectedProduct?.id { chosenProductID = id } }
+            ),
+            title: { id in billing.products.first { $0.id == id }.map(Self.periodTitle) ?? id },
+            badge: { id in billing.products.first { $0.id == id }.flatMap(savingsMonths).map { "\($0) か月分お得" } }
+        )
+        .sensoryFeedback(.selection, trigger: chosenProductID)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("支払いの間隔")
+    }
+
+    /// 商品のカード（1 枚）。機能の説明は切り替えで変わらず、名前・値段・期間・試用・ボタンが変わる
     private func offerCard(_ product: Product) -> some View {
-        let period = product.subscription.map { Self.period($0.subscriptionPeriod) }
         let limit = billing.billing?.monthlySecondsLimit(productID: product.id)
-        let owned = subscription?.productId == product.id && isPro
-        return VStack(alignment: .leading, spacing: 12) {
+        let owned = owned(product)
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text(product.displayName).font(.headline)
                 Spacer(minLength: 8)
@@ -121,14 +202,13 @@ struct PlanView: View {
                 if let limit { bullet("文字起こしと議事録を、1 か月に \(Self.hours(limit))まで") }
                 bullet("iPhone・Apple Watch・Mac で、同じアカウントで使えます")
             }
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(product.displayPrice).font(.title3.weight(.bold)).monospacedDigit()
-                if let period { Text("/ \(period.unit)").foregroundStyle(.secondary) }
-                Spacer(minLength: 0)
-                if let period { Text("\(period.length)ごとの自動更新").font(.caption).foregroundStyle(.secondary) }
-            }
+            priceBlock(product)
             if !owned, let offer = introOfferText(product) {
-                Text(offer).font(.footnote.weight(.medium)).foregroundStyle(Palette.mint)
+                Text(offer)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.mint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
             }
             if !owned {
                 Button {
@@ -144,6 +224,31 @@ struct PlanView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground()
+    }
+
+    /// 値段。請求される額（¥19,800 / 年）をいちばん大きく、月あたりの額と更新の間隔は小さく添える（3.1.2(c)）
+    private func priceBlock(_ product: Product) -> some View {
+        let period = product.subscription.map { Self.period($0.subscriptionPeriod) }
+        let details = [monthlyEquivalent(product).map { "月あたり \($0)" }, period.map { "\($0.length)ごとの自動更新" }].compactMap { $0 }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(product.displayPrice)
+                    .font(.system(size: 32, weight: .bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                if let period {
+                    Text("/ \(period.unit)")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !details.isEmpty {
+                Text(details.joined(separator: "・"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var productsPlaceholder: some View {
@@ -173,8 +278,8 @@ struct PlanView: View {
         switch offer.paymentMode {
         case .freeTrial:
             let cap = billing.billing?.trialSecondsLimit(productID: product.id).map { "（試用のあいだは合計 \(Self.hours($0))まで）" } ?? ""
-            return "最初の\(period.length)は無料\(cap)。その後 \(product.displayPrice) / \(Self.period(product.subscription!.subscriptionPeriod).unit)"
-        case .payUpFront: return "最初の\(period.length)は \(offer.displayPrice)"
+            return "最初の \(period.length)は無料\(cap)。その後 \(product.displayPrice) / \(Self.period(product.subscription!.subscriptionPeriod).unit)"
+        case .payUpFront: return "最初の \(period.length)は \(offer.displayPrice)"
         case .payAsYouGo: return "最初の \(offer.periodCount) \(period.unit)は \(offer.displayPrice) / \(period.unit)"
         default: return nil
         }
@@ -256,11 +361,9 @@ struct PlanView: View {
 
     // MARK: 書き方
 
-    /// 108000 → 「30時間」、5400 → 「1時間30分」
+    /// 108000 → 「30 時間」、5400 → 「1 時間 30 分」（数字と単位のあいだは空ける）
     static func hours(_ seconds: Double) -> String {
-        let minutes = Int((seconds / 60).rounded())
-        if minutes < 60 { return "\(minutes)分" }
-        return minutes % 60 == 0 ? "\(minutes / 60)時間" : "\(minutes / 60)時間\(minutes % 60)分"
+        Formatting.duration(seconds)
     }
 
     /// 12月25日（木）
@@ -268,14 +371,43 @@ struct PlanView: View {
         date.formatted(.dateTime.month(.defaultDigits).day().weekday(.abbreviated).locale(Locale(identifier: "ja_JP")))
     }
 
-    /// 期間の書き方: unit は「/ 月」の「月」、length は「1か月」
+    /// 切り替えの名前: 1 か月なら「月額」、1 年なら「年額」（ほかは「3 か月ごと」など）
+    static func periodTitle(_ product: Product) -> String {
+        guard let period = product.subscription?.subscriptionPeriod else { return product.displayName }
+        switch (period.unit, period.value) {
+        case (.month, 1): return "月額"
+        case (.year, 1): return "年額"
+        default: return "\(Self.period(period).length)ごと"
+        }
+    }
+
+    /// 1 年の商品が、1 か月の商品の 12 か月より何か月分安いか（端数は切り捨て。1 か月に満たない・通貨が違う・比べる商品がないときは nil）
+    private func savingsMonths(_ product: Product) -> Int? {
+        guard let period = product.subscription?.subscriptionPeriod, period.unit == .year, period.value == 1,
+              let monthly = billing.products.first(where: { $0.subscription?.subscriptionPeriod.unit == .month && $0.subscription?.subscriptionPeriod.value == 1 }),
+              monthly.priceFormatStyle.currencyCode == product.priceFormatStyle.currencyCode, monthly.price > 0
+        else { return nil }
+        var saved = (monthly.price * 12 - product.price) / monthly.price
+        var months = Decimal()
+        NSDecimalRound(&months, &saved, 0, .down)
+        let value = NSDecimalNumber(decimal: months).intValue
+        return value >= 1 ? value : nil
+    }
+
+    /// 1 年の商品の月あたりの額（¥1,650）。1 年の商品でなければ nil
+    private func monthlyEquivalent(_ product: Product) -> String? {
+        guard let period = product.subscription?.subscriptionPeriod, period.unit == .year, period.value == 1 else { return nil }
+        return (product.price / 12).formatted(product.priceFormatStyle)
+    }
+
+    /// 期間の書き方: unit は「/ 月」の「月」、length は「1 か月」（数字と単位のあいだは空ける）
     static func period(_ period: Product.SubscriptionPeriod) -> (unit: String, length: String) {
         let n = period.value
         switch period.unit {
-        case .day: return (n == 1 ? "日" : "\(n)日", "\(n)日")
-        case .week: return (n == 1 ? "週" : "\(n)週", "\(n)週間")
-        case .month: return (n == 1 ? "月" : "\(n)か月", "\(n)か月")
-        case .year: return (n == 1 ? "年" : "\(n)年", "\(n)年")
+        case .day: return (n == 1 ? "日" : "\(n) 日", "\(n) 日")
+        case .week: return (n == 1 ? "週" : "\(n) 週", "\(n) 週間")
+        case .month: return (n == 1 ? "月" : "\(n) か月", "\(n) か月")
+        case .year: return (n == 1 ? "年" : "\(n) 年", "\(n) 年")
         @unknown default: return ("期間", "期間")
         }
     }

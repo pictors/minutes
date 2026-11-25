@@ -94,6 +94,8 @@ enum Motion {
     static var layout: Animation { .smooth(duration: 0.35) }
     static var symbol: Animation { .snappy(duration: 0.25) }
     static var follow: Animation { .smooth(duration: 0.3) }
+    /// 祝う面（購入のあとのカード）。少し弾んで出る（Reduce Motion では使わず、フェードだけにする）
+    static var pop: Animation { .spring(duration: 0.5, bounce: 0.3) }
 
     /// カードの中身や行。出るときは少し下から浮かぶ。
     static func content(reduceMotion: Bool) -> AnyTransition {
@@ -478,11 +480,13 @@ extension View {
 }
 
 /// 面で選択を示すタブ切り替え（Mac の SegmentedTabs と同じ組み。選んだ面が動く。Reduce Motion では入れ替えるだけ）。
+/// badge はタブに添える短い印（プランの「2 か月分お得」など。緑の小さなカプセル。選んでいないときも見える）。
 struct SegmentedTabs<Tab: Hashable>: View {
     let tabs: [Tab]
     @Binding var selection: Tab
     var height: CGFloat = 36
     let title: (Tab) -> String
+    var badge: (Tab) -> String? = { _ in nil }
     @Namespace private var namespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -493,21 +497,33 @@ struct SegmentedTabs<Tab: Hashable>: View {
                 Button {
                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) { selection = tab }
                 } label: {
-                    Text(title(tab))
-                        .font(.subheadline.weight(selected ? .semibold : .medium))
-                        .foregroundStyle(selected ? .primary : .secondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: height - 6)
-                        .background {
-                            if selected {
-                                RoundedRectangle(cornerRadius: (height - 6) / 2, style: .continuous)
-                                    .fill(Surface.selectedTab)
-                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
-                                    .matchedGeometryEffect(id: "selection", in: namespace)
-                            }
+                    HStack(spacing: 6) {
+                        Text(title(tab))
+                            .font(.subheadline.weight(selected ? .semibold : .medium))
+                            .foregroundStyle(selected ? .primary : .secondary)
+                            .lineLimit(1)
+                        if let badge = badge(tab) {
+                            Text(badge)
+                                .font(.caption2.weight(.bold))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Palette.mint.opacity(0.16), in: .capsule)
+                                .foregroundStyle(Palette.mint)
                         }
-                        .contentShape(.rect)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height - 6)
+                    .background {
+                        if selected {
+                            RoundedRectangle(cornerRadius: (height - 6) / 2, style: .continuous)
+                                .fill(Surface.selectedTab)
+                                .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+                                .matchedGeometryEffect(id: "selection", in: namespace)
+                        }
+                    }
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])

@@ -27,6 +27,29 @@ final class BillingStore {
         let text: String
     }
 
+    /// 購入のあとの演出に出す中身（サーバーの答えから作る）
+    struct Celebration: Equatable, Identifiable {
+        let id = UUID()
+        /// 無料の試用で始まった
+        let trial: Bool
+        /// いま使える量（秒）。試用のあいだは試用の合計の上限、そうでなければ 1 か月の量
+        let secondsLimit: Double?
+        /// 1 か月の量（秒。試用のあとの量。サーバーの商品の量）
+        let monthlySecondsLimit: Double?
+        /// 試用の終わる日時
+        let trialEndsAt: Date?
+
+        init(billing: MinutesCloudBilling, productID: String) {
+            let trial = billing.entitlement.trial == true
+            self.trial = trial
+            let current = billing.entitlement.monthlySecondsLimit
+            secondsLimit = current > 0 ? current : nil
+            monthlySecondsLimit = billing.monthlySecondsLimit(productID: productID)
+            let subscription = billing.subscriptions.first { $0.active && $0.productId == productID }
+            trialEndsAt = trial ? (subscription?.expiresAt ?? billing.entitlement.expiresAt) : nil
+        }
+    }
+
     /// 取引をサーバーへ送った結果
     enum Delivery: Equatable {
         case accepted(MinutesCloudBilling)
@@ -51,6 +74,9 @@ final class BillingStore {
     private(set) var introEligible: [String: Bool] = [:]
     private(set) var isWorking = false
     var message: Message?
+    /// 購入のあとの演出（プランの画面の紙吹雪と「Pro になりました」のカード）。画面の購入で、無料から Pro になったのをサーバーで確かめたときだけ置く。
+    /// 復元・承認待ち（Ask to Buy）だった購入の承認・自動更新・起動のときの送り直し（Transaction.updates・currentEntitlements）では置かない
+    var celebration: Celebration?
     /// 有料かどうかが変わったかもしれない（アカウント・一覧を読み直し、断られた送信をやり直す）
     var onChange: (() -> Void)?
 
@@ -95,6 +121,7 @@ final class BillingStore {
     func reset() {
         billing = nil
         message = nil
+        celebration = nil
     }
 
     // MARK: 読む
@@ -120,9 +147,16 @@ final class BillingStore {
 
     /// StoreKit の更新の情報（自動更新）と、お試しを使えるか
     func refreshRenewalState() async {
+        // お試しを使えるかを先に、全部の商品で読む（更新の情報（status）は読むのに数秒かかることがあり、
+        // 1 つずつ読むと、あとの商品（年額）の試用の文が遅れて出る）。
+        // 使えないと分かったお試しは、使えるに戻さない（グループのお試しは一度使えば戻らない。買った直後の StoreKit の答えは古いことがある）
+        for product in products where introEligible[product.id] != false {
+            guard let subscription = product.subscription else { continue }
+            let eligible = await subscription.isEligibleForIntroOffer
+            if introEligible[product.id] != false { introEligible[product.id] = eligible }
+        }
         for product in products {
             guard let subscription = product.subscription else { continue }
-            introEligible[product.id] = await subscription.isEligibleForIntroOffer
             guard let statuses = try? await subscription.status else { continue }
             for status in statuses {
                 if case let .verified(renewal) = status.renewalInfo, renewal.currentProductID == product.id {
@@ -177,10 +211,13 @@ final class BillingStore {
         isWorking = true
         defer { isWorking = false }
         message = nil
+        celebration = nil
         do {
+            // appAccountToken() はサーバーの状態も読み直すので、買う前に Pro だったかはここで分かる
             let token = try await appAccountToken()
+            let wasPro = billing?.entitlement.isPro == true
             let result = try await purchase(product, options: [.appAccountToken(token)])
-            await handle(result)
+            await handle(result, wasPro: wasPro)
         } catch let error as MinutesCloudError {
             message = Message(kind: .error, text: "購入の準備ができませんでした（\(error.localizedDescription)）")
         } catch {
@@ -188,11 +225,21 @@ final class BillingStore {
         }
     }
 
-    /// 購入の結果を受ける（画面の購入と、テストの購入で同じ道を通る）
-    func handle(_ result: Product.PurchaseResult) async {
+    /// 購入の結果を受ける（画面の購入と、テストの購入で同じ道を通る）。wasPro は買う前に Pro だったか
+    /// （Pro のままプランを替えたときは演出を出さない）
+    func handle(_ result: Product.PurchaseResult, wasPro: Bool = false) async {
         switch result {
         case let .success(verification):
-            message = Self.message(for: await deliver(verification), purchased: true)
+            let delivery = await deliver(verification)
+            message = Self.message(for: delivery, purchased: true)
+            if case let .accepted(billing) = delivery, billing.entitlement.isPro, !wasPro {
+                celebration = Celebration(billing: billing, productID: verification.unsafePayloadValue.productID)
+            }
+            // 買ったら、同じグループの商品はどれもお試しを使えない（もう一方の商品の試用の文を消す）。
+            // isEligibleForIntroOffer は買った直後だとまだ古いことがあるので、ここで決める
+            markIntroUsed(productID: verification.unsafePayloadValue.productID)
+            // 更新の情報は読むのに数秒かかることがあるので、待たずに読む（購入中の表示を、演出の下に残さない）
+            Task { await self.refreshRenewalState() }
         case .pending:
             message = Message(kind: .info, text: "購入の承認を待っています。承認されると、自動で Pro になります。")
         case .userCancelled:
@@ -202,11 +249,18 @@ final class BillingStore {
         }
     }
 
+    /// 買った商品と同じグループの商品を、お試しを使えないことにする
+    private func markIntroUsed(productID: String) {
+        guard let group = products.first(where: { $0.id == productID })?.subscription?.subscriptionGroupID else { return }
+        for product in products where product.subscription?.subscriptionGroupID == group { introEligible[product.id] = false }
+    }
+
     /// 画面の「購入を復元」
     func restore() async {
         isWorking = true
         defer { isWorking = false }
         message = nil
+        celebration = nil
         do {
             try await AppStore.sync()
         } catch StoreKitError.userCancelled {
