@@ -6,6 +6,9 @@
 @import "tailwindcss" source(none);
 @source "../index.html";
 @source "../en/index.html";
+@source "../terms/index.html";
+@source "../privacy/index.html";
+@source "../tokushoho/index.html";
 
 @theme {
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
@@ -311,6 +314,92 @@
     .meter > i {
       animation: meter calc(0.7s + var(--d, 0) * 0.5s) ease-in-out calc(var(--d, 0) * -1s) infinite alternate;
     }
+  }
+
+  /* 利用規約・プライバシーポリシー・特定商取引法に基づく表記のページ（terms/・privacy/・tokushoho/）の本文 */
+  .legal {
+    font-size: 1rem;
+    line-height: 1.9;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  .legal h1 {
+    font-size: clamp(1.85rem, 1.4rem + 1.8vw, 2.6rem);
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .legal .legal-meta {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--ink-3);
+  }
+  .legal h2 {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    font-size: 1.25rem;
+    line-height: 1.5;
+    font-weight: 700;
+  }
+  .legal h3 {
+    margin-top: 1.75rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+  .legal p,
+  .legal ul,
+  .legal ol,
+  .legal table {
+    margin-top: 1rem;
+  }
+  .legal ul,
+  .legal ol {
+    padding-left: 1.5em;
+  }
+  .legal ul { list-style: disc; }
+  .legal ol { list-style: decimal; }
+  .legal li + li { margin-top: 0.4rem; }
+  .legal li > ul,
+  .legal li > ol { margin-top: 0.4rem; }
+  .legal a {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    color: var(--ink);
+  }
+  .legal a:hover { color: var(--accent); }
+  .legal strong { font-weight: 600; }
+  .legal table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  .legal th,
+  .legal td {
+    padding: 0.85rem 0.75rem 0.85rem 0;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  .legal th {
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .legal table.kv th {
+    width: 30%;
+  }
+  /* 列の多い表は横に送れるようにする */
+  .legal .table-wrap {
+    overflow-x: auto;
+  }
+  .legal .table-wrap table {
+    min-width: 36rem;
+  }
+  /* 項目と内容の 2 列の表は、狭い画面で縦に並べる */
+  @media (max-width: 639px) {
+    .legal table.kv th,
+    .legal table.kv td { display: block; width: auto; padding-right: 0; }
+    .legal table.kv th { padding-bottom: 0; border-bottom: 0; }
   }
 
   /* スクロールで現れる（JavaScript が動くときだけ隠す） */
