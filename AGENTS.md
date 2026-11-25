@@ -88,10 +88,10 @@ Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument
   Eval/                      CER
   Support/                   ArgumentParser, DotEnv, Multipart, HostClock, JSON, Log, AppSettings, Diagnostics（診断情報の書き出し）
-  Store/                     GRDB レコード・スキーマ・Store・音声保持、サーバーからの取り込みの記録（CloudImport）、やることの済みの送る列と読んだところ（CloudActionChecks）
+  Store/                     GRDB レコード・スキーマ・Store・音声保持、サーバーからの取り込みの記録（CloudImport）、やることの済みの送る列と読んだところ（CloudActionChecks）、取り込んだ会議を直した題名・話者の名前の送る列と当て方（CloudMeetingEdits）
   Session/                   SessionStateMachine、MeetingSessionController、VoiceSampleExtractor
   Pipeline/                  PostProcessPipeline（8 ステップ、pipeline_runs で再開）、PostProcessingQueue
-  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）、CloudMeetingImport（iPhone・Watch の会議をサーバーから取り込む、SPEC §4.5）、CloudActionSync（やることの済みを iPhone・ほかの Mac と合わせる、SPEC §5.6）
+  Library/                   MeetingDetailModel（会議詳細のデータ・操作。DB を監視して画面へ反映）、BackgroundVoices（背景の声の音量・候補・除外）、CloudMeetingImport（iPhone・Watch の会議をサーバーから取り込む、SPEC §4.5）、CloudActionSync（やることの済みを iPhone・ほかの Mac と合わせる、SPEC §5.6）、CloudEditSync（題名・話者の名前を iPhone・ほかの Mac と合わせる、SPEC §5.6）
   Summarize/                 MinutesSummary、CodexSummarizer、ClaudeCodeSummarizer（claude -p）、ClaudeSummarizer（API）、Resources/Prompts/summarize_ja.md
   Export/                    MeetingExporter、ExportManifest、SyncTarget（LocalDirectory）
 Sources/minutes-cli/         評価・検証用の CLI（Info.plist をリンカで埋め込む）

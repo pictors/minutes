@@ -166,7 +166,12 @@ public enum CloudMeetingImport {
         for candidate in [document.meeting.title, recording.title] {
             if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty { return trimmed }
         }
-        return platform == .watch ? "Apple Watch の録音" : "iPhone の録音"
+        return fallbackTitle(platform: platform)
+    }
+
+    /// 題名のない取り込んだ会議の仮の題名（録った機器の名前）。iPhone で題名を消したときも、これにする。
+    static func fallbackTitle(platform: MeetingPlatform?) -> String {
+        platform == .watch ? "Apple Watch の録音" : "iPhone の録音"
     }
 
     /// 音声の種類を先頭の数バイトから決める。iPhone・Watch の録音は ADTS の AAC（.aac）。

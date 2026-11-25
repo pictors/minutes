@@ -150,6 +150,10 @@ final class AppModel {
     @ObservationIgnored private var actionSyncRunning = false
     @ObservationIgnored private var actionSyncRequested = false
     @ObservationIgnored private var actionPushObservation: Task<Void, Never>?
+    /// 取り込んだ会議をこの Mac で直した題名・話者の名前の送る列（P7、`CloudEditSync`）の監視
+    @ObservationIgnored private var editPushObservation: Task<Void, Never>?
+    /// iPhone の直しを当てたが、使われていて書き出しをやり直せなかった会議（次の同期でやり直す）
+    @ObservationIgnored private var pendingEditRefresh: Set<String> = []
     @ObservationIgnored private var notesDrafts: [String: UserNotesDraft] = [:]
     var privacyModeForNextMeeting: PrivacyMode
     /// 次の録音の言語（既定は設定の「会議の言語」）。英語を選んだら英語のライブ字幕のモデルを先に用意する。
@@ -251,6 +255,7 @@ final class AppModel {
             observePostProcessingJobs()
             observeCloudSyncFailures()
             observeCloudActionPushes()
+            observeCloudEditPushes()
         }
         applyGlobalShortcut()
         // NSApplication の起動処理が終わってから外観を当てる
@@ -384,7 +389,9 @@ final class AppModel {
         if let sync = settings.syncDirectoryURL { targets.append(LocalDirectorySyncTarget(destination: sync)) }
         // Minutes クラウドへの会議の同期（P7）。ログインしていれば置く: 同期を切っていても、ローカルのみにした会議と消した会議をサーバーから消す
         if minutesCloudEmail != nil || MinutesCloudCredentials.hasStoredLogin {
-            targets.append(MinutesCloudSyncTarget(client: .standard(), uploads: settings.syncMeetingsToMinutesCloud))
+            // 上げ直しに、iPhone の直しを読んだところ（edits_seen）を付ける（`CloudEditSync`）
+            targets.append(MinutesCloudSyncTarget(client: .standard(), uploads: settings.syncMeetingsToMinutesCloud,
+                                                  editsSeen: { [store] in CloudEditSync.editsSeen(client: .standard(), store: store) }))
         }
         let providers = PipelineProviders(
             cloud: cloud,
@@ -1203,8 +1210,40 @@ final class AppModel {
         }
     }
 
-    /// やることの済みの同期（P7、SPEC §5.6）: この Mac の済みを送り、iPhone・ほかの Mac の済みを手元の会議に重ねる。
-    /// Minutes にログインしているときだけ。同期した Mac の会議は、同期を入れているときだけ。
+    /// 取り込んだ会議をこの Mac で直した題名・話者の名前（P7）を、すぐにサーバーへ送る（済みと同じく、少し待ってからまとめて送る）。
+    private func observeCloudEditPushes() {
+        editPushObservation?.cancel()
+        guard let store else { return }
+        editPushObservation = Task { [weak self] in
+            do {
+                for try await count in store.pendingCloudEditPushObservation().values(in: store.writer) where count > 0 {
+                    try? await Task.sleep(for: .seconds(1))
+                    self?.syncCloudActionChecks()
+                }
+            } catch { self?.appendEvent("題名・話者の名前の監視に失敗: \(error.localizedDescription)") }
+        }
+    }
+
+    /// iPhone・ほかの Mac の直しを当てた会議の書き出しと同期をやり直す（同期した会議は、上げ直しで直しを読んだところをサーバーに伝える）。
+    /// 会議が使われていて（後処理・ほかの書き出しの途中）やり直せなかったものは、次の同期でやり直す。
+    private func refreshExports(afterEdits changed: [String]) async {
+        guard let pipeline, let store else { return }
+        let ids = pendingEditRefresh.union(changed)
+        pendingEditRefresh = []
+        for id in ids {
+            guard let meeting = try? store.meeting(id: id), meeting.meetingStatus == .done, meeting.privacy == .cloudOk else { continue }
+            do {
+                try await pipeline.refreshExport(meetingId: id)
+            } catch StoreError.meetingBusy {
+                pendingEditRefresh.insert(id)
+            } catch {
+                appendEvent("書き出しを更新できません: \(id): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// やることの済みと、題名・話者の名前の同期（P7、SPEC §5.6）: この Mac の済み・直しを送り、iPhone・ほかの Mac の済み・直しを手元の会議に
+    /// 重ねる。Minutes にログインしているときだけ。済みは、同期した Mac の会議は同期を入れているときだけ（直しは切っていても当てる）。
     func syncCloudActionChecks() {
         guard let store, minutesCloudEmail != nil else { return }
         guard !actionSyncRunning else {
@@ -1220,6 +1259,13 @@ final class AppModel {
                 if report.applied > 0 { appendEvent("iPhone・ほかの Mac で付けたやることの済みを重ねました: \(report.applied) 件") }
                 if let interruption = report.interruption {
                     appendEvent("やることの済みの同期を途中でやめました: \(interruption)")
+                    break
+                }
+                let edits = await CloudEditSync.sync(client: .standard(), store: store)
+                if edits.applied > 0 { appendEvent("iPhone・ほかの Mac で直した題名・話者の名前を当てました: \(edits.applied) 件") }
+                await refreshExports(afterEdits: edits.changedMeetings)
+                if let interruption = edits.interruption {
+                    appendEvent("題名・話者の名前の同期を途中でやめました: \(interruption)")
                     break
                 }
             } while actionSyncRequested

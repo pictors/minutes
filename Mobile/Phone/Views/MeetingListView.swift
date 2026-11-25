@@ -190,6 +190,7 @@ struct MeetingListView: View {
             .alert("会議の名前", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
                 TextField("会議の名前", text: $titleDraft)
                 Button("保存") { rename() }
+                    .disabled(renameTarget?.allowsEmptyTitle == false && titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("やめる", role: .cancel) { renameTarget = nil }
             }
             .alert("操作できませんでした", isPresented: Binding(get: { rowError != nil }, set: { if !$0 { rowError = nil } })) {
@@ -200,7 +201,7 @@ struct MeetingListView: View {
         }
     }
 
-    /// 行の長押しの操作（会議の画面の「⋯」と同じ決まり: Mac の会議は共有だけ、録音中の会議は消せない）
+    /// 行の長押しの操作（会議の画面の「⋯」と同じ決まり: Mac の会議は名前を変える・共有だけ（消すのは Mac）、録音中の会議は消せない）
     @ViewBuilder
     private func rowMenu(_ item: MeetingItem) -> some View {
         if item.canRename {

@@ -14,7 +14,8 @@ enum SyncCommand {
         guard MinutesCloudCredentials.isSignedIn else { throw MinutesCloudError.notSignedIn }
         let store = try parsed.value("db").map { try Store.open(at: URL(fileURLWithPath: $0)) } ?? Store.open()
         let settings = AppSettings.load()
-        let target = MinutesCloudSyncTarget(client: .standard(), uploads: true)
+        // 上げ直しに、iPhone の直しを読んだところ（edits_seen）を付ける
+        let target = MinutesCloudSyncTarget(client: .standard(), uploads: true, editsSeen: { CloudEditSync.editsSeen(client: .standard(), store: store) })
         if let id = parsed.value("delete") {
             try await target.removeDeleted(meetingID: id)
             Console.out("サーバーから消しました: \(id)")
@@ -26,6 +27,9 @@ enum SyncCommand {
             syncTargets: [target]
         )
         let pipeline = PostProcessPipeline(store: store, providers: providers)
+        // iPhone で直した題名・話者の名前（P7）を先に手元へ当てる（そのあと送る会議に入り、サーバーは読んだ直しの行を消す）
+        let edits = await CloudEditSync.sync(client: .standard(), store: store)
+        Console.out("題名・話者の名前: 送った \(edits.pushed) 件、当てた \(edits.applied) 件\(edits.interruption.map { "（途中でやめました: \($0)）" } ?? "")")
         let ids = try parsed.value("meeting").map { [$0] } ?? store.meetingIdsForCloudSync()
         try store.queueExports(meetingIds: ids, target: MinutesCloudSyncTarget.targetID)
         let report = await pipeline.retryPendingExports()

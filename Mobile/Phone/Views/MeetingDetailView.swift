@@ -58,8 +58,8 @@ struct MeetingDetailView: View {
         return (item.isDone && item.server?.audioDeleted != true) || model.localAudioURL(item) != nil
     }
 
-    /// 題名・話者の名前を直す・会議を消すのは、iPhone・Watch で録った会議だけ（Mac の会議は Mac が正）
-    private var canEdit: Bool { item?.isMacMeeting != true }
+    /// 話者の名前を直せる（サーバーにある会議。Mac の会議も。直したものは Mac にも届く。P7）。会議を消すのは iPhone・Watch で録った会議だけ
+    private var canEdit: Bool { item?.server != nil }
     /// やることの済みを付けられる（サーバーで処理の終わった会議）
     private var canCheck: Bool { item?.isDone == true && item?.server != nil }
     private var hasTranscript: Bool { !(transcript?.segments.isEmpty ?? true) }
@@ -147,6 +147,7 @@ struct MeetingDetailView: View {
         .alert("会議の名前", isPresented: $renaming) {
             TextField("会議の名前", text: $titleDraft)
             Button("保存") { rename() }
+                .disabled(item?.allowsEmptyTitle == false && titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("やめる", role: .cancel) {}
         }
         .sheet(isPresented: $editingSpeakers) {
@@ -217,13 +218,6 @@ struct MeetingDetailView: View {
                 if let gaps = item.local?.gaps, !gaps.isEmpty {
                     InfoChip(text: "録れていない時間 \(gaps.count) か所", systemImage: "scissors")
                 }
-            }
-            if item.isMacMeeting {
-                Label("Mac から同期した会議です。やることの済みはここでも付けられます（Mac にも届きます）。題名や話者の名前は Mac で直してください。", systemImage: "laptopcomputer")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
             }
         }
         .padding(.horizontal, 4)

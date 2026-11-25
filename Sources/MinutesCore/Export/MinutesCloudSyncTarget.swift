@@ -5,7 +5,9 @@ import Foundation
 ///   やることとその済み・確かめること）。音声・メモ・ライブ字幕は送らない。背景の声として外した話者の発言は送らない（書き出しと同じ）。
 /// - 送らない会議: ローカルのみ（書き出しそのものをしない）と、iPhone・Watch から取り込んだ会議（サーバーにもとの録音がある）。
 /// - 同期を切っているあいだも、この同期先は置いておく（`uploads` が false）。ローカルのみにした会議と、消した会議をサーバーから消すため。
-/// - サーバーの会議は、Mac の会議の ID（`PUT /v1/meetings/:id`）で指す。上げるたびに丸ごと置き換える（最初の段は一方向。正は Mac）。
+/// - サーバーの会議は、Mac の会議の ID（`PUT /v1/meetings/:id`）で指す。上げるたびに丸ごと置き換える（正は Mac）。
+///   iPhone で直した題名・話者の名前は `CloudEditSync` が手元に当てる。上げ直しには、直しの記録を読んだところ（edits_seen）を付け、
+///   サーバーは、まだ読んでいない直しを上げ直しの上からかぶせ直す（古い題名・名前で iPhone の直しを消さない）。
 public struct MinutesCloudSyncTarget: SyncTarget {
     public static let targetID = "minutes_cloud"
 
@@ -14,11 +16,14 @@ public struct MinutesCloudSyncTarget: SyncTarget {
     /// 同期を入れているか（切っているときは送らず、消すことだけをする）
     public var uploads: Bool
     public var timeZone: TimeZone
+    /// 直しの記録を読んだところ（`CloudEditSync.editsSeen`）。nil なら上げ直しに付けない
+    public var editsSeen: (@Sendable () -> Int?)?
 
-    public init(client: MinutesCloudClient, uploads: Bool, timeZone: TimeZone = .current) {
+    public init(client: MinutesCloudClient, uploads: Bool, timeZone: TimeZone = .current, editsSeen: (@Sendable () -> Int?)? = nil) {
         self.client = client
         self.uploads = uploads
         self.timeZone = timeZone
+        self.editsSeen = editsSeen
     }
 
     /// 書き出しの指紋に入れる値。同期を入れる・切るで変える（入れたときは送り直し、切ったときは送らない）
@@ -34,7 +39,9 @@ public struct MinutesCloudSyncTarget: SyncTarget {
     }
 
     public func upload(export: SyncExport) async throws -> SyncReceipt {
-        let recording = try await client.putMeeting(id: export.input.meeting.id, upload: Self.payload(export.input, timeZone: timeZone))
+        var upload = Self.payload(export.input, timeZone: timeZone)
+        upload.editsSeen = editsSeen?()
+        let recording = try await client.putMeeting(id: export.input.meeting.id, upload: upload)
         return SyncReceipt(targetId: id, location: "minutes-cloud:\(recording.id)", checksum: export.manifest.checksum, uploadedAt: Date())
     }
 

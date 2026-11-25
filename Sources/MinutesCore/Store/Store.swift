@@ -286,10 +286,18 @@ public final class Store: Sendable {
         }
     }
 
+    /// 画面で題名を直す。iPhone・Watch から取り込んだ会議なら、サーバーへ送る列にも入れる（iPhone に届ける。P7、`CloudEditSync`）。
     public func updateMeetingTitle(id: String, title: String) throws {
         let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { throw StoreError.notFound("タイトル") }
-        try updateMeetingMetadata(id: id, title: cleaned, privacy: nil)
+        try writer.write { db in
+            guard var current = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound(id) }
+            let changed = current.title != cleaned
+            current.title = cleaned
+            current.updatedAt = Date()
+            try current.update(db)
+            if changed { try Store.queueCloudEditPush(db, meetingId: id, field: CloudEditField.title, value: cleaned) }
+        }
     }
 
     public func updateMeetingAttendees(id: String, attendees: [Attendee]) throws {
@@ -735,6 +743,7 @@ public final class Store: Sendable {
     }
 
     /// 話者クラスタに人を割り当てる（SPEC §5.4 の 3、§10.2）。同クラスタ全体に反映する。
+    /// iPhone・Watch から取り込んだ会議なら、名前をサーバーへ送る列にも入れる（iPhone に届ける。P7、`CloudEditSync`）。
     public func assignSpeaker(meetingId: String, clusterLabel: String, personId: String?, displayName: String?) throws {
         try writer.write { db in
             if var speaker = try SpeakerRecord.filter(Column("meeting_id") == meetingId && Column("cluster_label") == clusterLabel).fetchOne(db) {
@@ -746,6 +755,12 @@ public final class Store: Sendable {
                 let speaker = SpeakerRecord(meetingId: meetingId, clusterLabel: clusterLabel, personId: personId, displayName: displayName)
                 try speaker.insert(db)
                 try Store.relinkSegments(db, meetingId: meetingId, clusterLabel: clusterLabel, speakerId: speaker.id)
+            }
+            // この Mac で足した話者（manual_…）と自分のマイク（me）は、取り込んだ会議のサーバーの文字起こしにいないので送らない
+            if clusterLabel != TrackMerger.micSpeakerLabel, !clusterLabel.hasPrefix("manual_") {
+                let personName = try personId.flatMap { try PersonRecord.fetchOne(db, key: $0)?.name }
+                let name = displayName ?? personName
+                try Store.queueCloudEditPush(db, meetingId: meetingId, field: CloudEditField.speaker(clusterLabel), value: name)
             }
         }
     }

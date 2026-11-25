@@ -62,6 +62,13 @@ enum PullCommand {
         let checks = await CloudActionSync.sync(client: .standard(), store: store, includesMacMeetings: settings.syncMeetingsToMinutesCloud)
         Console.out("")
         Console.out("やることの済み: 送った \(checks.pushed) 件、重ねた \(checks.applied) 件\(checks.interruption.map { "（途中でやめました: \($0)）" } ?? "")")
+        // 題名・話者の名前（P7）も合わせる。当てた会議は書き出しをやり直す
+        let edits = await CloudEditSync.sync(client: .standard(), store: store)
+        Console.out("題名・話者の名前: 送った \(edits.pushed) 件、当てた \(edits.applied) 件\(edits.interruption.map { "（途中でやめました: \($0)）" } ?? "")")
+        for id in edits.changedMeetings {
+            guard let meeting = try store.meeting(id: id), meeting.meetingStatus == .done, meeting.privacy == .cloudOk else { continue }
+            if let path = try await pipeline.refreshExport(meetingId: id) { Console.out("  export: \(path)") }
+        }
         Console.out("db: \(parsed.value("db") ?? Store.defaultURL().path)")
     }
 }

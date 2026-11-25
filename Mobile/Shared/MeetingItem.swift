@@ -14,10 +14,12 @@ struct MeetingItem: Identifiable, Equatable {
     var startedAt: Date { server?.startedAt ?? local?.startedAt ?? server?.createdAt ?? .distantPast }
     var durationSeconds: Double? { server?.durationSeconds ?? local?.durationSeconds }
     var isDone: Bool { server?.status == "done" }
-    /// 同期を入れた Mac が上げた会議（音声はない。直す・消すのは Mac。P7）
+    /// 同期を入れた Mac が上げた会議（音声はない。消すのは Mac。P7）
     var isMacMeeting: Bool { server?.isSyncedMeeting == true }
-    /// 題名を直せる（サーバーにある iPhone・Watch の会議。Mac の会議は Mac で直す）
-    var canRename: Bool { server != nil && !isMacMeeting }
+    /// 題名を直せる（サーバーにある会議。iPhone・Watch の会議も Mac の会議も。直したものは Mac にも届く。P7）
+    var canRename: Bool { server != nil }
+    /// 題名を空にできる（Mac の会議は題名を空にできない。サーバーが断る）
+    var allowsEmptyTitle: Bool { !isMacMeeting }
     /// 消せる（Mac の会議は Mac で消す）。録音中の会議かは呼ぶ側で見る
     var canDelete: Bool { !isMacMeeting }
     /// リンクで共有できる録音（iPhone・Watch で録ってサーバーで処理が終わったものと、同期した Mac の会議。P7）

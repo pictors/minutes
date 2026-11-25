@@ -193,8 +193,11 @@ public struct MinutesCloudMeetingUpload: Encodable, Sendable, Equatable {
     public var durationSeconds: Double?
     public var transcript: TranscriptDocument
     public var summary: MinutesSummary?
+    /// この Mac が直した題名・話者の名前の記録（GET /v1/meeting-edits）を読んだところ。サーバーは、これより新しい iPhone の直し
+    /// （まだ当てていない）を上げ直しの上からかぶせ直す。nil は送らない（前の版の Mac と同じ扱い）。
+    public var editsSeen: Int?
 
-    public init(title: String?, startedAt: Date, timeZone: String, language: String, durationSeconds: Double?, transcript: TranscriptDocument, summary: MinutesSummary?) {
+    public init(title: String?, startedAt: Date, timeZone: String, language: String, durationSeconds: Double?, transcript: TranscriptDocument, summary: MinutesSummary?, editsSeen: Int? = nil) {
         self.title = title
         self.startedAt = startedAt
         self.timeZone = timeZone
@@ -202,6 +205,7 @@ public struct MinutesCloudMeetingUpload: Encodable, Sendable, Equatable {
         self.durationSeconds = durationSeconds
         self.transcript = transcript
         self.summary = summary
+        self.editsSeen = editsSeen
     }
 }
 
@@ -331,6 +335,51 @@ public struct MinutesCloudActionCheckPage: Decodable, Sendable, Equatable {
 
     public init(checks: [MinutesCloudActionCheck], next: Int, more: Bool) {
         self.checks = checks
+        self.next = next
+        self.more = more
+    }
+}
+
+/// 直した題名・話者の名前（P7、GET /v1/meeting-edits）。ほかのログイン（iPhone・ほかの Mac）で直したもの。
+public struct MinutesCloudMeetingEdit: Decodable, Sendable, Equatable {
+    /// サーバーの録音の ID（iPhone・Watch の録音を取り込んだ会議は `cloud_recording_id`）
+    public var recordingId: String
+    /// "recording"（iPhone・Watch の録音）か "meeting"（同期した Mac の会議）
+    public var kind: String
+    /// 同期した Mac の会議のとき、Mac の会議の ID
+    public var meetingId: String?
+    public var source: String?
+    /// "title" か "speaker"
+    public var field: String
+    /// 話者のラベル（field が "speaker" のとき）
+    public var label: String?
+    /// 直したあとの値（nil は消した）
+    public var value: String?
+    public var updatedAt: Date?
+    public var seq: Int
+
+    public init(recordingId: String, kind: String, meetingId: String?, source: String?, field: String, label: String?, value: String?, updatedAt: Date?, seq: Int) {
+        self.recordingId = recordingId
+        self.kind = kind
+        self.meetingId = meetingId
+        self.source = source
+        self.field = field
+        self.label = label
+        self.value = value
+        self.updatedAt = updatedAt
+        self.seq = seq
+    }
+}
+
+/// 直した題名・話者の名前の 1 回分の読み取り。次は `next` を after に渡す（このログインで直した行は返らないが、next は進む）。
+public struct MinutesCloudMeetingEditPage: Decodable, Sendable, Equatable {
+    public var edits: [MinutesCloudMeetingEdit]
+    public var next: Int
+    /// まだ続きがあるかもしれない
+    public var more: Bool
+
+    public init(edits: [MinutesCloudMeetingEdit], next: Int, more: Bool) {
+        self.edits = edits
         self.next = next
         self.more = more
     }
@@ -564,8 +613,9 @@ public struct MinutesCloudClient: Sendable {
         try FileManager.default.moveItem(at: location, to: destination)
     }
 
-    /// 会議の題名と話者の名前を直す（PATCH /v1/recordings/:id、iPhone・Watch）。title が nil なら変えない（空なら消す）。
-    /// speakerNames はラベル（"spk_0" など）→ 名前（空なら消す）。話者の名前は文字起こしのあとだけ（前は 409 not_ready）。
+    /// 会議の題名と話者の名前を直す（PATCH /v1/recordings/:id。iPhone・Watch の録音と、同期した Mac の会議（P7）。取り込んだ会議を
+    /// 直した Mac も）。title が nil なら変えない（空なら消す。同期した Mac の会議は 400 bad_title）。speakerNames はラベル（"spk_0" など）
+    /// → 名前（空なら消す）。話者の名前は文字起こしのあとだけ（前は 409 not_ready）、ない話者は 400 unknown_speaker。
     public func updateRecording(id: String, title: String? = nil, speakerNames: [String: String]? = nil) async throws -> MinutesCloudRecording {
         var body: [String: Any] = [:]
         if let title { body["title"] = title }
@@ -642,6 +692,13 @@ public struct MinutesCloudClient: Sendable {
         var query = [URLQueryItem(name: "after", value: String(after))]
         if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try decode(MinutesCloudActionCheckPage.self, from: try await send("GET", "/v1/action-checks", query: query).0)
+    }
+
+    /// ほかのログインで直した題名・話者の名前（after より新しいもの、番号の順。limit は 1〜1000）。対応していないサーバーは 404 not_found。
+    public func meetingEdits(after: Int, limit: Int? = nil) async throws -> MinutesCloudMeetingEditPage {
+        var query = [URLQueryItem(name: "after", value: String(after))]
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
+        return try decode(MinutesCloudMeetingEditPage.self, from: try await send("GET", "/v1/meeting-edits", query: query).0)
     }
 
     // MARK: 要約

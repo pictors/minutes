@@ -209,6 +209,19 @@ public enum StoreSchema {
             );
             """)
         }
+        // 題名・話者の名前の同期（P7、SPEC §5.6）: iPhone・Watch から取り込んだ会議を、この Mac で直したもののうち、まだサーバーへ
+        // 送っていないもの（会議・欄ごとに最新の 1 つ。field は "title" か "speaker:<ラベル>"、value の NULL は名前を消した。会議を消すと消える）。
+        migrator.registerMigration("v11_cloud_edit_pushes") { db in
+            try db.execute(sql: """
+            CREATE TABLE cloud_edit_pushes (
+              meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+              field TEXT NOT NULL,
+              value TEXT,
+              queued_at TEXT NOT NULL,
+              PRIMARY KEY (meeting_id, field)
+            );
+            """)
+        }
         return migrator
     }
 }
