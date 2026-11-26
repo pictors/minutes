@@ -28,6 +28,7 @@ final class PhoneModel {
     let billing: BillingStore
 
     private static let noticeAcceptedKey = "recordingNoticeAccepted"
+    @ObservationIgnored private lazy var recordingActivity = RecordingActivityController(recorder: recorder)
 
     init(store: RecordingStore = .standard) {
         self.store = store
@@ -67,6 +68,8 @@ final class PhoneModel {
 
     func onLaunch() {
         recoverUnfinished()
+        // 録音中の Live Activity（ロック画面・ダイナミックアイランド）。前の起動で残ったものは消す
+        recordingActivity.start()
         reloadLocal()
         uploads.restore()
         // Watch にログインを渡す（Watch は受け取った印で録音を直接上げる）

@@ -4,7 +4,8 @@ import WidgetKit
 /// iPhone の拡張（MinutesWidgets）: 録音をすぐ始める入口（SPEC §5.7）。
 /// - ホーム画面（小）・ロック画面（円・長方形）のウィジェット: `RecordWidget`
 /// - コントロールセンター・ロック画面・アクションボタンのコントロール: `RecordControl`
-/// どちらも状態を持たない（App Group も使わない）。押すと `StartRecordingIntent` がアプリを前面に出し、アプリが録音を始める（`QuickRecord`）。
+/// - 録音中の Live Activity（ロック画面・ダイナミックアイランド）: `RecordingLiveActivity`（中身はアプリが ActivityKit で渡す）
+/// ウィジェットとコントロールは状態を持たない（App Group も使わない）。押すと `StartRecordingIntent` がアプリを前面に出し、アプリが録音を始める（`QuickRecord`）。
 /// 拡張には Mobile/Shared を入れない（MinutesKit・録音・UploadEngine の裏の送信を、別のプロセスに持ち込まないため）。
 /// 確認済み（Xcode 27.2 の iOS 27.2 SDK の SwiftUI・WidgetKit の swiftinterface）: `WidgetBundle`（iOS 14 から）、
 /// `ControlWidget`（iOS 18 から。`WidgetBundleBuilder` が受ける）。
@@ -13,6 +14,7 @@ struct MinutesWidgets: WidgetBundle {
     var body: some Widget {
         RecordWidget()
         RecordControl()
+        RecordingLiveActivity()
     }
 }
 
