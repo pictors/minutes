@@ -1,7 +1,7 @@
 // Minutes の iPhone と Watch のアプリの共通の設定（製品版の P4）。
 // 署名のチーム ID は Signing.xcconfig（git に入れない。Signing.xcconfig.example を写して作る）で入れる。シミュレータでは要らない。
 MARKETING_VERSION = 1.0
-CURRENT_PROJECT_VERSION = 4
+CURRENT_PROJECT_VERSION = 5
 SWIFT_VERSION = 6.0
 IPHONEOS_DEPLOYMENT_TARGET = 26.0
 WATCHOS_DEPLOYMENT_TARGET = 26.0
