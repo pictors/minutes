@@ -7,7 +7,9 @@ import SwiftUI
 ///   期限は「11/25（水）」・「今日」・「明日」で出し、過ぎたら色を変える（済みのものは変えない）。
 /// - 決まったこと・やること・確かめることの根拠の時刻を押すと、全文のその発言へ飛び、音声があればそこから再生する。
 /// - 全文は検索できる（当たった発言だけを出し、当たった所に色を付ける）。当たった発言を押すと、検索を解いてその発言から再生する。
-/// - 全文は再生に合わせて今の発言を強調し、発言を押すとそこから再生する。題名が見えなくなるまで送ったら、上のバーに題名を出す。
+/// - 全文は再生に合わせて今の発言を強調し、発言を押すとそこから再生する。
+/// - 題名は iOS の大きな題名にする（本文と一緒に上へ送られ、上のバーの下に入ると、バーの小さな題名に切り替わる。iOS 26.5 で確かめた動き）。
+///   バーは地を塗らない（送った本文はシステムのぼかしの下を通る）。
 struct MeetingDetailView: View {
     enum Tab: Hashable { case minutes, transcript }
 
@@ -16,6 +18,7 @@ struct MeetingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var summary: MinutesSummary?
     @State private var transcript: TranscriptDocument?
     @State private var loadError: String?
@@ -41,8 +44,6 @@ struct MeetingDetailView: View {
     @State private var focusedSegment: Int?
     /// 全文に切り替えたあとで送る先の発言
     @State private var scrollTarget: Int?
-    @State private var titleHeight: CGFloat = 40
-    @State private var showsBarTitle = false
     /// サーバーへ送っている済み（送り終わるまで、同じやることは押せない）
     @State private var sendingChecks: Set<String> = []
     /// 済みを付けた・外した回数。読み直しが始まったあとに付けた済みがあれば、その読み直しの（古い）議事録で画面を戻さない
@@ -109,14 +110,8 @@ struct MeetingDetailView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            // 上のバーの下は、ぼかしではなくはっきり切る（送った本文がバーの題名の下に透けて、重なって読みにくかった）
-            .scrollEdgeEffectStyle(.hard, for: .top)
-            // 題名が上のバーに隠れたら、バーに題名を出す
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top > titleHeight + 4
-            } action: { _, hidden in
-                showsBarTitle = hidden
-            }
+            // 上のぼかしは soft を明示する（iOS 27 では、指定しないと半透明の帯と境目の線になった。一覧と同じ）
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .onChange(of: activeSegmentID) { _, id in
                 guard let id, player.isPlaying, visibleTab == .transcript, matchingSegments == nil else { return }
                 withAnimation(reduceMotion ? nil : Motion.follow) { scroll.scrollTo(id, anchor: .center) }
@@ -132,8 +127,12 @@ struct MeetingDetailView: View {
             }
         }
         .background(Surface.page.ignoresSafeArea())
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        // 大きな題名は 1 行に収まらなければ「…」で切れる（iOS のふつうの大きな題名は折り返さない。.largeTitle の置き場に自前の Text を置いても、
+        // iOS 26.5 では 1 行に切られ、開いた直後はバーが縮んだまま出た）
+        .navigationTitle(item.map { $0.title ?? MeetingItem.untitled } ?? "")
+        .navigationBarTitleDisplayMode(.large)
+        // バーの明暗をアプリに合わせて固定する（下を通る本文の色で、題名・時刻が白黒に切り替わらないように。一覧と同じ）
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar { toolbar }
         .safeAreaInset(edge: .bottom) {
             if canPlay, let item {
@@ -198,10 +197,7 @@ struct MeetingDetailView: View {
     @ViewBuilder
     private func header(_ item: MeetingItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(item.title ?? MeetingItem.untitled)
-                .brandDisplay(size: 30)
-                .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titleHeight = $0 }
+            // 題名は上のバーの大きな題名（navigationTitle）が出す
             Text("\(Formatting.dayTitle(item.startedAt)) \(Formatting.timeOfDay(item.startedAt))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -544,16 +540,6 @@ struct MeetingDetailView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        // 題名が上のバーに隠れたら、バーに出す
-        ToolbarItem(placement: .principal) {
-            Text(item?.title ?? MeetingItem.untitled)
-                .font(.headline)
-                .lineLimit(1)
-                .opacity(showsBarTitle ? 1 : 0)
-                .animation(Motion.press, value: showsBarTitle)
-                .accessibilityHidden(!showsBarTitle)
-        }
-        .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 if item?.canRename == true {

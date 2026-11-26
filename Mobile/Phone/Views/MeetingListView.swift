@@ -5,6 +5,7 @@ import SwiftUI
 struct MeetingListView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showingNewMeeting = false
     @State private var showingNotice = false
     @State private var showingAccount = false
@@ -37,24 +38,6 @@ struct MeetingListView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
-                    // 上端: ロゴ（Mac のパネルと同じ組み）と、アカウント
-                    HStack {
-                        MinutesBrandLockup(height: 22)
-                        Spacer()
-                        Button {
-                            showingAccount = true
-                        } label: {
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 38, height: 38)
-                                .background(Surface.raised, in: .circle)
-                        }
-                        .buttonStyle(CardPressStyle())
-                        .accessibilityLabel("アカウント")
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 2)
                     if let banner = model.banner {
                         Label(banner, systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
@@ -131,16 +114,34 @@ struct MeetingListView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Surface.page.ignoresSafeArea())
-            // 送った一覧が時刻やダイナミックアイランドに重ならないように、上の安全域を地の色で覆い、その下を少しぼかす（ログインの画面と同じ）
-            .overlay(alignment: .top) {
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: 0).background(Surface.page)
-                    LinearGradient(colors: [Surface.page, Surface.page.opacity(0)], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 16)
+            // 上端: ロゴ（Mac のパネルと同じ組み）と、アカウント。上のバーに置いて、一覧を送っても浮かせたままにする。
+            // バーは地を塗らない（時刻の帯も含めて透かす）。送った一覧が時刻・ロゴに重なるところは、システムのぼかし（scroll edge effect）が受け持つ
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    MinutesBrandLockup(height: 22)
+                        .padding(.leading, 4)
                 }
-                .allowsHitTesting(false)
+                // ロゴはガラスの面に入れない（ボタンではないので）
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingAccount = true
+                    } label: {
+                        Image(systemName: "person.fill")
+                    }
+                    .accessibilityLabel("アカウント")
+                    // 会議の画面の戻る・「⋯」と同じ色にする（アプリ全体の色（青紫）を付けない）
+                    .tint(Color.primary)
+                }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            // バーの明暗をアプリに合わせて固定する（下を通る一覧に濃い色（通知の誘いの青いボタンなど）があると、システムがバーを暗い側に切り替え、
+            // 時刻とロゴの文字が白くなって薄い灰色の上で読みにくかった）
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
+            // 上のぼかしは soft を明示する（iOS 27 の実機では、明暗を固定して指定しないと、半透明の帯と境目の線（hard）になった。
+            // iOS 26.5 では指定しなくても soft だった）。会議の画面も同じ
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .keepsNavigationBarExpanded()
             .navigationDestination(for: String.self) { id in
                 MeetingDetailView(clientId: id)
             }
@@ -276,6 +277,19 @@ struct MeetingListView: View {
             } catch {
                 rowError = "消せませんでした（\(error.localizedDescription)）"
             }
+        }
+    }
+}
+
+extension View {
+    /// 一覧を送っても上のバー（ロゴ・アカウント）を縮めない。iOS 27 からはバーが送り方に合わせて縮むことがあるので、明示して止める
+    /// （iOS 26 のバーは縮まない）。
+    @ViewBuilder
+    fileprivate func keepsNavigationBarExpanded() -> some View {
+        if #available(iOS 27.0, *) {
+            toolbarMinimizationBehavior(.never, for: .navigationBar)
+        } else {
+            self
         }
     }
 }
