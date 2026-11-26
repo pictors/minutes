@@ -35,6 +35,7 @@ struct AccountDeletionView: View {
         .background(Surface.page.ignoresSafeArea())
         .navigationTitle("アカウントを消す")
         .navigationBarTitleDisplayMode(.inline)
+        .transparentNavigationBar()
         .navigationBarBackButtonHidden(working)
         .manageSubscriptionsSheet(isPresented: $managingSubscriptions)
         .disabled(working)

@@ -5,7 +5,6 @@ import SwiftUI
 struct MeetingListView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
     @State private var showingNewMeeting = false
     @State private var showingNotice = false
     @State private var showingAccount = false
@@ -135,12 +134,8 @@ struct MeetingListView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            // バーの明暗をアプリに合わせて固定する（下を通る一覧に濃い色（通知の誘いの青いボタンなど）があると、システムがバーを暗い側に切り替え、
-            // 時刻とロゴの文字が白くなって薄い灰色の上で読みにくかった）
-            .toolbarColorScheme(colorScheme, for: .navigationBar)
-            // 上のぼかしは soft を明示する（iOS 27 の実機では、明暗を固定して指定しないと、半透明の帯と境目の線（hard）になった。
-            // iOS 26.5 では指定しなくても soft だった）。会議の画面も同じ
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            // ぼかしは soft、バーの明暗はアプリに固定（通知の誘いの青いボタンが下を通っても、時刻とロゴの文字が白くならない）
+            .transparentNavigationBar()
             .keepsNavigationBarExpanded()
             .navigationDestination(for: String.self) { id in
                 MeetingDetailView(clientId: id)

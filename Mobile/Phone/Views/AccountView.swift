@@ -32,6 +32,7 @@ struct AccountView: View {
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("アカウント")
             .navigationBarTitleDisplayMode(.inline)
+            .transparentNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("閉じる") { dismiss() }

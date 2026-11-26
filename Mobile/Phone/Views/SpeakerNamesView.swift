@@ -49,6 +49,7 @@ struct SpeakerNamesView: View {
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("話者の名前")
             .navigationBarTitleDisplayMode(.inline)
+            .transparentNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("やめる") { dismiss() }

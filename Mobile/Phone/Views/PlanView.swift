@@ -50,6 +50,7 @@ struct PlanView: View {
         .background(Surface.page.ignoresSafeArea())
         .navigationTitle("プラン")
         .navigationBarTitleDisplayMode(.inline)
+        .transparentNavigationBar()
         .disabled(billing.isWorking)
         .overlay { if billing.isWorking { ProgressView().controlSize(.large) } }
         // 演出は .disabled の外に重ねる（カードはタップで閉じる）

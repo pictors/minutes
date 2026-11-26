@@ -73,6 +73,7 @@ struct PasskeyReauthView: View {
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("もう一度ログイン")
             .navigationBarTitleDisplayMode(.inline)
+            .transparentNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("やめる") { dismiss() }

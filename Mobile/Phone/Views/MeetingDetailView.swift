@@ -18,7 +18,6 @@ struct MeetingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
     @State private var summary: MinutesSummary?
     @State private var transcript: TranscriptDocument?
     @State private var loadError: String?
@@ -110,8 +109,6 @@ struct MeetingDetailView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            // 上のぼかしは soft を明示する（iOS 27 では、指定しないと半透明の帯と境目の線になった。一覧と同じ）
-            .scrollEdgeEffectStyle(.soft, for: .top)
             .onChange(of: activeSegmentID) { _, id in
                 guard let id, player.isPlaying, visibleTab == .transcript, matchingSegments == nil else { return }
                 withAnimation(reduceMotion ? nil : Motion.follow) { scroll.scrollTo(id, anchor: .center) }
@@ -131,8 +128,8 @@ struct MeetingDetailView: View {
         // iOS 26.5 では 1 行に切られ、開いた直後はバーが縮んだまま出た）
         .navigationTitle(item.map { $0.title ?? MeetingItem.untitled } ?? "")
         .navigationBarTitleDisplayMode(.large)
-        // バーの明暗をアプリに合わせて固定する（下を通る本文の色で、題名・時刻が白黒に切り替わらないように。一覧と同じ）
-        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        // ぼかしは soft、バーの明暗はアプリに固定（ほかの上のバーと同じ。中の ScrollView にも届く）
+        .transparentNavigationBar()
         .toolbar { toolbar }
         .safeAreaInset(edge: .bottom) {
             if canPlay, let item {

@@ -69,6 +69,7 @@ struct ShareLinksView: View {
             .background(Surface.page.ignoresSafeArea())
             .navigationTitle("リンクで共有")
             .navigationBarTitleDisplayMode(.inline)
+            .transparentNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("閉じる") { dismiss() }
