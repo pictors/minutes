@@ -243,11 +243,18 @@ struct AccountView: View {
                         Spacer(minLength: 0)
                         InfoChip(text: account.plan == "pro" ? "Pro" : "無料", systemImage: account.plan == "pro" ? "star.fill" : nil)
                     }
+                    // 1 本の棒を左から塗る（使った分の続きに処理中の分）。0 より多ければ丸 1 つ分は見せる
                     GeometryReader { proxy in
-                        HStack(spacing: 3) {
-                            Capsule().fill(Palette.periwinkle).frame(width: max(6, proxy.size.width * used))
-                            if pending > 0 { Capsule().fill(Palette.amber).frame(width: max(6, proxy.size.width * pending)) }
+                        let width = proxy.size.width
+                        let minimum = proxy.size.height
+                        ZStack(alignment: .leading) {
                             Capsule().fill(Surface.raised)
+                            if pending > 0 {
+                                Capsule().fill(Palette.amber).frame(width: max(minimum, width * (used + pending)))
+                            }
+                            if used > 0 {
+                                Capsule().fill(Palette.periwinkle).frame(width: max(minimum, width * used))
+                            }
                         }
                     }
                     .frame(height: 8)
