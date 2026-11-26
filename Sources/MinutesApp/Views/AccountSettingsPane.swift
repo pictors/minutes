@@ -20,7 +20,8 @@ struct MinutesCloudStatusLabel: View {
 }
 
 /// 設定 > アカウント（SPEC §5.6・§10.3）: Minutes アカウントのログイン、プランと今月の量、このアカウントでできること。
-/// ログインはメールに届く 6 桁のコード（要判断 #24。Developer ID の Mac は Sign in with Apple を使えない）。
+/// ログインは Apple でサインイン（ブラウザを通すウェブの流れ。Developer ID の Mac はネイティブの Sign in with Apple を使えない）か、
+/// メールに届く 6 桁のコード。iPhone で Apple を選んだ人は、Apple でサインインすれば同じアカウントになる。
 /// ログインは、文字起こしと要約の手段（Minutes クラウド）を選ぶこととは別に置く: iPhone・Apple Watch の会議の取り込み（§4.5）は、
 /// ログインだけで働く。印は Keychain に置く（MinutesCloudCredentials）。印・メールアドレスはログに出さない。
 struct AccountSettingsPane: View {
@@ -29,6 +30,7 @@ struct AccountSettingsPane: View {
     @State private var code = ""
     @State private var codeSent = false
     @State private var busy = false
+    @State private var appleBusy = false
     @State private var message: String?
     @State private var account: MinutesCloudAccount?
     @State private var accountError: String?
@@ -55,6 +57,14 @@ struct AccountSettingsPane: View {
     private var signInSection: some View {
         Section {
             if !codeSent {
+                LabeledContent("Apple のアカウント") {
+                    Button {
+                        signInWithApple()
+                    } label: {
+                        Label(appleBusy ? "ブラウザで続けてください…" : "Apple でサインイン", systemImage: "apple.logo")
+                    }
+                    .disabled(busy)
+                }
                 // 入力欄だと分かるように、枠のある欄に例のアドレスを薄く出す（プロバイダの API キーの欄と同じ見た目）
                 LabeledContent("メールアドレス") {
                     HStack(spacing: 8) {
@@ -111,7 +121,7 @@ struct AccountSettingsPane: View {
         } header: {
             Text("Minutes アカウント")
         } footer: {
-            Text("メールに届く 6 桁のコードでログインします。アカウントがなければ、ここで作られます。iPhone の Minutes と同じアカウントにするには、iPhone のアカウントの画面に出ているアドレスを入れてください。")
+            Text("Apple でサインインするか、メールに届く 6 桁のコードでログインします。アカウントがなければ、ここで作られます。iPhone の Minutes と同じアカウントにするには、iPhone と同じ方法を選んでください（iPhone で Apple を選んだなら Apple でサインイン、メールなら iPhone のアカウントの画面に出ているアドレス）。Apple でサインインは、ブラウザで開きます。")
         }
     }
 
@@ -289,6 +299,26 @@ struct AccountSettingsPane: View {
                 try await model.signInToMinutesCloud(email: email, code: code)
                 codeSent = false
                 code = ""
+            } catch {
+                message = describe(error)
+            }
+        }
+    }
+
+    private func signInWithApple() {
+        guard !busy else { return }
+        busy = true
+        appleBusy = true
+        message = nil
+        Task {
+            defer {
+                busy = false
+                appleBusy = false
+            }
+            do {
+                try await model.signInToMinutesCloudWithApple()
+            } catch AppleWebSignIn.Failure.cancelled {
+                // 利用者が閉じた。何も出さない
             } catch {
                 message = describe(error)
             }

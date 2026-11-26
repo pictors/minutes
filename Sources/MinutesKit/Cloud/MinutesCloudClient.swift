@@ -16,6 +16,8 @@ import Foundation
 //            GET /v1/auth/get-session → {session, user:{id, email}}
 //   録音: POST /v1/recordings（summarize は既定の true）→ PUT /v1/recordings/:id/parts/:run/:offset（区切り）→ POST /complete {duration_seconds, runs:[{run, bytes}]}
 //         GET /v1/recordings → {recordings:[…]}（新しい順に 100 件）、GET /:id/transcript（transcript.json）・/:id/summary（summary.json）・/:id/audio
+//   ログイン（Mac、ウェブの流れ）: ブラウザで GET /v1/auth/apple/web/start?challenge=… → jp.pictors.minutes.auth://apple?code=… →
+//            POST /v1/auth/apple/web/token {code, verifier}（応答の見出し set-auth-token が印。MinutesCloudAppleWeb）
 //   アカウントの削除: DELETE /v1/account {apple_authorization_code?} → {deleted, apple_revoked, apple_reason}
 //   App 内課金（P6、2026-11-25）: GET /v1/billing、POST /v1/billing/app-store/transactions {signed_transaction}（MinutesCloudBilling.swift）。
 //            GET /v1/me に plan_source（manual・app_store）・plan_expires_at と、usage の period_start・period_end（使える量の区切り）を足した
@@ -470,6 +472,12 @@ public struct MinutesCloudClient: Sendable {
         // Better Auth の名前（idToken）は camelCase のまま送る（JSONCoding の snake_case にしない）
         let body = try JSONSerialization.data(withJSONObject: ["provider": "apple", "idToken": ["token": identityToken, "nonce": rawNonce]])
         return try await signIn(path: "/v1/auth/sign-in/social", body: body)
+    }
+
+    /// Sign in with Apple のウェブの流れ（Mac）。ブラウザから戻った一度だけのコードと、この Mac が持っていた verifier を印に替える
+    /// （MinutesCloudAppleWeb）。アカウントがなければ、Apple のページを通ったときに作られている。
+    public func signInWithAppleWeb(code: String, verifier: String) async throws -> MinutesCloudSession {
+        try await signIn(path: "/v1/auth/apple/web/token", body: ["code": code, "verifier": verifier])
     }
 
     /// ログイン中の利用者（ID とメールアドレス）。

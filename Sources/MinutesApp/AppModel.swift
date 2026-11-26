@@ -532,10 +532,29 @@ final class AppModel {
     func signInToMinutesCloud(email: String, code: String) async throws {
         let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let session = try await MinutesCloudClient.standard().signIn(email: address, code: code.trimmingCharacters(in: .whitespacesAndNewlines))
-        try MinutesCloudCredentials.save(session, email: address)
+        try finishMinutesCloudSignIn(session, email: address)
+    }
+
+    /// Apple でサインイン（ウェブの流れ、SPEC §5.6）: ブラウザで Apple のページを通し、戻ったコードを印に替える。
+    /// iPhone で Apple を選んだ人（「メールを非公開」でも）が、同じアカウントに入れる。利用者が閉じたら `AppleWebSignIn.Failure.cancelled`。
+    func signInToMinutesCloudWithApple() async throws {
+        let client = MinutesCloudClient.standard()
+        let attempt = MinutesCloudAppleWeb.make()
+        let browser = AppleWebSignIn()
+        let code = try await browser.authorize(attempt, baseURL: client.baseURL)
+        let session = try await client.signInWithAppleWeb(code: code, verifier: attempt.verifier)
+        // メールアドレスは表示用（「メールを非公開」なら中継のアドレス）
+        try finishMinutesCloudSignIn(session, email: session.email ?? "")
+        // ブラウザから戻ったあと、設定の窓を前に出す
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// ログインのあと（どの方法でも同じ）: 印を Keychain に置き、同期と取り込みを始める。
+    private func finishMinutesCloudSignIn(_ session: MinutesCloudSession, email: String) throws {
+        try MinutesCloudCredentials.save(session, email: email)
         // ログアウトしても、ログインの入口（アカウントのタブ）を残す
         MinutesCloudOffer.rememberSignedIn()
-        minutesCloudEmail = address
+        minutesCloudEmail = email
         // 同期の同期先を置く（ログインしたら、消した会議をサーバーから消せる）
         rebuildPipeline()
         // 同期を入れていれば、これまでの会議を送り直す（アカウントを作り直した・替えたときは、サーバーにこの Mac の会議がない）
