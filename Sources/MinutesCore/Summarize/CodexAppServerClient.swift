@@ -112,12 +112,13 @@ struct CodexAppServerClient: Sendable {
         return connection
     }
 
-    func complete(system: String, user: String, model: String?) async throws -> CodexCompletion {
-        guard case let .completion(completion) = try await perform(system: system, user: user, model: model) else { throw CodexError.invalidResponse }
+    /// titled: 題名も頼むスキーマにする（SPEC §8.1）。
+    func complete(system: String, user: String, model: String?, titled: Bool = false) async throws -> CodexCompletion {
+        guard case let .completion(completion) = try await perform(system: system, user: user, model: model, titled: titled) else { throw CodexError.invalidResponse }
         return completion
     }
 
-    private func perform(system: String?, user: String?, model: String?) async throws -> Reply {
+    private func perform(system: String?, user: String?, model: String?, titled: Bool = false) async throws -> Reply {
         try Task.checkCancellation()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-codex-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -131,7 +132,7 @@ struct CodexAppServerClient: Sendable {
         defer { transport.close() }
         return try await withTaskCancellationHandler {
             try await withThrowingTaskGroup(of: Reply.self) { group in
-                group.addTask { try await conversation(transport: transport, directory: directory, system: system, user: user, model: model) }
+                group.addTask { try await conversation(transport: transport, directory: directory, system: system, user: user, model: model, titled: titled) }
                 group.addTask {
                     try await Task.sleep(for: .seconds(timeoutSeconds))
                     throw CodexError.timeout
@@ -148,7 +149,7 @@ struct CodexAppServerClient: Sendable {
         }
     }
 
-    private func conversation(transport: any CodexTransport, directory: URL, system: String?, user: String?, model: String?) async throws -> Reply {
+    private func conversation(transport: any CodexTransport, directory: URL, system: String?, user: String?, model: String?, titled: Bool) async throws -> Reply {
         func send(_ object: [String: Any]) throws {
             try transport.send(JSONSerialization.data(withJSONObject: object))
         }
@@ -259,7 +260,7 @@ struct CodexAppServerClient: Sendable {
                 try request(4, "turn/start", [
                     "threadId": id, "input": [["type": "text", "text": user ?? ""]],
                     "effort": "low",
-                    "outputSchema": SummarySchema.json,
+                    "outputSchema": SummarySchema.json(titled: titled),
                 ])
             case 4:
                 guard let turn = response["turn"] as? [String: Any], let id = turn["id"] as? String else { throw CodexError.invalidResponse }

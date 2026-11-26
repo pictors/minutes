@@ -83,7 +83,7 @@ python3 scripts/make-fixtures.py
 ## レイアウト
 
 ```
-Sources/MinutesKit/          機種に依らない型・JSON・ログ・Minutes クラウドのサーバーとのやり取り（依存なし。macOS・iOS・watchOS。MinutesCore が @_exported で含める）。要約の文と担当の中の話者の見せ方は Summarize/SummarySpeakerText（Mac・iPhone で共有。サーバー（非公開）の共有のページと同じ決まりで、例の表 Tests/MinutesCoreTests/Fixtures/summary-speaker-text-cases.json をサーバーのテストにも写す。変えるときは両方をそろえる）
+Sources/MinutesKit/          機種に依らない型・JSON・ログ・Minutes クラウドのサーバーとのやり取り（依存なし。macOS・iOS・watchOS。MinutesCore が @_exported で含める）。要約の文と担当の中の話者の見せ方は Summarize/SummarySpeakerText（Mac・iPhone で共有。サーバー（非公開）の共有のページと同じ決まりで、例の表 Tests/MinutesCoreTests/Fixtures/summary-speaker-text-cases.json をサーバーのテストにも写す。変えるときは両方をそろえる）。要約が付ける題名の整え方は Summarize/SummaryTitle（題名を付けずに録った会議、SPEC §8.1。サーバーの iPhone・Watch の会議の題名付けと同じ決まりで、例の表 Tests/MinutesCoreTests/Fixtures/summary-title-cases.json をサーバーのテストにも写す）
 Sources/MinutesCore/         UI 非依存のロジック（CLI と App の両方から使う）
   Audio/                     ProcessTap, MicCapture（入力デバイス指定・一覧）, TrackPipeline（整合・欠落補完・AAC/WAV）, RecordingSession, AudioProcessList, AudioImport（外部の録音の取り込み、SPEC §4.4）
   Transcription/             BatchTranscriber 実装（ElevenLabs / OpenAI / Local）, SpeechAnalyzer ラッパ（録音中の言語の切り替え）, MeetingLanguage（会議の言語と自動判定）, TrackMerger, TranscriptDocument

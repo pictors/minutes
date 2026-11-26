@@ -4,21 +4,22 @@ import Foundation
 /// 長い会議は分割して部分要約 → 統合し、各応答の根拠 ID を確かめる。
 enum StructuredSummary {
     /// generate: ユーザーメッセージと、その応答で根拠に使える segment id を受け取って要約を返す。
-    static func summarize(_ input: SummaryInput, prompt: SummaryPrompt, generate: (_ user: String, _ validIds: Set<Int>) async throws -> MinutesSummary) async throws -> MinutesSummary {
-        guard !input.segments.isEmpty else { return .empty }
+    /// titled: 題名も頼む（SPEC §8.1）。分けたときは、統合の依頼だけで頼む（部分要約には頼まない）。
+    static func summarize(_ input: SummaryInput, prompt: SummaryPrompt, titled: Bool = false, generate: (_ user: String, _ validIds: Set<Int>, _ titled: Bool) async throws -> SummaryOutput) async throws -> SummaryOutput {
+        guard !input.segments.isEmpty else { return SummaryOutput(summary: .empty) }
         let parts = parts(input)
         if parts.count == 1 {
-            return try await generate(prompt.userMessage(for: input, transcript: input.transcriptText(), partLabel: nil), Set(input.segments.map(\.id)))
+            return try await generate(prompt.userMessage(for: input, transcript: input.transcriptText(), partLabel: nil), Set(input.segments.map(\.id)), titled)
         }
         var partials: [MinutesSummary] = []
         for (index, segments) in parts.enumerated() {
             try Task.checkCancellation()
             var part = input
             part.segments = segments
-            partials.append(try await generate(prompt.userMessage(for: part, transcript: part.transcriptText(), partLabel: "パート \(index + 1)/\(parts.count)"), Set(segments.map(\.id))))
+            partials.append(try await generate(prompt.userMessage(for: part, transcript: part.transcriptText(), partLabel: "パート \(index + 1)/\(parts.count)"), Set(segments.map(\.id)), false).summary)
         }
         let json = String(decoding: try JSONCoding.encoder().encode(partials), as: UTF8.self)
-        return try await generate(prompt.mergeMessage(for: input, partialSummaries: json), Set(input.segments.map(\.id)))
+        return try await generate(prompt.mergeMessage(for: input, partialSummaries: json), Set(input.segments.map(\.id)), titled)
     }
 
     /// JSON Schema だけでは保証できない、根拠 ID の実在を確認する。

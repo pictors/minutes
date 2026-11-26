@@ -74,9 +74,14 @@ public struct MeetingRecord: MinutesRecord, Identifiable, Equatable {
     /// サーバーの文字起こしと要約をそのまま使う（この Mac では文字起こしも要約もやり直さない）。
     /// 会議の言語を変えて文字起こしし直すと false になり、それからはこの Mac の手段で処理する（`Store.prepareRetranscription`）。
     public var cloudProcessed: Bool
+    /// 題名を人が付けていない（SPEC §8.1）: 題名を付けずに録った会議の仮の名前（アプリ名と日時）か、要約が付けた題名。
+    /// 要約のときに題名も付けさせ、要約の入力には題名を入れない（`SummaryTitle.untitledForPrompt`。題名が替わっても要約を古くしない）。
+    /// 人が題名を直すと false になる。
+    public var titleAuto: Bool
 
-    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = [], language: MeetingLanguage? = nil, languageDetected: Bool = false, summaryLanguage: MeetingLanguage? = nil, cloudRecordingId: String? = nil, cloudProcessed: Bool = false) {
+    public init(id: String = ULID.generate(), title: String, startedAt: Date, endedAt: Date? = nil, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode, status: MeetingStatus, audioDir: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recordingStartedAt: Date? = nil, tags: [String] = [], language: MeetingLanguage? = nil, languageDetected: Bool = false, summaryLanguage: MeetingLanguage? = nil, cloudRecordingId: String? = nil, cloudProcessed: Bool = false, titleAuto: Bool = false) {
         self.id = id
+        self.titleAuto = titleAuto
         self.cloudRecordingId = cloudRecordingId
         self.cloudProcessed = cloudProcessed
         self.title = title

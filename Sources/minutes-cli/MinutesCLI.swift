@@ -81,7 +81,7 @@ struct MinutesCLI {
           minutes-cli cut <input> <output.wav> --start <sec|mm:ss> [--duration <sec> | --end <sec>]
               音声の一部を 16 kHz mono WAV に切り出す（実録音からの評価区間、known-speaker の参照音声）。
 
-          minutes-cli process <recording-dir> [--provider elevenlabs|openai|local] [--privacy cloud_ok|local_only] [--title t]
+          minutes-cli process <recording-dir> [--provider elevenlabs|openai|local] [--privacy cloud_ok|local_only] [--title t | --auto-title]
               Phase 1 の後処理パイプライン（final → マージ → 要約 → 保存 → 書き出し）を録音フォルダに掛ける。
               --db <path>（既定: ~/Library/Application Support/Minutes/minutes.sqlite）--export-dir --sync-dir --no-summary
               --force step,step で完了済みステップを再実行（例: --force summarize,store,export）

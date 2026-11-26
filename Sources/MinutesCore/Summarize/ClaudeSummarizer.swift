@@ -39,15 +39,24 @@ public struct ClaudeSummarizer: Summarizing {
     // MARK: - Summarize
 
     public func summarize(_ input: SummaryInput) async throws -> MinutesSummary {
+        try await summarize(input, titled: false).summary
+    }
+
+    public func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput {
+        try await summarize(input, titled: context.suggestTitle)
+    }
+
+    /// titled: 題名も頼む（SPEC §8.1）。分けたときは、統合の依頼だけで頼む。
+    func summarize(_ input: SummaryInput, titled: Bool) async throws -> SummaryOutput {
         if input.durationSeconds > ClaudeSummarizer.splitThresholdSeconds, input.segments.count > 1 {
-            return try await summarizeInParts(input)
+            return try await summarizeInParts(input, titled: titled)
         }
         let user = prompt.userMessage(for: input, transcript: input.transcriptText(), partLabel: nil)
-        return try await callTool(system: prompt.systemMessage(for: input), user: user)
+        return try await callTool(system: prompt.systemMessage(for: input), user: user, titled: titled)
     }
 
     /// 長い会議: 時間で分割して部分要約し、部分要約の JSON をまとめて統合する。
-    func summarizeInParts(_ input: SummaryInput) async throws -> MinutesSummary {
+    func summarizeInParts(_ input: SummaryInput, titled: Bool = false) async throws -> SummaryOutput {
         var parts: [[TranscriptDocument.Segment]] = []
         var current: [TranscriptDocument.Segment] = []
         var partStart = input.segments.first?.tStart ?? 0
@@ -67,38 +76,40 @@ public struct ClaudeSummarizer: Summarizing {
             partInput.segments = part
             let label = "パート \(index + 1)/\(parts.count)（\(TimeFormatting.hms(part.first?.tStart ?? 0))〜\(TimeFormatting.hms(part.last?.tEnd ?? 0))）"
             let user = prompt.userMessage(for: partInput, transcript: partInput.transcriptText(), partLabel: label)
-            partials.append(try await callTool(system: prompt.systemMessage(for: input), user: user))
+            partials.append(try await callTool(system: prompt.systemMessage(for: input), user: user).summary)
         }
         let encoder = JSONCoding.encoder()
         let partialJSON = try partials.enumerated().map { index, partial -> String in
             "### パート \(index + 1)\n" + String(decoding: try encoder.encode(partial), as: UTF8.self)
         }.joined(separator: "\n\n")
         let mergeUser = prompt.mergeMessage(for: input, partialSummaries: partialJSON)
-        return try await callTool(system: prompt.systemMessage(for: input), user: mergeUser)
+        return try await callTool(system: prompt.systemMessage(for: input), user: mergeUser, titled: titled)
     }
 
     // MARK: - API
 
-    func callTool(system: String, user: String) async throws -> MinutesSummary {
+    func callTool(system: String, user: String, titled: Bool = false) async throws -> SummaryOutput {
         var body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
             "system": system,
-            "tools": [ClaudeSummarizer.recordMinutesTool],
+            "tools": [ClaudeSummarizer.recordMinutesTool(titled: titled)],
             "tool_choice": ["type": "tool", "name": ClaudeSummarizer.toolName],
             "messages": [["role": "user", "content": user]],
         ]
+        let output: SummaryOutput
         do {
-            return try await send(body)
+            output = try await send(body)
         } catch let SummarizerError.httpError(status, responseBody, _) where status == 400 && responseBody.contains("tool_choice") {
             // forced tool use を受け付けないモデルでは auto + 指示で代替する
             body["tool_choice"] = ["type": "auto"]
             body["messages"] = [["role": "user", "content": user + "\n\n必ず \(ClaudeSummarizer.toolName) ツールを 1 回だけ呼び出して結果を返してください。"]]
-            return try await send(body)
+            output = try await send(body)
         }
+        return SummaryOutput(summary: output.summary, title: titled ? output.title : nil)
     }
 
-    func send(_ body: [String: Any]) async throws -> MinutesSummary {
+    func send(_ body: [String: Any]) async throws -> SummaryOutput {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/messages"))
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
@@ -112,11 +123,16 @@ public struct ClaudeSummarizer: Summarizing {
             throw SummarizerError.httpError(status: http.statusCode, body: String(decoding: data, as: UTF8.self), requestID: requestID)
         }
         Log.network.info("Claude summarize ok request-id=\(requestID ?? "-", privacy: .public)")
-        return try ClaudeSummarizer.parseResponse(data)
+        return try ClaudeSummarizer.parseTitledResponse(data)
     }
 
     /// Messages API のレスポンスから record_minutes の入力を取り出す。golden テスト用に public。
     public static func parseResponse(_ data: Data) throws -> MinutesSummary {
+        try parseTitledResponse(data).summary
+    }
+
+    /// 要約と、入力に `title` があればその題名（整えたあと）。
+    static func parseTitledResponse(_ data: Data) throws -> SummaryOutput {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw SummarizerError.invalidResponse("JSON オブジェクトではありません")
         }
@@ -136,19 +152,21 @@ public struct ClaudeSummarizer: Summarizing {
         }
         let inputData = try JSONSerialization.data(withJSONObject: input)
         do {
-            return try JSONCoding.decoder().decode(MinutesSummary.self, from: inputData)
+            return try JSONCoding.decoder().decode(TitledSummary.self, from: inputData).output
         } catch {
             throw SummarizerError.invalidResponse("record_minutes の入力を decode できません: \(error)")
         }
     }
 
     /// record_minutes ツール定義（strict: 全オブジェクトに additionalProperties: false と required）。
-    public static var recordMinutesTool: [String: Any] {
+    public static var recordMinutesTool: [String: Any] { recordMinutesTool(titled: false) }
+
+    static func recordMinutesTool(titled: Bool) -> [String: Any] {
         [
             "name": toolName,
             "description": "会議の要約・決定事項・アクション・未決事項を構造化して記録する。",
             "strict": true,
-            "input_schema": SummarySchema.json,
+            "input_schema": SummarySchema.json(titled: titled),
         ]
     }
 }

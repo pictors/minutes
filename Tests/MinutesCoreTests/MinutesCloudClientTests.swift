@@ -321,6 +321,34 @@ struct MinutesCloudClientTests {
         #expect((body["client_id"] as? String)?.hasPrefix("mac-summary-") == true)
         let golden = try JSONSerialization.jsonObject(with: try fixture(MinutesCloudContractTests.goldenName)) as? NSDictionary
         #expect((body["input"] as? NSDictionary) == golden)
+        // 題名を頼まない依頼には、欄ごと出さない
+        #expect(body["suggest_title"] == nil)
+    }
+
+    @Test("要約: 題名も頼むと suggest_title を入力の外に付け、別の依頼（client_id）にして、返った題名を整えて受け取る")
+    func summarizeWithTitle() async throws {
+        let seen = Mutex<[StubURLProtocol.Request]>([])
+        let base = StubURLProtocol.host { request in
+            seen.withLock { $0.append(request) }
+            let result: [String: Any] = ["summary_md": "- 架空の要約", "decisions": [], "action_items": [], "open_questions": [], "keyterms_learned": []]
+            let asked = bodyObject(request)["suggest_title"] as? Bool == true
+            var summary: [String: Any] = ["id": "s1", "client_id": bodyObject(request)["client_id"] ?? "", "group": "g", "status": "done", "model": "claude-opus-5-5", "error": NSNull(), "created_at": "2026-11-23T05:00:00.123Z", "completed_at": NSNull(), "result": result]
+            // 古いサーバーは title を返さない。頼んでいない依頼に付いていても、題名にしない
+            summary["title"] = asked ? "「架空の価格の相談」" : "頼んでいない題名"
+            return json(["summary": summary], status: 202)
+        }
+        let summarizer = MinutesCloudSummarizer(client: MinutesCloudClient(baseURL: base, session: StubURLProtocol.session(), token: { "fictional-token" }), pollInterval: .milliseconds(10))
+        let input = MinutesCloudContractTests.fictionalSummaryInput()
+        let group = "mac-0123456789abcdef0123456789abcdef"
+        let titled = try await summarizer.summarizeWithTitle(input, context: SummaryContext(meetingID: "01JFICTIONAL", cloudGroup: group, suggestTitle: true))
+        #expect(titled.title == "架空の価格の相談" && titled.summary.summaryMd == "- 架空の要約")
+        let plain = try await summarizer.summarizeWithTitle(input, context: SummaryContext(meetingID: "01JFICTIONAL", cloudGroup: group))
+        #expect(plain.title == nil)
+        let bodies = seen.withLock { $0 }.map(bodyObject)
+        #expect(bodies.count == 2 && bodies[0]["suggest_title"] as? Bool == true && bodies[1]["suggest_title"] == nil)
+        #expect(bodies[0]["client_id"] as? String != bodies[1]["client_id"] as? String)
+        // 入力そのものは同じ（題名の依頼を入力に混ぜない）
+        #expect(bodies[0]["input"] as? NSDictionary == bodies[1]["input"] as? NSDictionary)
     }
 
     @Test("組の名前は、同じ会議の同じ入力なら同じで、入力が変われば別になる（会議の ID は送らない）")

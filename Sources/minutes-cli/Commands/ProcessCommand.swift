@@ -6,7 +6,7 @@ import MinutesCore
 enum ProcessCommand {
     static let spec = ArgumentSpec(
         options: ["title", "privacy", "provider", "db", "export-dir", "sync-dir", "force", "locale", "language", "summary-language", "summary-provider", "summary-model", "codex-path", "claude-path"],
-        flags: ["no-summary", "summary-only", "quiet"]
+        flags: ["no-summary", "summary-only", "quiet", "auto-title"]
     )
 
     static func run(_ arguments: [String]) async throws {
@@ -59,7 +59,9 @@ enum ProcessCommand {
                 endedAt: manifest?.endedAt,
                 privacyMode: privacy,
                 status: .finalizing,
-                audioDir: directory.path
+                audioDir: directory.path,
+                // 題名を付けずに録った会議として扱い、要約に題名を付けさせる（アプリで題名を空にして始めたときと同じ。SPEC §8.1）
+                titleAuto: parsed.has("auto-title") && parsed.value("title") == nil
             ))
             Console.info("会議を作成: \(meeting.id) (\(meeting.title))")
         }

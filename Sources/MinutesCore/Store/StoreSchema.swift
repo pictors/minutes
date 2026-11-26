@@ -222,6 +222,11 @@ public enum StoreSchema {
             );
             """)
         }
+        // 題名を付けずに録った会議（SPEC §8.1）: 題名が仮の名前（アプリ名と日時）か、要約が付けた題名である印。
+        // 人が題名を付けた・直した会議は 0（この列より前の会議もすべて 0 で、要約の入力は変わらない）。
+        migrator.registerMigration("v12_title_auto") { db in
+            try db.execute(sql: "ALTER TABLE meetings ADD COLUMN title_auto INTEGER NOT NULL DEFAULT 0;")
+        }
         return migrator
     }
 }

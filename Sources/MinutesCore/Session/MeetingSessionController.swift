@@ -14,9 +14,12 @@ public struct PendingMeetingInfo: Sendable, Equatable {
     public var targetBundleIdentifiers: [String]?
     /// 会議の言語。nil は自動（ライブ字幕を `SessionConfiguration.liveLocale` で始め、会議のあとで判定する）。
     public var language: MeetingLanguage?
+    /// 題名が仮の名前（題名を付けずに始めた。アプリ名と日時）。要約のときに、会議の中身から題名を付ける（SPEC §8.1）。
+    public var titleAuto: Bool
 
-    public init(title: String, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode = .cloudOk, calendarEndDate: Date? = nil, targetBundleIdentifiers: [String]? = nil, language: MeetingLanguage? = nil) {
+    public init(title: String, platform: MeetingPlatform? = nil, calendarEventId: String? = nil, calendarTitle: String? = nil, attendees: [Attendee] = [], privacyMode: PrivacyMode = .cloudOk, calendarEndDate: Date? = nil, targetBundleIdentifiers: [String]? = nil, language: MeetingLanguage? = nil, titleAuto: Bool = false) {
         self.title = title
+        self.titleAuto = titleAuto
         self.platform = platform
         self.calendarEventId = calendarEventId
         self.calendarTitle = calendarTitle
@@ -408,7 +411,8 @@ public actor MeetingSessionController {
             status: .recording,
             audioDir: recording.options.outputDirectory.path,
             recordingStartedAt: origin,
-            language: info.language
+            language: info.language,
+            titleAuto: info.titleAuto
         )
         meeting = try store.createMeeting(record)
         let flushed = pendingLiveSegments.map { segment -> SegmentRecord in

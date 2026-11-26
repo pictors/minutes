@@ -2,14 +2,18 @@ import Foundation
 
 /// 要約プロバイダ共通の JSON Schema。
 public enum SummarySchema {
-    public static var json: [String: Any] {
+    public static var json: [String: Any] { json(titled: false) }
+
+    /// titled: 題名も頼む（題名を付けずに録った会議だけ。SPEC §8.1）。指示文は変えず、欄の説明で頼む。
+    /// 題名は保存する要約（MinutesSummary）には入れず、`SummaryOutput.title` で別に返す。
+    public static func json(titled: Bool) -> [String: Any] {
         func evidence() -> [String: Any] {
             ["type": "array", "items": ["type": "integer"], "description": "根拠となる発言の segment id（[seg N] の N）"]
         }
         func object(_ properties: [String: Any], required: [String]) -> [String: Any] {
             ["type": "object", "additionalProperties": false, "properties": properties, "required": required]
         }
-        return object([
+        var properties: [String: Any] = [
                 "summary_md": ["type": "string", "description": "会議の要約（Markdown、日本語、5〜15 行）"],
                 "decisions": ["type": "array", "items": object(["text": ["type": "string"], "evidence": evidence()], required: ["text", "evidence"])],
                 "action_items": ["type": "array", "items": object([
@@ -21,6 +25,12 @@ public enum SummarySchema {
                 ], required: ["text", "owner", "kind", "due", "evidence"])],
                 "open_questions": ["type": "array", "items": object(["text": ["type": "string"], "evidence": evidence()], required: ["text", "evidence"])],
                 "keyterms_learned": ["type": "array", "items": ["type": "string"], "description": "次回の音声認識に役立つ固有名詞・専門用語"],
-            ], required: ["summary_md", "decisions", "action_items", "open_questions", "keyterms_learned"])
+            ]
+        var required = ["summary_md", "decisions", "action_items", "open_questions", "keyterms_learned"]
+        if titled {
+            properties["title"] = ["type": "string", "description": SummaryTitle.schemaDescription]
+            required.append("title")
+        }
+        return object(properties, required: required)
     }
 }

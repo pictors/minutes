@@ -9,7 +9,7 @@ import Foundation
 //   アカウント: GET /v1/me → {user:{id}, plan, usage:{seconds_this_month, seconds_pending, seconds_limit}}
 //   文字起こし: POST /v1/recordings（summarize=false・diarize・keyterms・group）→ PUT /v1/recordings/:id/audio → POST /complete
 //             → GET /v1/recordings/:id（status: uploading・queued・transcribing・summarizing・done・failed）→ GET /stt（ElevenLabs の応答の形）
-//   要約: POST /v1/summaries {client_id, group, time_zone, input: SummaryInput} → GET /v1/summaries/:id（status・result）
+//   要約: POST /v1/summaries {client_id, group, time_zone, input: SummaryInput, suggest_title?} → GET /v1/summaries/:id（status・result）
 //   誤り: {"error": "<code>"}（ログインの入口は {"code": "<CODE>", "message": …}）。401 は印がない・切れた
 // iPhone・Watch（製品版の P4、2026-11-23 確認。サーバーの README の表）:
 //   ログイン: POST /v1/auth/sign-in/social {provider: "apple", idToken: {token, nonce}}（生の nonce を送り、Apple には SHA-256 の 16 進を渡す）
@@ -421,6 +421,8 @@ public struct MinutesCloudSummaryJob: Decodable, Sendable, Equatable {
     public var model: String?
     public var error: String?
     public var result: MinutesSummary?
+    /// 題名も頼んだ依頼（`suggest_title`）で、要約が付けた題名（SPEC §8.1）。頼んでいない・付けられなかったときは nil。
+    public var title: String?
 
     public var isFinished: Bool { status == "done" || status == "failed" }
 }
@@ -827,14 +829,17 @@ public struct MinutesCloudClient: Sendable {
 
     // MARK: 要約
 
-    public func createSummary(clientID: String, group: String, timeZone: String = TimeZone.current.identifier, input: SummaryInput) async throws -> MinutesCloudSummaryJob {
+    /// suggestTitle: 題名も付けさせる（題名を付けずに録った会議。SPEC §8.1）。入力（input）の外に置く（入力の形は変えない）。
+    public func createSummary(clientID: String, group: String, timeZone: String = TimeZone.current.identifier, input: SummaryInput, suggestTitle: Bool = false) async throws -> MinutesCloudSummaryJob {
         struct Body: Encodable {
             var clientId: String
             var group: String
             var timeZone: String
             var input: SummaryInput
+            /// 頼まないときは欄ごと省く
+            var suggestTitle: Bool?
         }
-        let body = try JSONCoding.encoder(pretty: false).encode(Body(clientId: clientID, group: group, timeZone: timeZone, input: input))
+        let body = try JSONCoding.encoder(pretty: false).encode(Body(clientId: clientID, group: group, timeZone: timeZone, input: input, suggestTitle: suggestTitle ? true : nil))
         return try decode(SummaryEnvelope.self, from: try await send("POST", "/v1/summaries", body: body).0).summary
     }
 

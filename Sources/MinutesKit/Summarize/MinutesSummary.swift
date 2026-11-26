@@ -135,10 +135,13 @@ public struct SummaryContext: Sendable, Equatable {
     public var meetingID: String
     /// Minutes クラウドで文字起こしした組（MinutesCloudGroup）。Minutes クラウドの要約はこの組の文字起こしがあるときだけ使える。
     public var cloudGroup: String?
+    /// 題名も付けさせる（題名を付けずに録った会議。SPEC §8.1）。要約の入力と手段の識別には入れない（入れると既存の会議の要約が古くなる）。
+    public var suggestTitle: Bool
 
-    public init(meetingID: String, cloudGroup: String? = nil) {
+    public init(meetingID: String, cloudGroup: String? = nil, suggestTitle: Bool = false) {
         self.meetingID = meetingID
         self.cloudGroup = cloudGroup
+        self.suggestTitle = suggestTitle
     }
 }
 
@@ -149,6 +152,8 @@ public protocol Summarizing: Sendable {
     func summarize(_ input: SummaryInput) async throws -> MinutesSummary
     /// 後処理はこちらを呼ぶ。会議を知る必要のない手段は、既定のまま summarize(_:) になる。
     func summarize(_ input: SummaryInput, context: SummaryContext) async throws -> MinutesSummary
+    /// 題名も返せる手段はこちらを実装する（`context.suggestTitle` のとき、同じ 1 回の依頼で題名も付けさせる）。既定は題名なし。
+    func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput
 }
 
 public extension Summarizing {
@@ -156,6 +161,10 @@ public extension Summarizing {
 
     func summarize(_ input: SummaryInput, context: SummaryContext) async throws -> MinutesSummary {
         try await summarize(input)
+    }
+
+    func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput {
+        SummaryOutput(summary: try await summarize(input, context: context))
     }
 }
 

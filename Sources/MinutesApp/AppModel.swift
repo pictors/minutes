@@ -664,7 +664,7 @@ final class AppModel {
     }
 
     /// 手動開始。開始できなければアラートで理由を示す（権限・対象アプリ未起動など）。
-    /// タイトルが空なら、開始の時点で音を出している対象アプリから付ける（`defaultTitle`）。
+    /// タイトルが空なら、開始の時点で音を出している対象アプリから付ける（`defaultTitle`）。この仮の名前は、要約のときに会議の中身からの題名に替わる。
     func startRecording(_ info: PendingMeetingInfo? = nil) {
         guard let session, !startingRecording, !terminating else { return }
         startingRecording = true
@@ -688,6 +688,8 @@ final class AppModel {
             do {
                 if pending.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     pending.title = await defaultTitle(targets: pending.targetBundleIdentifiers)
+                    // 仮の名前。要約のときに、会議の中身から題名を付ける（SPEC §8.1）
+                    pending.titleAuto = true
                 }
                 try await session.start(pending)
                 // 手動開始は録音ビューを見せる（自動開始では選択を変えない）

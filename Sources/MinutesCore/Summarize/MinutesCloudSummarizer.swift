@@ -24,10 +24,17 @@ public struct MinutesCloudSummarizer: Summarizing {
     }
 
     public func summarize(_ input: SummaryInput, context: SummaryContext) async throws -> MinutesSummary {
-        guard let group = context.cloudGroup else { return try await summarize(input) }
-        let clientID = "mac-summary-" + SHA256.hash(data: try JSONCoding.encoder(pretty: false).encode(input) + Data(group.utf8))
+        var context = context
+        context.suggestTitle = false
+        return try await summarizeWithTitle(input, context: context).summary
+    }
+
+    /// 題名も頼むときは、別の依頼（client_id）にする（題名を頼まなかった同じ入力の依頼を使い回すと、題名が返らない）。
+    public func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput {
+        guard let group = context.cloudGroup else { return SummaryOutput(summary: try await summarize(input)) }
+        let clientID = "mac-summary-" + SHA256.hash(data: try JSONCoding.encoder(pretty: false).encode(input) + Data(group.utf8) + Data((context.suggestTitle ? "\ntitle" : "").utf8))
             .prefix(20).map { String(format: "%02x", $0) }.joined()
-        var job = try await client.createSummary(clientID: clientID, group: group, input: input)
+        var job = try await client.createSummary(clientID: clientID, group: group, input: input, suggestTitle: context.suggestTitle)
         let deadline = ContinuousClock.now + timeout
         while !job.isFinished {
             guard ContinuousClock.now < deadline else { throw MinutesCloudError.timedOut("要約（\(job.status)）") }
@@ -35,6 +42,6 @@ public struct MinutesCloudSummarizer: Summarizing {
             job = try await client.summary(id: job.id)
         }
         guard job.status == "done", let summary = job.result else { throw MinutesCloudError.failed(job.error ?? "理由は分からない") }
-        return summary
+        return SummaryOutput(summary: summary, title: context.suggestTitle ? SummaryTitle.clean(job.title) : nil)
     }
 }

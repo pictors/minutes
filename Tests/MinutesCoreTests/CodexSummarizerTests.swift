@@ -100,7 +100,14 @@ private final class MockCodexTransport: CodexTransport, @unchecked Sendable {
             }
             try emit(["method": "item/completed", "params": ["threadId": "thread", "turnId": "turn", "item": ["type": "agentMessage", "phase": "commentary", "text": "途中経過"]]])
             let summary = MinutesSummary(summaryMd: "確認済みの要約", decisions: [.init(text: "発売を決定", evidence: mode == "badEvidence" ? [999] : [17])], actionItems: [], openQuestions: [], keytermsLearned: [])
-            let json = String(decoding: try JSONCoding.encoder().encode(summary), as: UTF8.self)
+            var json = String(decoding: try JSONCoding.encoder().encode(summary), as: UTF8.self)
+            // 題名も頼まれたとき（スキーマに title がある）だけ、飾りの付いた題名を返す
+            let schema = (object["params"] as? [String: Any])?["outputSchema"] as? [String: Any]
+            if (schema?["properties"] as? [String: Any])?["title"] != nil {
+                var titled = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+                titled["title"] = "「架空の発売日の決定」。"
+                json = String(decoding: try JSONSerialization.data(withJSONObject: titled), as: UTF8.self)
+            }
             try emit(["method": "item/completed", "params": ["threadId": "thread", "turnId": "turn", "item": ["id": "item", "type": "agentMessage", "phase": "final_answer", "text": json]]])
             let failed = mode == "turnFailed" || mode == "wrongTurnError" || (failure != nil && mode != "retryThenSuccess")
             var turn: [String: Any] = ["id": "turn", "status": failed ? "failed" : "completed", "items": []]
@@ -225,6 +232,28 @@ struct CodexSummarizerTests {
         #expect((thread["config"] as? [String: Any])?["mcp_servers.private-server.enabled"] as? Bool == false)
         let turn = try #require(calls.last?["params"] as? [String: Any])
         #expect((turn["outputSchema"] as? [String: Any])?["additionalProperties"] as? Bool == false)
+    }
+
+    @Test("題名も頼むと、同じ依頼のスキーマに title が入り、整えた題名が返る。頼まなければスキーマも答えも変わらない")
+    func titled() async throws {
+        let transport = MockCodexTransport()
+        let summarizer = try CodexSummarizer(client: CodexAppServerClient(transportFactory: { _ in transport }))
+        let identity = summarizer.cacheIdentity
+        let output = try await summarizer.summarizeWithTitle(input(), context: SummaryContext(meetingID: "01JFICTIONAL", suggestTitle: true))
+        #expect(output.title == "架空の発売日の決定" && output.summary.decisions.first?.evidence == [17])
+        let calls = try transport.calls.withLock { $0 }.map { try JSONSerialization.jsonObject(with: $0) as! [String: Any] }
+        let schema = try #require((calls.last?["params"] as? [String: Any])?["outputSchema"] as? [String: Any])
+        #expect((schema["required"] as? [String])?.contains("title") == true)
+        // 手段の識別は変えない（変えると、既存の会議の要約がすべて古くなる）
+        #expect(summarizer.cacheIdentity == identity)
+
+        let plainTransport = MockCodexTransport()
+        let plain = try CodexSummarizer(client: CodexAppServerClient(transportFactory: { _ in plainTransport }))
+        let untitled = try await plain.summarizeWithTitle(input(), context: SummaryContext(meetingID: "01JFICTIONAL"))
+        #expect(untitled.title == nil)
+        let plainCalls = try plainTransport.calls.withLock { $0 }.map { try JSONSerialization.jsonObject(with: $0) as! [String: Any] }
+        let plainSchema = try #require((plainCalls.last?["params"] as? [String: Any])?["outputSchema"] as? NSDictionary)
+        #expect(plainSchema == SummarySchema.json as NSDictionary)
     }
 
     @Test("ログイン未完了・失敗・切断・無効な出力を成功扱いにしない", arguments: ["loggedOut", "rpcError", "turnFailed", "serverRequest", "badEvidence", "disconnect", "malformed"])

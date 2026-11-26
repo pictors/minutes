@@ -33,21 +33,29 @@ public final class CodexSummarizer: Summarizing {
     }
 
     public func summarize(_ input: SummaryInput) async throws -> MinutesSummary {
+        try await summarize(input, titled: false).summary
+    }
+
+    public func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput {
+        try await summarize(input, titled: context.suggestTitle)
+    }
+
+    private func summarize(_ input: SummaryInput, titled: Bool) async throws -> SummaryOutput {
         let system = prompt.systemMessage(for: input)
-        return try await StructuredSummary.summarize(input, prompt: prompt) { user, validIds in
-            try await generate(system: system, user: user, validIds: validIds)
+        return try await StructuredSummary.summarize(input, prompt: prompt, titled: titled) { user, validIds, titled in
+            try await generate(system: system, user: user, validIds: validIds, titled: titled)
         }
     }
 
-    private func generate(system: String, user: String, validIds: Set<Int>) async throws -> MinutesSummary {
-        let completion = try await client.complete(system: system, user: user, model: model)
-        let summary: MinutesSummary
+    private func generate(system: String, user: String, validIds: Set<Int>, titled: Bool) async throws -> SummaryOutput {
+        let completion = try await client.complete(system: system, user: user, model: model, titled: titled)
+        let output: SummaryOutput
         do {
-            summary = try JSONCoding.decoder().decode(MinutesSummary.self, from: Data(completion.text.utf8))
+            output = try JSONCoding.decoder().decode(TitledSummary.self, from: Data(completion.text.utf8)).output
         } catch { throw CodexError.invalidResponse }
-        try Self.validate(summary, validIds: validIds)
+        try Self.validate(output.summary, validIds: validIds)
         resolvedModel.withLock { $0 = completion.model }
-        return summary
+        return SummaryOutput(summary: output.summary, title: titled ? output.title : nil)
     }
 
     static func validate(_ summary: MinutesSummary, validIds: Set<Int>) throws {

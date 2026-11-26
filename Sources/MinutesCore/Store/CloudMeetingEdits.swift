@@ -92,8 +92,10 @@ public extension Store {
                 } else {
                     return .unchanged
                 }
-                guard meeting.title != title else { return .unchanged }
+                guard meeting.title != title || meeting.titleAuto else { return .unchanged }
+                // ほかの端末で人が付けた題名（要約が題名を付ける印を外す）
                 meeting.title = title
+                meeting.titleAuto = false
                 meeting.updatedAt = Date()
                 try meeting.update(db)
                 return .applied

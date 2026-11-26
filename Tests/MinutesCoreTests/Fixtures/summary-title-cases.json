@@ -1,0 +1,101 @@
+{
+  "max_length": 60,
+  "cases": [
+    {
+      "raw": "新プランの価格改定の相談",
+      "expected": "新プランの価格改定の相談"
+    },
+    {
+      "raw": "  「新プランの価格改定の相談」。 ",
+      "expected": "新プランの価格改定の相談"
+    },
+    {
+      "raw": "# 題名: 架空\n2 行目",
+      "expected": "題名: 架空"
+    },
+    {
+      "raw": "\n\n**Pricing review for the new plan.**\n",
+      "expected": "Pricing review for the new plan"
+    },
+    {
+      "raw": "\"Q3 roadmap\"",
+      "expected": "Q3 roadmap"
+    },
+    {
+      "raw": "採用\t面接の   振り返り",
+      "expected": "採用 面接の 振り返り"
+    },
+    {
+      "raw": "「A 案」と「B 案」",
+      "expected": "「A 案」と「B 案」"
+    },
+    {
+      "raw": "（仮）新機能の相談（続き）",
+      "expected": "（仮）新機能の相談（続き）"
+    },
+    {
+      "raw": "- 架空の箇条書きの題名",
+      "expected": "架空の箇条書きの題名"
+    },
+    {
+      "raw": "『架空の製品』の発売日。",
+      "expected": "『架空の製品』の発売日"
+    },
+    {
+      "raw": "`Launch plan`",
+      "expected": "Launch plan"
+    },
+    {
+      "raw": "1 行目\r\n2 行目",
+      "expected": "1 行目"
+    },
+    {
+      "raw": "前半\r後半",
+      "expected": "前半 後半"
+    },
+    {
+      "raw": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+      "expected": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+    },
+    {
+      "raw": "",
+      "expected": null
+    },
+    {
+      "raw": "   ",
+      "expected": null
+    },
+    {
+      "raw": "\n",
+      "expected": null
+    },
+    {
+      "raw": "「」",
+      "expected": null
+    },
+    {
+      "raw": "無題の会議",
+      "expected": null
+    },
+    {
+      "raw": "（題名なし）",
+      "expected": null
+    },
+    {
+      "raw": "Untitled",
+      "expected": null
+    },
+    {
+      "raw": "会議",
+      "expected": null
+    },
+    {
+      "raw": "。",
+      "expected": null
+    },
+    {
+      "raw": "Meeting.",
+      "expected": null
+    }
+  ]
+}

@@ -25,4 +25,6 @@ struct SummaryArtifact: Codable {
     var summary: MinutesSummary
     var model: String
     var inputFingerprint: String
+    /// 要約が付けた題名（題名を付けずに録った会議。SPEC §8.1）。保存の段で、題名を人が付けていなければ当てる。
+    var suggestedTitle: String?
 }

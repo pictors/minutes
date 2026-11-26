@@ -33,17 +33,25 @@ public final class ClaudeCodeSummarizer: Summarizing {
     }
 
     public func summarize(_ input: SummaryInput) async throws -> MinutesSummary {
+        try await summarize(input, titled: false).summary
+    }
+
+    public func summarizeWithTitle(_ input: SummaryInput, context: SummaryContext) async throws -> SummaryOutput {
+        try await summarize(input, titled: context.suggestTitle)
+    }
+
+    private func summarize(_ input: SummaryInput, titled: Bool) async throws -> SummaryOutput {
         let system = prompt.systemMessage(for: input)
-        return try await StructuredSummary.summarize(input, prompt: prompt) { user, validIds in
-            try await generate(system: system, user: user, validIds: validIds)
+        return try await StructuredSummary.summarize(input, prompt: prompt, titled: titled) { user, validIds, titled in
+            try await generate(system: system, user: user, validIds: validIds, titled: titled)
         }
     }
 
-    private func generate(system: String, user: String, validIds: Set<Int>) async throws -> MinutesSummary {
-        let completion = try await client.complete(system: system, user: user, model: model)
+    private func generate(system: String, user: String, validIds: Set<Int>, titled: Bool) async throws -> SummaryOutput {
+        let completion = try await client.complete(system: system, user: user, model: model, titled: titled)
         guard StructuredSummary.isValid(completion.summary, validIds: validIds) else { throw ClaudeCodeError.invalidResponse }
         if let model = completion.model { resolvedModel.withLock { $0 = model } }
-        return completion.summary
+        return SummaryOutput(summary: completion.summary, title: titled ? completion.title : nil)
     }
 }
 
@@ -95,6 +103,8 @@ public struct ClaudeCodeConnection: Sendable, Equatable {
 
 struct ClaudeCodeCompletion: Sendable {
     var summary: MinutesSummary
+    /// 題名も頼んだときの題名（整えたあと）。
+    var title: String?
     /// 実際に使われたモデル（modelUsage のうち出力の多いもの）。
     var model: String?
 }
@@ -132,8 +142,8 @@ struct ClaudeCodeClient: Sendable {
 
     """.utf8)
 
-    static func arguments(system: String, model: String?) throws -> [String] {
-        let schema = String(decoding: try JSONSerialization.data(withJSONObject: SummarySchema.json, options: [.sortedKeys]), as: UTF8.self)
+    static func arguments(system: String, model: String?, titled: Bool = false) throws -> [String] {
+        let schema = String(decoding: try JSONSerialization.data(withJSONObject: SummarySchema.json(titled: titled), options: [.sortedKeys]), as: UTF8.self)
         var args = ["-p", "--output-format", "json", "--json-schema", schema,
                     "--system-prompt", system + "\n\n" + instructions,
                     "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence"]
@@ -178,8 +188,8 @@ struct ClaudeCodeClient: Sendable {
         return connection
     }
 
-    func complete(system: String, user: String, model: String?) async throws -> ClaudeCodeCompletion {
-        try Self.parseResult(try await run(try Self.arguments(system: system, model: model), input: Data(user.utf8)))
+    func complete(system: String, user: String, model: String?, titled: Bool = false) async throws -> ClaudeCodeCompletion {
+        try Self.parseResult(try await run(try Self.arguments(system: system, model: model, titled: titled), input: Data(user.utf8)))
     }
 
     private func run(_ arguments: [String], input: Data) async throws -> ClaudeCodeProcess.Output {
@@ -205,8 +215,8 @@ struct ClaudeCodeClient: Sendable {
         }
         guard let structured = result["structured_output"], !(structured is NSNull),
               let data = try? JSONSerialization.data(withJSONObject: structured),
-              let summary = try? JSONCoding.decoder().decode(MinutesSummary.self, from: data) else { throw ClaudeCodeError.invalidResponse }
-        return ClaudeCodeCompletion(summary: summary, model: primaryModel(result["modelUsage"]))
+              let titled = try? JSONCoding.decoder().decode(TitledSummary.self, from: data) else { throw ClaudeCodeError.invalidResponse }
+        return ClaudeCodeCompletion(summary: titled.summary, title: titled.title, model: primaryModel(result["modelUsage"]))
     }
 
     static func parseAuthStatus(_ output: ClaudeCodeProcess.Output) throws -> ClaudeCodeConnection {

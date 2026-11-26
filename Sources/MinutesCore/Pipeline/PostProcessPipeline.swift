@@ -149,11 +149,12 @@ public final class PostProcessPipeline: Sendable {
         guard !input.segments.isEmpty else { throw PipelineError.summaryUnavailable }
         let run = try store.recordRun(meetingId: meetingId, step: PipelineStep.summarize.rawValue, status: .running)
         do {
-            let summary = try await summarizer.summarize(input, context: SummaryContext(meetingID: meetingId, cloudGroup: cloudGroup(directory: meeting.audioDirectoryURL)))
+            // 題名を人が付けていない会議は、同じ依頼で題名も付けさせる（SPEC §8.1）
+            let output = try await summarizer.summarizeWithTitle(input, context: SummaryContext(meetingID: meetingId, cloudGroup: cloudGroup(directory: meeting.audioDirectoryURL), suggestTitle: meeting.titleAuto))
             guard let current = try store.meeting(id: meetingId), current.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
             let inputFingerprint = try PipelineFingerprint.encoded(input)
             guard try PipelineFingerprint.encoded(summaryInput(current)) == inputFingerprint else { throw PipelineError.staleSummary }
-            let artifact = SummaryArtifact(summary: summary, model: summarizer.modelDescription, inputFingerprint: inputFingerprint)
+            let artifact = SummaryArtifact(summary: output.summary, model: summarizer.modelDescription, inputFingerprint: inputFingerprint, suggestedTitle: output.title)
             try store.invalidateRuns(meetingId: meetingId, steps: [.store, .export])
             if let directory = current.audioDirectoryURL {
                 try JSONCoding.encoder().encode(artifact).write(to: directory.appendingPathComponent(Self.summaryArtifact), options: .atomic)
@@ -654,10 +655,11 @@ public final class PostProcessPipeline: Sendable {
         let input = try summaryInput(current)
         guard !input.segments.isEmpty else { return "skipped (empty transcript)" }
         let fingerprint = try PipelineFingerprint.encoded(input)
-        let summary = try await summarizer.summarize(input, context: SummaryContext(meetingID: meeting.id, cloudGroup: cloudGroup(directory: directory)))
+        // 題名を人が付けていない会議は、同じ依頼で題名も付けさせる（SPEC §8.1）。題名は成果物に置き、保存の段で当てる
+        let output = try await summarizer.summarizeWithTitle(input, context: SummaryContext(meetingID: meeting.id, cloudGroup: cloudGroup(directory: directory), suggestTitle: current.titleAuto))
         guard let latest = try store.meeting(id: meeting.id), latest.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
         guard try PipelineFingerprint.encoded(summaryInput(latest)) == fingerprint else { throw PipelineError.staleSummary }
-        let artifact = SummaryArtifact(summary: summary, model: summarizer.modelDescription, inputFingerprint: fingerprint)
+        let artifact = SummaryArtifact(summary: output.summary, model: summarizer.modelDescription, inputFingerprint: fingerprint, suggestedTitle: output.title)
         try JSONCoding.encoder().encode(artifact).write(to: directory.appendingPathComponent(Self.summaryArtifact), options: .atomic)
         return artifact.model
     }
@@ -709,7 +711,7 @@ public final class PostProcessPipeline: Sendable {
 
     func saveSummary(_ artifact: SummaryArtifact, meeting: MeetingRecord) throws {
         guard try PipelineFingerprint.encoded(summaryInput(meeting)) == artifact.inputFingerprint else { throw PipelineError.staleSummary }
-        try store.saveGeneratedSummary(meetingId: meeting.id, summary: artifact.summary, model: artifact.model, inputFingerprint: artifact.inputFingerprint)
+        try store.saveGeneratedSummary(meetingId: meeting.id, summary: artifact.summary, model: artifact.model, inputFingerprint: artifact.inputFingerprint, suggestedTitle: artifact.suggestedTitle)
         if providers.learnKeyterms { try store.addKeyterms(artifact.summary.keytermsLearned, source: "learned") }
     }
 

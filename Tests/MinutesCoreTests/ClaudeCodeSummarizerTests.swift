@@ -172,6 +172,26 @@ struct ClaudeCodeSummarizerTests {
         #expect(!args.contains { $0.contains("[seg 17]") })
     }
 
+    @Test("題名も頼むと --json-schema に title が入り、整えた題名が返る。頼まなければ題名は返さない")
+    func titled() async throws {
+        var structured = FakeClaude.summary()
+        structured["title"] = "**架空の発売日の決定**"
+        let fake = try FakeClaude(stdout: FakeClaude.result(["structured_output": structured]))
+        defer { fake.remove() }
+        let summarizer = try ClaudeCodeSummarizer(executablePath: fake.path)
+        let output = try await summarizer.summarizeWithTitle(input(), context: SummaryContext(meetingID: "01JFICTIONAL", suggestTitle: true))
+        #expect(output.title == "架空の発売日の決定" && output.summary.decisions.first?.evidence == [17])
+        let args = try fake.arguments
+        let index = try #require(args.firstIndex(of: "--json-schema"))
+        let schema = try #require(try JSONSerialization.jsonObject(with: Data(args[index + 1].utf8)) as? [String: Any])
+        #expect((schema["required"] as? [String])?.contains("title") == true)
+        // 頼んでいないのに title が返っても、題名にしない
+        #expect(try await summarizer.summarizeWithTitle(input(), context: SummaryContext(meetingID: "01JFICTIONAL")).title == nil)
+        let plain = try fake.arguments
+        let plainIndex = try #require(plain.firstIndex(of: "--json-schema"))
+        #expect(try JSONSerialization.jsonObject(with: Data(plain[plainIndex + 1].utf8)) as? NSDictionary == SummarySchema.json as NSDictionary)
+    }
+
     @Test("選んだモデルを --model とキャッシュの同一性に使い、空欄は Claude Code の既定にする")
     func modelSelection() async throws {
         let output = try FakeClaude.result(["structured_output": FakeClaude.summary()])

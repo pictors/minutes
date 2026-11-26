@@ -256,7 +256,10 @@ public final class Store: Sendable {
     public func updateMeetingMetadata(id: String, title: String?, privacy: PrivacyMode?) throws {
         try writer.write { db in
             guard var current = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound(id) }
-            if let title { current.title = title }
+            if let title {
+                current.title = title
+                current.titleAuto = false
+            }
             if let privacy { current.privacy = privacy }
             current.updatedAt = Date()
             try current.update(db)
@@ -287,6 +290,7 @@ public final class Store: Sendable {
     }
 
     /// 画面で題名を直す。iPhone・Watch から取り込んだ会議なら、サーバーへ送る列にも入れる（iPhone に届ける。P7、`CloudEditSync`）。
+    /// 人が付けた題名になるので、要約が題名を付ける印（`titleAuto`）を外す（同じ文字のままでも外す。付いた題名をそのまま確かめた）。
     public func updateMeetingTitle(id: String, title: String) throws {
         let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { throw StoreError.notFound("タイトル") }
@@ -294,6 +298,7 @@ public final class Store: Sendable {
             guard var current = try MeetingRecord.fetchOne(db, key: id) else { throw StoreError.notFound(id) }
             let changed = current.title != cleaned
             current.title = cleaned
+            current.titleAuto = false
             current.updatedAt = Date()
             try current.update(db)
             if changed { try Store.queueCloudEditPush(db, meetingId: id, field: CloudEditField.title, value: cleaned) }
@@ -861,7 +866,8 @@ public final class Store: Sendable {
         let records = BackgroundVoices.removingExcluded(try fetchSegments(db, meetingId: meetingId, source: .final), speakers: speakers)
         let names = Dictionary(uniqueKeysWithValues: speakers.filter { !$0.excluded }.map { ($0.clusterLabel, $0.label) })
         let byId = Dictionary(uniqueKeysWithValues: speakers.map { ($0.id, $0) })
-        return SummaryInput(meetingTitle: meeting.title, startedAt: meeting.startedAt, attendees: meeting.attendees, segments: records.compactMap { row in
+        // 題名を人が付けていない会議は、題名を渡さない（仮の名前は中身と関係がなく、要約が付けた題名に替わっても入力を変えない。SPEC §8.1）
+        return SummaryInput(meetingTitle: meeting.titleAuto ? SummaryTitle.untitledForPrompt : meeting.title, startedAt: meeting.startedAt, attendees: meeting.attendees, segments: records.compactMap { row in
             guard let id = row.id else { return nil }
             // 発話単位で話者を変更していれば、その話者のラベルで要約に渡す
             let label = row.speakerId.flatMap { byId[$0]?.clusterLabel } ?? row.clusterLabel
@@ -872,9 +878,11 @@ public final class Store: Sendable {
         outputLanguage: meeting.summaryOutputLanguage == .ja ? nil : meeting.summaryOutputLanguage)
     }
 
-    public func saveGeneratedSummary(meetingId: String, summary: MinutesSummary, model: String, inputFingerprint: String) throws {
+    /// suggestedTitle: 要約が付けた題名（SPEC §8.1）。題名を人が付けていない会議（`titleAuto`）にだけ、要約と同じトランザクションで当てる。
+    /// 人の直しとしては扱わない（印は残し、サーバーへ送る直しの列にも入れない）。
+    public func saveGeneratedSummary(meetingId: String, summary: MinutesSummary, model: String, inputFingerprint: String, suggestedTitle: String? = nil) throws {
         try writer.write { db in
-            guard let meeting = try MeetingRecord.fetchOne(db, key: meetingId), meeting.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
+            guard var meeting = try MeetingRecord.fetchOne(db, key: meetingId), meeting.privacy == .cloudOk else { throw PipelineError.summaryUnavailable }
             guard try PipelineFingerprint.encoded(Store.fetchSummaryInput(db, meetingId: meetingId)) == inputFingerprint else { throw PipelineError.staleSummary }
             let existing = try NotesRecord.fetchOne(db, key: meetingId)
             let previous = existing?.actionItems ?? []
@@ -898,6 +906,11 @@ public final class Store: Sendable {
             let notes = NotesRecord(meetingId: meetingId, summary: preserved, model: model, userNotesMd: existing?.userNotesMd, inputFingerprint: inputFingerprint)
             try notes.save(db)
             try Store.refreshNotesFTS(db, notes: notes)
+            if meeting.titleAuto, let title = SummaryTitle.clean(suggestedTitle), meeting.title != title {
+                meeting.title = title
+                meeting.updatedAt = Date()
+                try meeting.update(db)
+            }
         }
     }
 

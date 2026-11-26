@@ -99,6 +99,26 @@ struct CaptureFailureTests {
         #expect(pipeline.finish() == stats)
     }
 
+    @Test("題名を空のまま始めた録音は、会議の行に印が立つ。題名を付けて始めた録音には立たない（SPEC §8.1）", arguments: [true, false])
+    func recordingRowFlag(titleAuto: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-capture-title-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try Store.inMemory()
+        let pipeline = PostProcessPipeline(store: store, providers: PipelineProviders(cloud: nil, local: FakeTranscriber(id: "local", runsLocally: true, segments: []), summarizer: nil, exportDirectory: root))
+        let capture = FakeRecording(options: RecordingOptions(outputDirectory: root))
+        var config = SessionConfiguration(targetBundleIdentifiers: [], audioRootDirectory: root)
+        config.liveTranscription = false
+        let controller = MeetingSessionController(store: store, pipeline: pipeline, configuration: config, makeRecording: { _ in capture })
+        try await controller.start(PendingMeetingInfo(title: titleAuto ? "Zoom 11月26日 10:00" : "架空の週次定例", titleAuto: titleAuto))
+        let id = try #require(await controller.currentMeeting?.id)
+        #expect(try store.meeting(id: id)?.titleAuto == titleAuto)
+        // 録音中に人が題名を直すと、印が外れる
+        try store.updateMeetingTitle(id: id, title: "録音中に付けた題名")
+        await controller.stop()
+        let after = try #require(try store.meeting(id: id))
+        #expect(after.title == "録音中に付けた題名" && !after.titleAuto)
+    }
+
     @Test("capture error / stop error は failed として保存し後処理を開始しない", arguments: [false, true])
     func controllerFailure(atStop: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("minutes-capture-" + UUID().uuidString)
