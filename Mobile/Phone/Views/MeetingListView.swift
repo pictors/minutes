@@ -560,7 +560,7 @@ private struct NewMeetingView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("新しい会議")
                 .font(.title2.bold())
-            TextField("会議の名前（なくてもよい）", text: $title)
+            TextField("会議の名前（空なら自動で付きます）", text: $title)
                 .focused($focused)
                 .submitLabel(.go)
                 .onSubmit { start() }
