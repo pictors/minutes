@@ -28,6 +28,10 @@ final class PhoneModel {
     let billing: BillingStore
 
     private static let noticeAcceptedKey = "recordingNoticeAccepted"
+    private static let discardedKey = "discardedRecordings"
+    /// 録音の画面で捨てた録音（client_id → 捨てた時刻）。録音中から区切りを上げているので、サーバーに作りかけの録音が残ることがある
+    /// （回線がなくて消せなかった・作る送信が捨てる直前に届いた）。一覧には出さず、サーバーの一覧で見つけるたびに消す。7 日で忘れる
+    private var discardedRecordings: [String: Date] = PhoneModel.loadDiscarded()
     @ObservationIgnored private lazy var recordingActivity = RecordingActivityController(recorder: recorder)
 
     init(store: RecordingStore = .standard) {
@@ -110,6 +114,7 @@ final class PhoneModel {
     var meetings: [MeetingItem] {
         var items: [String: MeetingItem] = [:]
         for recording in serverRecordings where recording.source == "iphone" || recording.source == "watch" || recording.isSyncedMeeting {
+            if discardedRecordings[recording.clientId] != nil { continue }
             items[recording.clientId] = MeetingItem(id: recording.clientId, local: nil, server: recording)
         }
         for upload in localUploads {
@@ -156,6 +161,7 @@ final class PhoneModel {
             meetingsLoaded = true
             self.account = try await account
             banner = nil
+            await deleteDiscardedOnServer()
             await resolveMissingServerRecordings()
             if let user = try? await client.currentUser() {
                 self.user = user
@@ -409,6 +415,45 @@ final class PhoneModel {
     var signedInWithApple: Bool { TokenStore.shared.stored?.method == .apple }
 
     // MARK: 会議
+
+    /// 録音をやめて、議事録を作らずに消す（録音の画面の「中止して破棄」）。
+    /// この iPhone の記録と音声はすぐに消す（回線がなくても、次の起動で「途中で終わった録音」として送られない）。
+    /// サーバーの作りかけの録音は、一覧を読み直して見つけたところで消す（いま消せなくても、次に読み直したときに消す）。
+    func discardRecording() {
+        guard let id = recorder.discard() else { return }
+        uploads.discard(id)
+        discardedRecordings[id] = Date()
+        saveDiscarded()
+        reloadLocal()
+        Task { await refresh() }
+    }
+
+    private func deleteDiscardedOnServer() async {
+        let limit = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        if discardedRecordings.contains(where: { $0.value < limit }) {
+            discardedRecordings = discardedRecordings.filter { $0.value >= limit }
+            saveDiscarded()
+        }
+        for recording in serverRecordings where discardedRecordings[recording.clientId] != nil {
+            do {
+                try await client.deleteRecording(id: recording.id)
+            } catch let error as MinutesCloudError where error.status == 404 {
+                // サーバーにはもうない
+            } catch {
+                continue
+            }
+            serverRecordings.removeAll { $0.id == recording.id }
+        }
+    }
+
+    private static func loadDiscarded() -> [String: Date] {
+        let stored = UserDefaults.standard.dictionary(forKey: discardedKey) as? [String: Double] ?? [:]
+        return stored.mapValues(Date.init(timeIntervalSince1970:))
+    }
+
+    private func saveDiscarded() {
+        UserDefaults.standard.set(discardedRecordings.mapValues(\.timeIntervalSince1970), forKey: Self.discardedKey)
+    }
 
     func delete(_ item: MeetingItem) async throws {
         if let server = item.server {

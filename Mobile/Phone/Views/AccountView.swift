@@ -76,7 +76,7 @@ struct AccountView: View {
                     Button { createPasskey() } label: {
                         Label(passkeys.isEmpty ? "パスキーを作る" : "パスキーをもう 1 つ作る", systemImage: "plus")
                     }
-                    .buttonStyle(PillButtonStyle(height: 36))
+                    .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                     .disabled(passkeyWorking)
                     .accessibilityIdentifier("account.passkey.create")
                 } else {

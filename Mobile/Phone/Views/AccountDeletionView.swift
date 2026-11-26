@@ -116,7 +116,7 @@ struct AccountDeletionView: View {
                 } label: {
                     Label("契約を管理", systemImage: "creditcard")
                 }
-                .buttonStyle(PillButtonStyle(height: 36))
+                .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                 .accessibilityIdentifier("deletion.manageSubscriptions")
             }
         }

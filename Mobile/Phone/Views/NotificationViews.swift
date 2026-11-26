@@ -30,7 +30,7 @@ struct NotificationPromptCard: View {
                 .buttonStyle(FilledPillButtonStyle(height: 42))
                 .accessibilityIdentifier("notifications.prompt.allow")
                 Button("あとで") { push.dismissPrompt() }
-                    .buttonStyle(PillButtonStyle(height: 42))
+                    .buttonStyle(PillButtonStyle(height: 42, leadingGlyph: false))
                     .accessibilityIdentifier("notifications.prompt.later")
             }
         }
@@ -68,13 +68,13 @@ struct NotificationSettingsCard: View {
                         Button("受け取る") {
                             Task { await push.requestAuthorization() }
                         }
-                        .buttonStyle(PillButtonStyle(height: 36))
+                        .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                         .accessibilityIdentifier("account.notifications.allow")
                     } else {
                         Button("設定を開く") {
                             if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
                         }
-                        .buttonStyle(PillButtonStyle(height: 36))
+                        .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                         .accessibilityIdentifier("account.notifications.settings")
                     }
                 }

@@ -163,7 +163,7 @@ struct ShareLinksView: View {
                 ShareLink(item: share.url) {
                     Label("送る", systemImage: "square.and.arrow.up")
                 }
-                .buttonStyle(PillButtonStyle(height: 36))
+                .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                 Button {
                     UIPasteboard.general.url = share.url
                     copiedID = share.id
@@ -171,7 +171,7 @@ struct ShareLinksView: View {
                     Label(copiedID == share.id ? "コピーしました" : "コピー", systemImage: copiedID == share.id ? "checkmark" : "doc.on.doc")
                         .contentTransition(.symbolEffect(.replace))
                 }
-                .buttonStyle(PillButtonStyle(height: 36))
+                .buttonStyle(PillButtonStyle(height: 36, leadingGlyph: false))
                 .sensoryFeedback(.success, trigger: copiedID == share.id)
                 Spacer(minLength: 0)
                 Button(role: .destructive) {

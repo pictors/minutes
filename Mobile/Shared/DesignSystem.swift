@@ -360,23 +360,27 @@ struct PillButtonStyle: ButtonStyle {
     var height: CGFloat = 52
     /// 画面に浮かぶボタン（一覧の「録音」）はガラスの面にする
     var floating = false
+    /// 左に丸い記号（PillGlyph）を置くか。置くときは、丸がカプセルの端に沿うように左の余白を詰める。
+    /// 文字だけ・SF Symbols と文字のボタンは false にして、左右の余白をそろえる（文字が真ん中に来る）
+    var leadingGlyph = true
 
     func makeBody(configuration: Configuration) -> some View {
-        PillBody(configuration: configuration, height: height, floating: floating)
+        PillBody(configuration: configuration, height: height, floating: floating, leadingGlyph: leadingGlyph)
     }
 
     private struct PillBody: View {
         let configuration: ButtonStyleConfiguration
         let height: CGFloat
         let floating: Bool
+        let leadingGlyph: Bool
         @Environment(\.isEnabled) private var isEnabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
             let label = configuration.label
                 .font(.system(size: height * 0.34, weight: .semibold))
-                .padding(.leading, height * 0.2)
-                .padding(.trailing, height * 0.46)
+                .padding(.leading, height * (leadingGlyph ? 0.2 : 0.44))
+                .padding(.trailing, height * (leadingGlyph ? 0.46 : 0.44))
                 .frame(height: height)
                 .contentShape(.capsule)
             Group {

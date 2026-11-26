@@ -6,6 +6,7 @@ struct RecordingView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmingStop = false
+    @State private var confirmingDiscard = false
     @State private var history = LevelHistory()
 
     var body: some View {
@@ -97,6 +98,24 @@ struct RecordingView: View {
             .animation(Motion.layout, value: recorder.phase)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 「中止して破棄」は「止める」の確認に並べず、いちばん遠い左上に小さく置く（止めるつもりで押し間違えないように）。
+        // 会議がまるごと消えるので、押したあとにもう一度確かめる（そのあいだも録音は続ける）
+        .overlay(alignment: .topLeading) {
+            Button("中止して破棄") { confirmingDiscard = true }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("recording.discard")
+                .alert("この録音を破棄しますか？", isPresented: $confirmingDiscard) {
+                    Button("破棄する", role: .destructive) { model.discardRecording() }
+                    Button("録音に戻る", role: .cancel) {}
+                } message: {
+                    Text("ここまでの録音を消します。議事録は作りません。元に戻せません。")
+                }
+        }
         .background(Surface.page.ignoresSafeArea())
         .interactiveDismissDisabled()
         .sensoryFeedback(.impact(weight: .medium), trigger: recorder.phase)

@@ -115,6 +115,17 @@ final class MeetingRecorder {
         onProgress?(id)
     }
 
+    /// 録音をやめて、送らずに捨てる（利用者の「中止して破棄」）。止めた印を付けず、送る側も起こさない
+    /// （印を付けると、区切りが届いたところで complete が送られて議事録になる）。記録と音声は呼んだ側が消す。捨てた録音の ID を返す。
+    func discard() -> String? {
+        guard phase != .idle, let id = clientId else { return nil }
+        resumeTask?.cancel()
+        _ = capture?.stop()
+        if fixture == nil { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+        reset()
+        return id
+    }
+
     /// 中断のあと、利用者のボタンで再開する。
     func resume() {
         guard phase == .interrupted else { return }

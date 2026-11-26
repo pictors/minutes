@@ -73,6 +73,18 @@ final class UploadEngine: NSObject, @unchecked Sendable {
         }
     }
 
+    /// 録音を捨てる（中止して破棄）: 端末の記録と音声を消し、送っている途中の送信をやめる。
+    /// 記録を書き換えている途中の処理（step・送信の結果）が消したあとに書き戻さないよう、同じ鍵の中で消す。
+    /// 消したあとに届いた送信の結果と、待っていた step は、記録がないので何もしない。
+    func discard(_ clientId: String) {
+        lock.withLock {
+            try? store.delete(clientId: clientId)
+            verified = verified.filter { !$0.hasPrefix(clientId + "/") }
+            resentAfterMissing.remove(clientId)
+        }
+        cancel(clientId)
+    }
+
     // MARK: 進める
 
     private func step(clientId: String) {
