@@ -20,23 +20,16 @@ struct MinutesCloudStatusLabel: View {
 }
 
 /// 設定 > アカウント（SPEC §5.6・§10.3）: Minutes アカウントのログイン、プランと今月の量、このアカウントでできること。
-/// ログインは Apple でサインイン（ブラウザを通すウェブの流れ。Developer ID の Mac はネイティブの Sign in with Apple を使えない）か、
-/// メールに届く 6 桁のコード。iPhone で Apple を選んだ人は、Apple でサインインすれば同じアカウントになる。
+/// ログインは「サインイン…」から開くパネル（AccountSignInSheet）で、Apple でサインイン（ブラウザを通すウェブの流れ。Developer ID の Mac は
+/// ネイティブの Sign in with Apple を使えない）か、メールに届く 6 桁のコード。iPhone で Apple を選んだ人は、Apple でサインインすれば同じアカウントになる。
 /// ログインは、文字起こしと要約の手段（Minutes クラウド）を選ぶこととは別に置く: iPhone・Apple Watch の会議の取り込み（§4.5）は、
 /// ログインだけで働く。印は Keychain に置く（MinutesCloudCredentials）。印・メールアドレスはログに出さない。
 struct AccountSettingsPane: View {
     @Environment(AppModel.self) private var model
-    @State private var email = ""
-    @State private var code = ""
-    @State private var codeSent = false
+    @State private var showingSignIn = false
     @State private var busy = false
-    @State private var appleBusy = false
-    @State private var message: String?
     @State private var account: MinutesCloudAccount?
     @State private var accountError: String?
-    @FocusState private var focus: Field?
-
-    private enum Field { case email, code }
 
     var body: some View {
         Form {
@@ -50,78 +43,33 @@ struct AccountSettingsPane: View {
         .formStyle(.grouped)
         .frame(height: SettingsView.paneHeight)
         .task(id: model.minutesCloudEmail) { await loadAccount() }
+        .sheet(isPresented: $showingSignIn) {
+            AccountSignInSheet(actions: .init(
+                signInWithApple: {
+                    do {
+                        try await model.signInToMinutesCloudWithApple()
+                    } catch AppleWebSignIn.Failure.cancelled {
+                        throw CancellationError()
+                    }
+                },
+                sendCode: { try await model.sendMinutesCloudCode(email: $0) },
+                signIn: { try await model.signInToMinutesCloud(email: $0, code: $1) }
+            ))
+        }
     }
 
     // MARK: ログイン
 
     private var signInSection: some View {
         Section {
-            if !codeSent {
-                LabeledContent("Apple のアカウント") {
-                    Button {
-                        signInWithApple()
-                    } label: {
-                        Label(appleBusy ? "ブラウザで続けてください…" : "Apple でサインイン", systemImage: "apple.logo")
-                    }
-                    .disabled(busy)
-                }
-                // 入力欄だと分かるように、枠のある欄に例のアドレスを薄く出す（プロバイダの API キーの欄と同じ見た目）
-                LabeledContent("メールアドレス") {
-                    HStack(spacing: 8) {
-                        TextField("", text: $email, prompt: Text("name@company.com"))
-                            .textFieldStyle(.roundedBorder)
-                            .labelsHidden()
-                            .frame(width: 260)
-                            .focused($focus, equals: .email)
-                            .onSubmit { send() }
-                        Button(busy ? "送っています…" : "コードを送る") { send() }
-                            .disabled(busy || !email.contains("@"))
-                    }
-                }
-            } else {
-                LabeledContent("メールアドレス") { Text(email) }
-                LabeledContent("メールに届いた 6 桁のコード") {
-                    HStack(spacing: 8) {
-                        TextField("", text: $code, prompt: Text("123456"))
-                            .textFieldStyle(.roundedBorder)
-                            .labelsHidden()
-                            .frame(width: 110)
-                            .monospacedDigit()
-                            .textContentType(.oneTimeCode)
-                            .focused($focus, equals: .code)
-                            .onChange(of: code) { _, value in
-                                // 数字だけ・6 桁まで。6 桁そろったらそのままログインする（iPhone のアプリと同じ）
-                                let digits = Self.digits(value)
-                                if digits != value {
-                                    code = digits
-                                } else if digits.count == 6, !busy {
-                                    signIn()
-                                }
-                            }
-                            .onSubmit { signIn() }
-                        Button(busy ? "確かめています…" : "ログイン") { signIn() }
-                            .disabled(busy || code.count < 6)
-                    }
-                }
-                HStack(spacing: 8) {
-                    Button("コードを送り直す") { send() }
-                        .disabled(busy)
-                    Button("メールアドレスを変える") {
-                        codeSent = false
-                        code = ""
-                        message = nil
-                        focus = .email
-                    }
-                    .disabled(busy)
-                }
-            }
-            if let message {
-                Text(message).font(.callout).foregroundStyle(.secondary)
+            LabeledContent {
+                Button("サインイン…") { showingSignIn = true }
+            } label: {
+                Text("ログインしていません")
+                Text("Apple でサインインするか、メールに届くコードでログインします。")
             }
         } header: {
             Text("Minutes アカウント")
-        } footer: {
-            Text("Apple でサインインするか、メールに届く 6 桁のコードでログインします。アカウントがなければ、ここで作られます。iPhone の Minutes と同じアカウントにするには、iPhone と同じ方法を選んでください（iPhone で Apple を選んだなら Apple でサインイン、メールなら iPhone のアカウントの画面に出ているアドレス）。Apple でサインインは、ブラウザで開きます。")
         }
     }
 
@@ -259,71 +207,11 @@ struct AccountSettingsPane: View {
         return minutes % 60 == 0 ? "\(minutes / 60) 時間" : "\(minutes / 60) 時間 \(minutes % 60) 分"
     }
 
-    /// 入れた文字から数字だけを 6 桁まで取る（全角の数字や、貼り付けた「123 456」も受ける）
-    private static func digits(_ text: String) -> String {
-        let half = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
-        return String(half.filter { $0.isASCII && $0.isNumber }.prefix(6))
-    }
-
     private func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     // MARK: 操作
-
-    private func send() {
-        guard !busy, email.contains("@") else { return }
-        busy = true
-        message = nil
-        Task {
-            defer { busy = false }
-            do {
-                try await model.sendMinutesCloudCode(email: email)
-                codeSent = true
-                code = ""
-                focus = .code
-                message = "コードを送りました（5 分で切れます）。メールが届かなければ、迷惑メールも見てください。"
-            } catch {
-                message = describe(error)
-            }
-        }
-    }
-
-    private func signIn() {
-        guard !busy, code.count == 6 else { return }
-        busy = true
-        message = nil
-        Task {
-            defer { busy = false }
-            do {
-                try await model.signInToMinutesCloud(email: email, code: code)
-                codeSent = false
-                code = ""
-            } catch {
-                message = describe(error)
-            }
-        }
-    }
-
-    private func signInWithApple() {
-        guard !busy else { return }
-        busy = true
-        appleBusy = true
-        message = nil
-        Task {
-            defer {
-                busy = false
-                appleBusy = false
-            }
-            do {
-                try await model.signInToMinutesCloudWithApple()
-            } catch AppleWebSignIn.Failure.cancelled {
-                // 利用者が閉じた。何も出さない
-            } catch {
-                message = describe(error)
-            }
-        }
-    }
 
     private func signOut() {
         busy = true
@@ -331,7 +219,6 @@ struct AccountSettingsPane: View {
             await model.signOutOfMinutesCloud()
             account = nil
             accountError = nil
-            message = nil
             busy = false
         }
     }
